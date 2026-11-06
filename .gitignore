@@ -1,0 +1,10 @@
+# MOOT data is downloaded by `make data`, never committed (keeps it unmodified)
+data/*.csv
+
+# course spec pages saved from GitHub
+*.md.html
+
+__pycache__/
+.pytest_cache/
+.DS_Store
+results/
