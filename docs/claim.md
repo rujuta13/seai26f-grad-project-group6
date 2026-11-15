@@ -1,8 +1,8 @@
 # Pre-registered claim
 
-**Status: DRAFT. Both team members must agree on this, then commit it before `step1` exists.
-After that commit it is never edited. Any later change goes in a dated "Amendments" section
-below, with the reason.**
+**Status: final, 2026-11-15, committed at tag `step0`, before any skill code existed. This
+text is never edited. Any later change goes in the dated "Amendments" section below, with
+the reason.**
 
 ## The two hypotheses (verbatim from the project spec)
 
