@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -29,3 +29,6 @@ step5: data      ## blame: what makes bad builds bad, SS-W
 
 step6: data      ## justify: checked reasons for a recommendation, SS-W
 	PYTHONPATH=src $(PY) -m domains.ssw.step6
+
+step7: data      ## choose: best build from 30 benchmarks, SS-W
+	PYTHONPATH=src $(PY) -m domains.ssw.step7
