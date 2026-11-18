@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -35,3 +35,6 @@ step7: data      ## choose: best build from 30 benchmarks, SS-W
 
 step8: data      ## fix: fewest flips from slow to fast, SS-W
 	PYTHONPATH=src $(PY) -m domains.ssw.step8
+
+step9: data      ## spot: glitches and oddballs, SS-W
+	PYTHONPATH=src $(PY) -m domains.ssw.step9
