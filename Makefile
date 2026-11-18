@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4
+.PHONY: data test loc step1 step2 step3 step4 step5
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -23,3 +23,6 @@ step3: data      ## certify: is a gap real or noise, SS-W
 
 step4: data      ## flow: keep or warn as results arrive, SS-W
 	PYTHONPATH=src $(PY) -m domains.ssw.step4
+
+step5: data      ## blame: what makes bad builds bad, SS-W
+	PYTHONPATH=src $(PY) -m domains.ssw.step5
