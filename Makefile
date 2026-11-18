@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3
+.PHONY: data test loc step1 step2 step3 step4
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -20,3 +20,6 @@ step2: data      ## guess: speed and CPU of an unbenchmarked flag set, SS-W
 
 step3: data      ## certify: is a gap real or noise, SS-W
 	PYTHONPATH=src $(PY) -m domains.ssw.step3
+
+step4: data      ## flow: keep or warn as results arrive, SS-W
+	PYTHONPATH=src $(PY) -m domains.ssw.step4
