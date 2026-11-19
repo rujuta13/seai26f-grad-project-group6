@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -53,3 +53,6 @@ step13: data     ## certify (players): is a gap real or luck
 
 step14: data     ## flow (players): keep or warn as reports arrive
 	PYTHONPATH=src $(PY) -m domains.players.step14
+
+step15: data     ## blame (players): what weak penalty-takers lack, what strong players have
+	PYTHONPATH=src $(PY) -m domains.players.step15
