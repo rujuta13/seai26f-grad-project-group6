@@ -1,5 +1,7 @@
 """Fix: the fewest changes that turn a bad row into a good one."""
 from guess import guess
+from justify import averages
+from table import Row
 
 
 def index(t):
@@ -22,3 +24,24 @@ def plan(t, tree, where, row, found, want, frozen=(), goal=0):
         if new and guess(t, tree, new)[goal][0] <= want:
             return flips, new
     return None
+
+
+def improve(t, row, found, good, frozen=(), most=3, floor=0.5):
+    """Where does `row` fall short of the good rows? Among the numeric columns `blame` found real (never
+    the `frozen` ones), take the `most` on which the row is furthest from the median of the `good`
+    rows, on the good side of its own value, at least `floor` standard deviations. Move each to that
+    median. Returns ([(column, from, to)], changed row), or None if the row falls short nowhere."""
+    spec, cells, changes = averages(t), list(row.cells), []
+    for name, d, real in found:
+        c = next(c for c in t.x if c.name == name)
+        v = cells[c.at]
+        if not real or not c.num or name in frozen or v == "?":
+            continue
+        med = sorted(r.cells[c.at] for r in good)[len(good) // 2]
+        z = (med - v) / spec[c.at][1] * (1 if d < 0 else -1)
+        if z >= floor:  # ranked by how far he trails times how much the column separates good from bad
+            changes.append((z * abs(d), name, v, med, c.at))
+    changes = sorted(changes, reverse=True)[:most]
+    for _, _, _, med, at in changes:
+        cells[at] = med
+    return ([(n, v, m) for _, n, v, m, _ in changes], Row(cells, tuple(c.norm(cells[c.at]) for c in t.x), row.y)) if changes else None

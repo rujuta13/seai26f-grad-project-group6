@@ -17,6 +17,14 @@ def guess(t, tree, row, lo=0.1, hi=0.9):
     return out
 
 
+def near(t, ref, row, k=15, goal=0):
+    """Median of a goal over the `k` rows of `ref` closest to `row`: a guess that moves smoothly when
+    the row changes a little, unlike a leaf's mean, which jumps when the row crosses a leaf's edge."""
+    c = t.y[goal].at
+    v = sorted(ref, key=lambda r: t.distx(row, r))[:k]
+    return sorted(r.cells[c] for r in v)[k // 2]
+
+
 def report(t, seed, things, show, stop=32):
     """Train on 80% of the rows, guess the other 20%, and compare with always guessing the mean."""
     rng = random.Random(seed)
