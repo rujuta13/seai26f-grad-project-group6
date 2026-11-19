@@ -116,7 +116,7 @@ respond to campaigns and don't complain, and each campaign mailing has a cost.
 | 11 | Explain to the sales director why this group should get the next campaign. | justify |
 | 12 | Why did you mark this customer as low value? Give me reasons I can act on. | justify |
 | 13 | Find the best customers to target while test-mailing only 50 people. | choose |
-| 14 | If I care most about store visits rather than web orders, who should I target instead? | choose |
+| 14 | If I care most about store purchases rather than web purchases, who should I target instead? | choose |
 | 15 | This customer is drifting away: what's the smallest nudge that brings them back? | fix |
 | 16 | Which product offer would turn a deal-only shopper into a regular one? | fix |
 | 17 | Flag customer records that look wrong: impossible ages, odd incomes, typos. | spot |
