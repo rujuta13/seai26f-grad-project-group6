@@ -3,8 +3,8 @@ import random
 
 import pytest
 
-from domains.ssw import step1, step4
-from flow import Keeper, Watch
+from domains.ssw import step1
+from flow import Keeper, Watch, worse
 from table import Table
 
 
@@ -42,4 +42,4 @@ def test_watch_alarms_after_a_slowdown(ssw):
     stream = rng.sample(ssw.rows, 1000)
     watch = Watch(ssw, stream[:100])
     assert not any(watch.add(r) for r in stream[100:500])
-    assert any(watch.add(step4.slower(ssw, r, 0.15)) for r in stream[500:])
+    assert any(watch.add(worse(ssw, r, 0.15)) for r in stream[500:])
