@@ -1,5 +1,10 @@
 """Justify: reasons a person can check, for a recommendation or for one rating."""
+from functools import lru_cache
+
 from certify import gap
+from remember import spread
+
+averages = lru_cache(maxsize=4)(spread)
 
 
 def recommend(t, rng, n=100, small=0.02):
@@ -20,10 +25,19 @@ def recommend(t, rng, n=100, small=0.02):
     return out
 
 
-def one_line(t, row, found, median):
-    """Why `row` is rated good or bad: the flags `blame` found real that point the same way."""
-    bad = t.disty(row) > median
-    at = {c.name: c.at for c in t.x}
-    why = [f"{n} is {'on' if row.cells[at[n]] == '1' else 'off'}" for n, d, ok in found
-           if ok and ((row.cells[at[n]] == "1") == (d > 0)) == bad]
-    return f"Rated {'bad' if bad else 'good'}: " + (", ".join(why[:3]) if why else "no single flag stands out") + "."
+def one_line(t, row, found, median, k=3):
+    """Why `row` is rated good or bad: up to `k` of the columns `blame` found real on which the row
+    sits on the same side as the rated-bad (or rated-good) rows. A number counts only if the row is
+    at least half a standard deviation from the average."""
+    bad, spec, why = t.disty(row) > median, averages(t), []
+    for name, d, ok in found:
+        c = next(c for c in t.x if c.name == name)
+        v = row.cells[c.at]
+        if not ok or v == "?":
+            continue
+        if c.num:
+            if abs(v - spec[c.at][0]) >= spec[c.at][1] / 2 and ((v > spec[c.at][0]) == (d > 0)) == bad:
+                why.append(f"{name} {v:.0f} (average {spec[c.at][0]:.0f})")
+        elif ((v == "1") == (d > 0)) == bad:
+            why.append(f"{name} is {'on' if v == '1' else 'off'}")
+    return f"Rated {'bad' if bad else 'good'}: " + (", ".join(why[:k]) if why else "no single column stands out") + "."
