@@ -11,3 +11,9 @@ def gap(t, a, b):
         xs, ys = sorted(r.cells[c.at] for r in a), sorted(r.cells[c.at] for r in b)
         out.append((median(xs), median(ys), same(xs, ys)))
     return out
+
+
+def say(g, who):
+    """One line for one goal's gap: noise, or real and by how much."""
+    m1, m2, noise = g
+    return "noise" if noise else f"real: {who} is {abs(m1 - m2) / m2:.1%} {'lower' if m1 < m2 else 'higher'}"

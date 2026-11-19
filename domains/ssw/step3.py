@@ -8,16 +8,11 @@ is built for modest samples, and on thousands of rows it calls every tiny gap di
 import random
 import sys
 
-from certify import gap
+from certify import gap, say
 from cluster import families
 from table import Table
 
 DATA = "data/SS-W.csv"
-
-
-def say(g, who):
-    m1, m2, noise = g
-    return "noise" if noise else f"real: {who} is {abs(m1 - m2) / m2:.1%} {'lower' if m1 < m2 else 'higher'}"
 
 
 def main(path=DATA, seed=1, n=100):

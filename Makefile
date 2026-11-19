@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -47,3 +47,6 @@ step11: data     ## remember (players): types of player and the best 1%
 
 step12: data     ## guess (players): penalties and strength from other ratings
 	PYTHONPATH=src $(PY) -m domains.players.step12
+
+step13: data     ## certify (players): is a gap real or luck
+	PYTHONPATH=src $(PY) -m domains.players.step13
