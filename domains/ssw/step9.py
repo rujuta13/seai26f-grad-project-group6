@@ -9,30 +9,20 @@ import random
 import sys
 
 from cluster import families
-from guess import fit
-from spot import cutoff, glitch, odd
-from table import Row, Table
+from spot import catch, changed, cutoff, odd
+from table import Table
 
 DATA = "data/SS-W.csv"
 
 
 def scaled(t, row, k):
-    cells = list(row.cells)
-    cells[t.y[0].at] *= k
-    return Row(cells, row.x, row.y)
+    return changed(t, row, row.cells[t.y[0].at] * k)
 
 
 def main(path=DATA, seed=1, n=300):
     rng, t = random.Random(seed), Table.read(path)
-    rows = rng.sample(t.rows, len(t.rows))
-    train, test = rows[:int(.8 * len(rows))], rows[int(.8 * len(rows)):]
-    tree = fit(t, train, rng)
-    clean = rng.sample(test, n)
     print(f"ask 17: flag glitches ({n} results each; clean ones should not be flagged)")
-    print(f"  clean results flagged: {sum(bool(glitch(t, tree, r)) for r in clean) / n:.1%}")
-    for k in (0.5, 2, 4):
-        hit = sum(bool(glitch(t, tree, scaled(t, r, k))) for r in clean)
-        print(f"  speed measured {k}x: flagged {hit / n:.0%}")
+    catch(t, seed, n, [(f"speed measured {k}x", lambda r, k=k: scaled(t, r, k)) for k in (0.5, 2, 4)])
     gs = sorted(families(t, random.Random(seed)), key=lambda g: sum(map(t.disty, g)) / len(g))
     seen = rng.sample(gs[0], 400)
     cut = cutoff(t, seen)

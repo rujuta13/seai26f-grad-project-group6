@@ -1,5 +1,8 @@
 """Spot: results that look like glitches, and rows unlike anything seen before."""
-from guess import guess
+import random
+
+from guess import fit, guess
+from table import Row
 
 
 def glitch(t, tree, row, k=3):
@@ -26,3 +29,22 @@ def cutoff(t, seen, q=0.95):
 def odd(t, seen, row, cut):
     """True if `row` is farther from everything seen than seen rows usually are from each other."""
     return nearest(t, seen, row) > cut
+
+
+def changed(t, row, v, goal=0):
+    """The row with one goal's measured value replaced by `v`."""
+    cells = list(row.cells)
+    cells[t.y[goal].at] = v
+    return Row(cells, row.x, row.y)
+
+
+def catch(t, seed, n, mistakes):
+    """Fit on 80% of the rows, then flag glitches among `n` unseen ones: clean, and again after each
+    (label, make) mistake. `make(row)` returns the damaged row, or None if it would not change."""
+    rng = random.Random(seed)
+    rows = rng.sample(t.rows, len(t.rows))
+    tree, clean = fit(t, rows[:len(rows) * 4 // 5], rng), rng.sample(rows[len(rows) * 4 // 5:], n)
+    print(f"  clean results flagged: {sum(bool(glitch(t, tree, r)) for r in clean) / n:.1%}")
+    for label, make in mistakes:
+        bad = [m for m in map(make, clean) if m]
+        print(f"  {label}: flagged {sum(bool(glitch(t, tree, m)) for m in bad) / len(bad):.0%} of {len(bad)}")
