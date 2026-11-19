@@ -59,8 +59,8 @@ machine time, and they want fast binaries without burning CPU in the process.
 ## Domain 2: Football club scout
 
 **Data:** `optimize/behavior_data/all_players.csv` — 17,737 players. Inputs: 55 attributes
-(pace, shooting, passing, dribbling, defending, physical ratings; position, age, height,
-weight, foot, league). Goals: `Penalties+` (higher is better), `Strength+` (higher is better).
+(pace, shooting, passing, dribbling, defending, physical and goalkeeping ratings, age, weak foot,
+skill moves; the file's position, height, weight, foot, league and nation columns are all blank). Goals: `Penalties+` (higher is better), `Strength+` (higher is better).
 
 **Client:** the chief scout of a mid-table club. They want a player who can take penalties
 under pressure and win physical battles, and their budget pays for very few live scouting trips.
@@ -72,7 +72,7 @@ under pressure and win physical battles, and their budget pays for very few live
 | 3 | Before I send a scout, guess how good this player is at penalties. | guess |
 | 4 | Guess his strength from his other numbers, and say how confident you are. | guess |
 | 5 | Is our shortlist really better than the league average, or is that luck? | certify |
-| 6 | Are strikers actually better penalty takers than midfielders, or does it just look that way? | certify |
+| 6 | Are the attacking types of player actually better penalty takers than the defending types, or does it just look that way? | certify |
 | 7 | As scouting reports come in one by one, tell me which players to follow up. | flow |
 | 8 | Tell me when this season's new players stop looking like last season's. | flow |
 | 9 | Why are some players weak from the spot? What are they missing? | blame |
@@ -80,7 +80,7 @@ under pressure and win physical battles, and their budget pays for very few live
 | 11 | Explain to the manager why we should sign this player. | justify |
 | 12 | Why did you rate this player low? Give me reasons I can check on video. | justify |
 | 13 | Find the best strong penalty-taker while sending scouts to see only 20 players. | choose |
-| 14 | Find the best one under 24, in a league we already scout. | choose |
+| 14 | Find the best one under 24. | choose |
 | 15 | This player is close: what would he need to improve to make our shortlist? | fix |
 | 16 | What training focus would turn our weak penalty-taker into a reliable one? | fix |
 | 17 | Flag player records that look like data-entry mistakes. | spot |

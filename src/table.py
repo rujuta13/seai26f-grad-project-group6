@@ -35,21 +35,26 @@ class Row:
 
 
 class Table:
-    def __init__(self, names):
+    def __init__(self, names, skip=()):
         self.cols = [Col(i, s) for i, s in enumerate(names)]
+        for c in self.cols:
+            c.skip = c.skip or c.name in skip
         self.x = [c for c in self.cols if not c.goal and not c.skip]
         self.y = [c for c in self.cols if c.goal]
         self.rows = []
 
     @classmethod
-    def read(cls, path):
+    def read(cls, path, skip=()):
+        """Read a csv. Columns named in `skip`, and columns holding one value throughout (they tell
+        us nothing), are left out of the inputs."""
         with open(path, newline="") as f:
             lines = csv.reader(f)
-            t = cls(next(lines))
+            t = cls(next(lines), skip)
             raw = [[c.read(s.strip()) for c, s in zip(t.cols, r)] for r in lines if r]
         for r in raw:
             for c in t.cols:
                 c.add(r[c.at])
+        t.x = [c for c in t.x if len({r[c.at] for r in raw}) > 1]
         t.rows = [Row(r, tuple(c.norm(r[c.at]) for c in t.x), tuple(c.norm(r[c.at]) for c in t.y))
                   for r in raw]
         return t

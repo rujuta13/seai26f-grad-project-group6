@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -41,3 +41,6 @@ step9: data      ## spot: glitches and oddballs, SS-W
 
 step10: data     ## race: our tuner and guesser vs rivals, SS-W
 	PYTHONPATH=src $(PY) -m domains.ssw.step10
+
+step11: data     ## remember (players): types of player and the best 1%
+	PYTHONPATH=src $(PY) -m domains.players.step11
