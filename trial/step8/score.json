@@ -1,0 +1,13 @@
+{
+ "domain": "ssw",
+ "step": 8,
+ "skill": "fix",
+ "ok": true,
+ "score": 0.6193369431962445,
+ "baseline": 0.7453206197078435,
+ "better": "lower",
+ "extra": {
+  "mean_changes": 1.3,
+  "frozen_respected": true
+ }
+}
