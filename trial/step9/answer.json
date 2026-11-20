@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 72902,
+ "stop_reason": "end_turn",
+ "session_id": "b9b08517-69f0-4173-874b-65021c5eaf06",
+ "total_cost_usd": 0.0267487,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17120,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 17673,
+  "output_tokens_details": {
+   "thinking_tokens": 14839
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17120,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 17673,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17120,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17120
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14393,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014488,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 17673,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17120,
+   "webSearchRequests": 0,
+   "costUSD": 0.012260700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 9: spot. Suspicion scores for benchmark rows that look like glitches or\nflag sets unlike anything in train_csv.\n\nodd(train_csv, rows) returns one non-negative score per row (higher = more\nsuspicious). The score adds up these checks; ordinary rows score near 0:\n  - Unusable cells: a missing or non-numeric goal or numeric input cell, or a\n    text input value that never appears in train_csv.\n  - Input novelty: distance to the nearest training row in encoded input space,\n    beyond the 95th percentile of training leave-one-out distances (as in step4).\n  - Input range: a numeric input outside the training min..max, in training spans.\n  - Goal disagreement: a goal value far from the goal values of the nearest\n    training rows, in units of their spread. The spread is robust, so one bad\n    training row does not hide a new glitch.\n  - Goal outlier: a goal value far from the training median in robust (MAD)\n    units, which catches typos such as an extra digit.\n\"\"\"\nimport math\n\nfrom step1 import _load\nfrom step2 import _column_kinds, _medians, _vector\n\nK_NEAR = 15        # nearest training rows used for the goal-disagreement check\nCALIB = 200        # training rows used to calibrate input novelty\nNOVEL_Q = 0.95     # quantile of training leave-one-out distances defining \"normal\"\nRESID_OK = 3.0     # goal disagreement, in neighbour-spread units, treated as normal\nZOUT_OK = 6.0      # robust z-score of a goal treated as normal\nCAP_SPAN = 10.0    # cap on a single range excess, in training spans\nW_MISSING = 10.0   # penalty for a missing or non-numeric goal cell\nW_BAD_INPUT = 2.0  # penalty for a missing or non-numeric numeric input cell\nW_UNSEEN = 2.0     # penalty per text input whose value never appears in training\nW_RANGE = 1.0      # weight per training span a numeric input lies beyond the range\nEPS = 1e-12\n\n\ndef _finite(v):\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _quantile(vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty ascending list.\"\"\"\n    pos = q * (len(vals) - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, len(vals) - 1)\n    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo)\n\n\ndef _median(vals):\n    \"\"\"Median of a non-empty ascending list.\"\"\"\n    return _quantile(vals, 0.5)\n\n\ndef _wmedian(pairs):\n    \"\"\"Weighted median of (value, weight) pairs with positive weights.\"\"\"\n    pairs = sorted(pairs)\n    total = sum(w for _, w in pairs)\n    acc = 0.0\n    for v, w in pairs:\n        acc += w\n        if acc >= total / 2:\n            return v\n    return pairs[-1][0]\n\n\ndef _sq(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _nearest_sq(x, pool, skip=-1):\n    best = math.inf\n    for j, y in enumerate(pool):\n        if j != skip:\n            d = _sq(x, y)\n            if d < best:\n                best = d\n    return best\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more\n    likely a glitch, a typo, or unlike anything in train_csv.\"\"\"\n    train_rows, inputs, goals = _load(train_csv)\n    rows = list(rows)\n    m = len(rows)\n    if m == 0:\n        return []\n    n = len(train_rows)\n    names = [c for c, _ in goals]\n    scores = [0.0] * m\n\n    kinds, cats = _column_kinds(train_rows, inputs)\n    cat_sets = {c: set(cats[c]) for c in cats}\n\n    # 1. Unusable cells, out-of-range numbers, and text values never seen in training.\n    ranges = {}\n    for c in inputs:\n        if kinds[c] == \"num\":\n            vals = [x for x in (_finite(r.get(c)) for r in train_rows) if x is not None]\n            if vals:\n                ranges[c] = (min(vals), max(vals))\n\n    for i, r in enumerate(rows):\n        s = 0.0\n        for c in inputs:\n            v = r.get(c)\n            if kinds[c] == \"num\":\n                x = _finite(v)\n                if x is None:\n                    s += W_BAD_INPUT\n                elif c in ranges:\n                    lo, hi = ranges[c]\n                    span = hi - lo\n                    scale = span if span > 0 else max(abs(lo), 1.0)\n                    beyond = max(lo - x, x - hi, 0.0)\n                    if beyond > 0:\n                        s += W_RANGE * min(CAP_SPAN, beyond / scale)\n            elif _text(v) not in cat_sets[c]:\n                s += W_UNSEEN\n        scores[i] += s\n\n    # 2. Input novelty, calibrated on training leave-one-out distances.\n    has_x = bool(inputs) and n >= 2\n    D = []\n    if has_x:\n        med = _medians(train_rows, inputs, kinds)\n        X = [_vector(r, inputs, kinds, cats, med) for r in train_rows]\n        Q = [_vector(r, inputs, kinds, cats, med) for r in rows]\n        D = [[_sq(q, x) for x in X] for q in Q]\n\n        step = max(1, n // CALIB)\n        loo = sorted(_nearest_sq(X[i], X, skip=i) for i in range(0, n, step))\n        thresh = loo[min(len(loo) - 1, int(NOVEL_Q * (len(loo) - 1)))]\n        nscale = math.sqrt(thresh) if thresh > 0 else 1.0\n        for i in range(m):\n            nd = math.sqrt(min(D[i]))\n            scores[i] += max(0.0, nd / nscale - 1.0)\n\n    # 3. Goal checks: missing cells, outliers against the training median,\n    #    and disagreement with the goals of the nearest training rows.\n    for c in names:\n        tr_idx, tr_y = [], []\n        for k, r in enumerate(train_rows):\n            y = _finite(r.get(c))\n            if y is not None:\n                tr_idx.append(k)\n                tr_y.append(y)\n\n        for i, r in enumerate(rows):\n            if _finite(r.get(c)) is None:\n                scores[i] += W_MISSING\n\n        if not tr_y:\n            continue\n\n        gmed = _median(sorted(tr_y))\n        mad = _median(sorted(abs(y - gmed) for y in tr_y))\n        rsd = 1.4826 * mad\n        if rsd <= 0:\n            mu = sum(tr_y) / len(tr_y)\n            var = sum((y - mu) ** 2 for y in tr_y) / max(1, len(tr_y) - 1)\n            rsd = math.sqrt(var)\n\n        for i, r in enumerate(rows):\n            y = _finite(r.get(c))\n            if y is None:\n                continue\n\n            dev = abs(y - gmed)\n            if rsd > 0:\n                scores[i] += max(0.0, dev / rsd - ZOUT_OK)\n            elif dev > EPS * max(1.0, abs(gmed)):\n                scores[i] += CAP_SPAN\n\n            if has_x:\n                cand = sorted((D[i][k], yv) for k, yv in zip(tr_idx, tr_y))[:K_NEAR]\n                est = _wmedian([(yv, 1.0 / (1.0 + dv)) for dv, yv in cand])\n                srt = sorted(yv for _, yv in cand)\n                iqr = _quantile(srt, 0.75) - _quantile(srt, 0.25)\n                spread = max(iqr, 0.25 * rsd, 0.01 * abs(est), EPS)\n                scores[i] += max(0.0, abs(y - est) / spread - RESID_OK)\n\n    return [float(s) for s in scores]\n```",
+ "ttft_ms": 64382,
+ "type": "result",
+ "duration_ms": 71914,
+ "uuid": "cc3cb55b-ee8b-4e66-b83d-84af8ea08708",
+ "ttft_stream_ms": 463,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
