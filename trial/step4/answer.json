@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 64864,
+ "stop_reason": "end_turn",
+ "session_id": "d6ade1a1-8d6d-4fc3-adbf-4a0565445057",
+ "total_cost_usd": 0.013875400000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6216,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13974,
+  "output_tokens_details": {
+   "thinking_tokens": 11960
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6216,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13974,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6216,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6216
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5570,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005645000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13974,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6216,
+   "webSearchRequests": 0,
+   "costUSD": 0.0082304,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step4.py: flow. Decide keep/drop for each arriving benchmark row, and warn\nwhen arriving rows stop looking like the training rows.\n\nReading, column splitting, number parsing, distances, quantiles and missing-value\nfilling come from step1 and step2. The keep rule is the Pareto test from\nstep1.best, applied to one row at a time against everything seen so far.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport random\nfrom collections import deque\n\nfrom step1 import _SEED, _columns, _dist2, _num, _read\nfrom step2 import _fill, _quantile\n\nREFERENCE_ROWS = 300     # training rows used as the reference for drift\nDRIFT_QUANTILE = 0.95    # a row is \"unlike\" if farther than this from the reference\nWINDOW = 10              # recent rows examined for drift\nMIN_UNLIKE = 6           # unlike rows in the window needed to warn\n\n\ndef _objectives(row: dict, gmax: list[str], gmin: list[str]) -> list[float]:\n    \"\"\"Signed goal vector: larger is better on every axis. A missing or\n    non-numeric goal counts as the worst possible value.\"\"\"\n    vec = []\n    for c in gmax:\n        v = _num(row.get(c))\n        vec.append(v if v is not None else -math.inf)\n    for c in gmin:\n        v = _num(row.get(c))\n        vec.append(-v if v is not None else -math.inf)\n    return vec\n\n\ndef _dominates(a: list[float], b: list[float]) -> bool:\n    \"\"\"True if a is at least as good as b on every goal and better on one.\"\"\"\n    strictly = False\n    for x, y in zip(a, b):\n        if x < y:\n            return False\n        if x > y:\n            strictly = True\n    return strictly\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) a row if no training row, and no earlier row of the stream,\n    dominates it. That makes it a member of the Pareto front of everything seen\n    so far, which is the online form of step1.best. Each decision uses only\n    train_csv and the rows before it.\"\"\"\n    header, train = _read(str(train_csv))\n    _, gmax, gmin = _columns(header)\n    if not gmax and not gmin:\n        return [False for _ in rows]\n\n    pool = [_objectives(r, gmax, gmin) for r in train]\n    decisions: list[bool] = []\n    for row in rows:\n        vec = _objectives(row, gmax, gmin)\n        keep = not any(_dominates(p, vec) for p in pool)\n        decisions.append(keep)\n        pool.append(vec)\n    return decisions\n\n\ndef _fit(train: list[dict], inputs: list[str]) -> list[tuple]:\n    \"\"\"Learn how to encode each input column from the training rows only.\"\"\"\n    spec = []\n    for c in inputs:\n        vals = [r.get(c) for r in train]\n        if all(isinstance(v, float) for v in vals):\n            fin = [v for v in vals if math.isfinite(v)]\n            lo = min(fin) if fin else 0.0\n            hi = max(fin) if fin else 0.0\n            spec.append((\"num\", lo, hi - lo))\n        else:\n            cats = {s: i for i, s in enumerate(sorted({str(v) for v in vals}))}\n            spec.append((\"cat\", cats, max(1, len(cats) - 1)))\n    return spec\n\n\ndef _encode(row: dict, inputs: list[str], spec: list[tuple]) -> list[float]:\n    \"\"\"Map a row's input cells to [0, 1] using the training-fitted spec.\n    Unseen categories map to 1.0.\"\"\"\n    out = []\n    for c, s in zip(inputs, spec):\n        v = row.get(c)\n        if s[0] == \"num\":\n            _, lo, span = s\n            x = float(v) if isinstance(v, float) and math.isfinite(v) else lo\n            out.append(min(1.0, max(0.0, (x - lo) / span)) if span > 0 else 0.0)\n        else:\n            _, cats, top = s\n            idx = cats.get(str(v))\n            out.append(1.0 if idx is None else idx / top)\n    return out\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the recent rows have stopped\n    looking like the training rows, or None if they never do.\n\n    The reference is a seeded sample of training input rows, encoded to [0, 1].\n    A training row is \"unlike\" the rest of the reference if its nearest\n    neighbour is farther than the DRIFT_QUANTILE of such leave-one-out\n    distances. A new row is unlike if its nearest reference row is farther\n    than that same limit. Warn at the first row where at least MIN_UNLIKE of\n    the last WINDOW rows are unlike. Requiring several unlike rows in a window\n    keeps a single odd flag set from triggering a warning.\n    \"\"\"\n    header, train = _read(str(train_csv))\n    inputs, _, _ = _columns(header)\n    if len(train) < 2 or not inputs:\n        return None\n\n    spec = _fit(train, inputs)\n    if len(train) <= REFERENCE_ROWS:\n        sample = train\n    else:\n        sample = random.Random(_SEED).sample(train, REFERENCE_ROWS)\n    ref = [_encode(r, inputs, spec) for r in sample]\n\n    loo = [\n        min(_dist2(x, y) for j, y in enumerate(ref) if j != i)\n        for i, x in enumerate(ref)\n    ]\n    limit = _quantile(loo, DRIFT_QUANTILE)\n\n    recent: deque[bool] = deque(maxlen=WINDOW)\n    for i, row in enumerate(rows):\n        x = _encode(_fill(row, train, inputs), inputs, spec)\n        unlike = min(_dist2(x, y) for y in ref) > limit\n        recent.append(unlike)\n        if len(recent) == WINDOW and sum(recent) >= MIN_UNLIKE:\n            return i\n    return None\n```",
+ "ttft_ms": 57085,
+ "type": "result",
+ "duration_ms": 63561,
+ "uuid": "19647e32-ef62-4bd6-94c4-7850e327c12d",
+ "ttft_stream_ms": 402,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
