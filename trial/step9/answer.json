@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49751,
+ "stop_reason": "end_turn",
+ "session_id": "fed2b1f8-03e2-4eb3-b528-229d7d8a5c6a",
+ "total_cost_usd": 0.0209751,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14642,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11109,
+  "output_tokens_details": {
+   "thinking_tokens": 9331
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14642,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11109,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14642,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14642
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12407,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012492,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11109,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14642,
+   "webSearchRequests": 0,
+   "costUSD": 0.0084831,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step9.py: flag suspicious benchmark results and unusual flag sets.\n\nodd(train_csv, rows) gives every row a suspicion score (higher means more\nsuspicious). It has two parts, both measured against train_csv:\n\n  1. Unusual flags: the distance from the row's inputs to the nearest training\n     flag set, in units of the typical leave-one-out nearest distance inside\n     the training data (a sample of it). Flag sets far from everything\n     measured score high.\n  2. Glitchy goals: each goal is compared with the median goal of the nearest\n     training flag sets (step2.guess), in units of that goal's spread across\n     the training data. A value far from what similar builds achieve scores\n     high. A missing, non-numeric or non-finite goal scores MISSING_SCORE.\n\nThe score is the sum of the two parts. A typical training-like row scores\nabout 1. Standard library only.\n\"\"\"\nimport math\nimport random\nimport statistics\n\nfrom step1 import _load, _columns\nfrom step2 import guess\n\nSAMPLE = 200          # training rows sampled to set the typical nearest distance\nMISSING_SCORE = 1e6   # goal part of a row whose goal cell is missing or unusable\nSEED = 1\n\n\ndef _vec(row, inputs):\n    \"\"\"Input values of a row as floats, None where missing or non-numeric.\"\"\"\n    return [float(row[c]) if isinstance(row.get(c), float) else None\n            for c in inputs]\n\n\ndef _input_dist(x, r, spans):\n    \"\"\"Root-mean-square difference between two flag vectors, each input scaled\n    by its training span. A missing input counts as a full mismatch.\"\"\"\n    s = 0.0\n    for a, b, span in zip(x, r, spans):\n        if a is None or b is None:\n            d = 1.0\n        elif span > 0:\n            d = (a - b) / span\n        else:\n            d = 0.0 if a == b else 1.0\n        s += d * d\n    return math.sqrt(s / len(spans))\n\n\ndef _spread(vals):\n    \"\"\"Interquartile range of a list of floats, or 0.0 if it cannot be formed.\"\"\"\n    if len(vals) < 2:\n        return 0.0\n    q = statistics.quantiles(vals, n=4)\n    return q[2] - q[0]\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row of `rows` (goals included): higher means more\n    likely a glitch, a typo, or a flag set unlike anything in train_csv.\"\"\"\n    rows = list(rows)\n    if not rows:\n        return []\n    cols, train = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, train)\n    goals = maxi + mini\n    if not train:\n        # Nothing to compare against.\n        return [0.0] * len(rows)\n\n    # Part 1: unusual flag sets.\n    spans = []\n    X = []\n    ref = 1.0\n    if inputs:\n        spans = [max(r[c] for r in train) - min(r[c] for r in train)\n                 for c in inputs]\n        X = [_vec(r, inputs) for r in train]\n        # Typical nearest distance inside the training data, from a sample.\n        # Zero distances (duplicate flag sets) are left out, so the reference\n        # is not collapsed to zero.\n        rng = random.Random(SEED)\n        idx = list(range(len(train)))\n        if len(idx) > SAMPLE:\n            idx = rng.sample(idx, SAMPLE)\n        ref_d = []\n        for i in idx:\n            d = min((_input_dist(X[i], X[j], spans)\n                     for j in range(len(X)) if j != i), default=0.0)\n            if d > 0:\n                ref_d.append(d)\n        ref = statistics.median(ref_d) if ref_d else 1.0\n\n    def input_part(row):\n        if not inputs:\n            return 0.0\n        x = _vec(row, inputs)\n        nearest = min(_input_dist(x, t, spans) for t in X)\n        return nearest / ref\n\n    # Part 2: glitchy goals. Each goal is scaled by its spread in the training data.\n    scale = {}\n    for g in goals:\n        vals = [r[g] for r in train\n                if isinstance(r[g], float) and math.isfinite(r[g])]\n        s = _spread(vals)\n        if s <= 0 and len(vals) > 1:\n            s = statistics.pstdev(vals)\n        if s <= 0 and vals:\n            s = abs(statistics.median(vals)) * 0.01\n        scale[g] = s if s > 0 else 1.0\n\n    def goal_part(row):\n        if not goals:\n            return 0.0\n        for g in goals:\n            v = row.get(g)\n            if not isinstance(v, float) or not math.isfinite(v):\n                return MISSING_SCORE\n        flags = {c: row.get(c) for c in inputs}\n        pred = guess(train_csv, flags)\n        worst = 0.0\n        for g in goals:\n            est, lo, hi = pred[g]\n            if math.isinf(lo) or math.isinf(hi):\n                continue  # no similar training builds to compare with\n            v = row[g]\n            worst = max(worst, abs(v - est) / scale[g])\n        return worst\n\n    out = []\n    for row in rows:\n        out.append(float(input_part(row) + goal_part(row)))\n    return out\n```",
+ "ttft_ms": 43301,
+ "type": "result",
+ "duration_ms": 48655,
+ "uuid": "fdb42c91-d2b8-491e-ad30-b1d41073e7e3",
+ "ttft_stream_ms": 548,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
