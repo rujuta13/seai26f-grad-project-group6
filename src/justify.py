@@ -25,15 +25,16 @@ def recommend(t, rng, n=100, small=0.02):
     return out
 
 
-def one_line(t, row, found, median, k=3):
+def one_line(t, row, found, median, k=3, skip=()):
     """Why `row` is rated good or bad: up to `k` of the columns `blame` found real on which the row
     sits on the same side as the rated-bad (or rated-good) rows. A number counts only if the row is
-    at least half a standard deviation from the average."""
+    at least half a standard deviation from the average. Columns named in `skip` are never given as a
+    reason (the ones nobody can act on)."""
     bad, spec, why = t.disty(row) > median, averages(t), []
     for name, d, ok in found:
         c = next(c for c in t.x if c.name == name)
         v = row.cells[c.at]
-        if not ok or v == "?":
+        if not ok or v == "?" or name in skip:
             continue
         if c.num:
             if abs(v - spec[c.at][0]) >= spec[c.at][1] / 2 and ((v > spec[c.at][0]) == (d > 0)) == bad:
