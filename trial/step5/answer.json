@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28708,
+ "stop_reason": "end_turn",
+ "session_id": "8695fc44-986c-4bf1-a480-60a69f2ce342",
+ "total_cost_usd": 0.0108458,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6993,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6346,
+  "output_tokens_details": {
+   "thinking_tokens": 4838
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6993,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6346,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6993,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6993
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6204,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006274,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6346,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6993,
+   "webSearchRequests": 0,
+   "costUSD": 0.0045718,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 5: blame. Which input columns (e.g. optimisation passes) are most to blame\nfor bad rows, i.e. rows that do poorly on the goals.\n\nMethod: each row gets a badness score (0 for the best value on every goal, larger\nfor worse values, averaged over goals after normalising each goal to [0, 1]). For\neach input column and each of its values, we compare the badness of rows having\nthat value with the badness of all other rows, using a Welch-style t statistic.\nA column's blame is the largest positive t over its values, so columns whose\nvalues sharply separate bad rows from good rows rank first.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\nMIN_GROUP = 3   # smallest number of rows a value needs on each side of the comparison\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _column_keys(rows, inputs):\n    \"\"\"Per input column, one key per row: a float for numeric columns, else a string.\"\"\"\n    keys = {}\n    for c in inputs:\n        raw = [r.get(c) for r in rows]\n        try:\n            keys[c] = [float(v) for v in raw]\n        except (TypeError, ValueError):\n            keys[c] = [_text(v) for v in raw]\n    return keys\n\n\ndef _badness(rows, goals):\n    \"\"\"Per row: 0 if best on every goal, larger when worse. None if a goal cell is unusable.\"\"\"\n    vals = []\n    for r in rows:\n        try:\n            vals.append([sign * float(r[c]) for c, sign in goals])\n        except (KeyError, TypeError, ValueError):\n            vals.append(None)\n\n    ok = [v for v in vals if v is not None]\n    if not ok:\n        return [None] * len(rows)\n\n    g = len(goals)\n    lo = [min(v[j] for v in ok) for j in range(g)]\n    hi = [max(v[j] for v in ok) for j in range(g)]\n\n    out = []\n    for v in vals:\n        if v is None:\n            out.append(None)\n            continue\n        b = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            if span > 0:\n                # oriented values: higher is better, so hi - v measures how far from the best\n                b += (hi[j] - v[j]) / span\n        out.append(b)\n    return out\n\n\ndef _var(n, s, ss):\n    \"\"\"Sample variance from count, sum and sum of squares.\"\"\"\n    if n < 2:\n        return 0.0\n    return max(0.0, (ss - s * s / n) / (n - 1))\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not inputs:\n        return []\n    if not goals or not rows:\n        return list(inputs)\n\n    bad = _badness(rows, goals)\n    idx = [i for i, b in enumerate(bad) if b is not None]\n    m = len(idx)\n    if m < 2 * MIN_GROUP:\n        return list(inputs)\n\n    b_vals = [bad[i] for i in idx]\n    total_s = sum(b_vals)\n    total_ss = sum(x * x for x in b_vals)\n\n    keys = _column_keys(rows, inputs)\n    scored = []\n    for pos, c in enumerate(inputs):\n        col = keys[c]\n\n        # per-value group statistics: [count, sum, sum of squares]\n        stats = {}\n        for k, i in enumerate(idx):\n            v = col[i]\n            st = stats.get(v)\n            if st is None:\n                st = stats[v] = [0, 0.0, 0.0]\n            st[0] += 1\n            st[1] += b_vals[k]\n            st[2] += b_vals[k] * b_vals[k]\n\n        best = 0.0\n        for v, (nm, sm, ssm) in stats.items():\n            nr = m - nm\n            if nm < MIN_GROUP or nr < MIN_GROUP:\n                continue\n            sr = total_s - sm\n            ssr = total_ss - ssm\n            effect = sm / nm - sr / nr\n            if effect <= 0:\n                continue  # value is not associated with worse rows\n            se = math.sqrt(_var(nm, sm, ssm) / nm + _var(nr, sr, ssr) / nr)\n            t = effect / (se + 1e-9)\n            if t > best:\n                best = t\n\n        scored.append((-best, pos, c))\n\n    scored.sort()\n    return [c for _, _, c in scored]\n```",
+ "ttft_ms": 22585,
+ "type": "result",
+ "duration_ms": 27379,
+ "uuid": "98f262c3-7524-4ffd-90a1-fbfb62c5347f",
+ "ttft_stream_ms": 403,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
