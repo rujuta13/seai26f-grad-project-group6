@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 33632,
+ "stop_reason": "end_turn",
+ "session_id": "aa6d499c-e742-4d26-aa70-49b649d72c27",
+ "total_cost_usd": 0.00566148,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 202,
+  "cache_read_input_tokens": 838,
+  "output_tokens": 8343,
+  "output_tokens_details": {
+   "thinking_tokens": 5614
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 202,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8343,
+    "cache_read_input_tokens": 838,
+    "cache_creation_input_tokens": 202,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 202
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 1366,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.001441,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8343,
+   "cacheReadInputTokens": 838,
+   "cacheCreationInputTokens": 202,
+   "webSearchRequests": 0,
+   "costUSD": 0.0042204799999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 1: flag-family clustering and best-row selection for MOOT data.\"\"\"\n\nimport csv\nimport math\nimport random\n\n_K_FAMILIES = 5        # \"a handful\" of families\n_RESTARTS = 5          # k-means restarts; keep the lowest-SSE solution\n_ITERS = 100           # max Lloyd iterations per restart\n_SEED = 12345          # fixed seed so results are reproducible\n_BEST_FRACTION = 0.05  # at most 5% of rows are reported as best\n\n\ndef _cell(text):\n    \"\"\"Return a float if the cell parses as one, otherwise the stripped string.\"\"\"\n    try:\n        return float(text)\n    except ValueError:\n        return text\n\n\ndef _read(path):\n    \"\"\"Read a MOOT csv. Returns (header, rows); rows are dicts {column: value}.\"\"\"\n    with open(path, newline=\"\", encoding=\"utf-8\") as fh:\n        reader = csv.reader(fh)\n        header = [h.strip() for h in next(reader, [])]\n        rows = []\n        for raw in reader:\n            if not raw:  # blank line, not a data row\n                continue\n            row = {}\n            for name, cell in zip(header, raw):\n                row[name] = _cell(cell.strip())\n            rows.append(row)\n    return header, rows\n\n\ndef _classify(header):\n    \"\"\"Split header into (inputs, max_goals, min_goals). Names ending in X are ignored.\"\"\"\n    inputs, goals_max, goals_min = [], [], []\n    for name in header:\n        if name.endswith(\"+\"):\n            goals_max.append(name)\n        elif name.endswith(\"-\"):\n            goals_min.append(name)\n        elif name.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(name)\n    return inputs, goals_max, goals_min\n\n\ndef _features(rows, inputs):\n    \"\"\"Build one feature tuple per row from the input columns.\n\n    Numeric columns are min-max scaled to [0, 1] (constant columns become 0).\n    Non-numeric columns are one-hot encoded over their distinct values.\n    \"\"\"\n    feats = [[] for _ in rows]\n    for name in inputs:\n        values = [r.get(name, \"\") for r in rows]\n        if all(isinstance(v, float) for v in values):\n            lo, hi = min(values), max(values)\n            span = hi - lo\n            for i, v in enumerate(values):\n                feats[i].append((v - lo) / span if span > 0 else 0.0)\n        else:\n            strs = [str(v) for v in values]\n            cats = sorted(set(strs))\n            for i, s in enumerate(strs):\n                feats[i].extend(1.0 if s == c else 0.0 for c in cats)\n    return [tuple(f) for f in feats]\n\n\ndef _dist2(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _kmeans_pp_init(points, k, rng):\n    \"\"\"k-means++ seeding. Returns k centers as lists.\"\"\"\n    first = points[rng.randrange(len(points))]\n    centers = [list(first)]\n    d2 = [_dist2(p, centers[0]) for p in points]\n    while len(centers) < k:\n        total = sum(d2)\n        if total <= 0:\n            idx = rng.randrange(len(points))\n        else:\n            r = rng.random() * total\n            acc = 0.0\n            idx = len(points) - 1\n            for i, d in enumerate(d2):\n                acc += d\n                if acc >= r:\n                    idx = i\n                    break\n        centers.append(list(points[idx]))\n        d2 = [min(d, _dist2(p, centers[-1])) for d, p in zip(d2, points)]\n    return centers\n\n\ndef _lloyd(points, centers, iters):\n    \"\"\"Lloyd's algorithm. Returns (labels, sum of squared errors).\"\"\"\n    n = len(points)\n    k = len(centers)\n    dim = len(points[0]) if points else 0\n    labels = [-1] * n\n    for _ in range(iters):\n        changed = False\n        for i, p in enumerate(points):\n            best_c, best_d = 0, math.inf\n            for c in range(k):\n                d = _dist2(p, centers[c])\n                if d < best_d:\n                    best_d, best_c = d, c\n            if labels[i] != best_c:\n                labels[i] = best_c\n                changed = True\n        sums = [[0.0] * dim for _ in range(k)]\n        counts = [0] * k\n        for lab, p in zip(labels, points):\n            counts[lab] += 1\n            s = sums[lab]\n            for j in range(dim):\n                s[j] += p[j]\n        for c in range(k):\n            if counts[c]:\n                centers[c] = [v / counts[c] for v in sums[c]]\n        if not changed:\n            break\n    sse = sum(_dist2(p, centers[lab]) for p, lab in zip(points, labels))\n    return labels, sse\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\n\n    Clusters rows by their input (flag) columns using k-means with k-means++\n    seeding and several restarts; the lowest-SSE solution is kept.\n    \"\"\"\n    header, rows = _read(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    inputs, _, _ = _classify(header)\n    points = _features(rows, inputs)\n    distinct = len(set(points))\n    k = max(1, min(_K_FAMILIES, n, distinct))\n    rng = random.Random(_SEED)\n    best_labels, best_sse = None, math.inf\n    for _ in range(_RESTARTS):\n        centers = _kmeans_pp_init(points, k, rng)\n        labels, sse = _lloyd(points, centers, _ITERS)\n        if best_labels is None or sse < best_sse:\n            best_labels, best_sse = labels, sse\n    return best_labels\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows, best on all goals together.\n\n    Each goal is min-max normalised so that higher is better (minimised goals\n    are negated). Rows are taken from successive Pareto fronts (non-dominated\n    layers), best layer first, ordered within a layer by total normalised score.\n    At most 5% of rows are returned, best first.\n    \"\"\"\n    header, rows = _read(train_csv)\n    n = len(rows)\n    cap = int(_BEST_FRACTION * n)\n    if cap <= 0:\n        return []\n    _, goals_max, goals_min = _classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    if not goals:\n        return []\n\n    cols = []\n    for name, sign in goals:\n        vals = []\n        for r in rows:\n            v = r.get(name)\n            if isinstance(v, float) and not math.isnan(v):\n                vals.append(v * sign)\n            else:\n                vals.append(None)\n        present = [v for v in vals if v is not None]\n        col = []\n        if not present:\n            col = [0.0] * n\n        else:\n            lo, hi = min(present), max(present)\n            span = hi - lo\n            for v in vals:\n                if v is None:\n                    col.append(0.0)  # missing counts as worst\n                elif span > 0:\n                    col.append((v - lo) / span)\n                else:\n                    col.append(1.0)\n        cols.append(col)\n    scores = [[col[i] for col in cols] for i in range(n)]\n    totals = [sum(s) for s in scores]\n\n    def dominates(a, b):\n        strictly = False\n        for x, y in zip(a, b):\n            if x < y:\n                return False\n            if x > y:\n                strictly = True\n        return strictly\n\n    order = []\n    remaining = list(range(n))\n    while remaining and len(order) < cap:\n        front = [\n            i for i in remaining\n            if not any(dominates(scores[j], scores[i]) for j in remaining if j != i)\n        ]\n        front.sort(key=lambda i: (-totals[i], i))\n        order.extend(front)\n        front_set = set(front)\n        remaining = [i for i in remaining if i not in front_set]\n    return order[:cap]\n```",
+ "ttft_ms": 24752,
+ "type": "result",
+ "duration_ms": 32882,
+ "uuid": "305244d3-1629-4684-8cdd-bf5008458a4f",
+ "ttft_stream_ms": 355,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
