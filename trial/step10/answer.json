@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 70217,
+ "stop_reason": "end_turn",
+ "session_id": "a469cca6-212a-4ec5-9cc3-cd5a7144e756",
+ "total_cost_usd": 0.0279455,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 18764,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16689,
+  "output_tokens_details": {
+   "thinking_tokens": 13314
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18764,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16689,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 18764,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 18764
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 15753,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.015848,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16689,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18764,
+   "webSearchRequests": 0,
+   "costUSD": 0.0120975,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 10: race. Our tuner and guesser against standard-library rivals on test data.\n\nTwo races, both scored on test_csv. Every score lies in [0, 1] and higher is better.\n\nTuning (budget of labels per method, mirroring step7.choose):\n  - \"ours\": step7.choose.\n  - \"random_search\": label _BUDGET test rows drawn uniformly at random.\n  - \"local_search\": start at a random row, then repeatedly label the unlabelled\n    row nearest to the current best (a greedy nearest-neighbour hill climb).\n  Score: the chosen row's normalised goal total over all test rows, divided by\n  the number of goals (1 means best possible on every goal). The randomised\n  rivals use several seeds and report the mean.\n\nPrediction (goal values from the flag set alone):\n  - \"ours_guesser\": step2.guess point estimate (median of nearest neighbours).\n  - \"linear_model\": ridge regression fitted on train_csv, solved in closed form\n    with Gaussian elimination.\n  Score per goal: 1 - MAE / (training range of the goal), clipped to [0, 1];\n  averaged over the goals that have enough training values.\n\nThe standard library ships no tuner and no off-the-shelf regression model, so\nboth rivals are written here using only the standard library.\n\"\"\"\n\nimport math\nimport random\n\nimport step1\nimport step2\nimport step7\n\n_BUDGET = 30                # label budget per tuning method (as step7.choose default)\n_SEEDS = (1, 2, 3, 4, 5)    # seeds for the randomised rivals; their scores are averaged\n_RIDGE = 1e-3               # ridge penalty for the linear model (applied to all coefficients)\n_EPS = 1e-12\n\n\ndef _zeros():\n    return {\"ours\": 0.0, \"random_search\": 0.0, \"local_search\": 0.0,\n            \"ours_guesser\": 0.0, \"linear_model\": 0.0}\n\n\ndef _measure(rows, goals, i):\n    \"\"\"Goal values of row i as {goal: float or None}.\"\"\"\n    return {g: step7._num(rows[i].get(g)) for g, _ in goals}\n\n\ndef _labeller(rows, goals):\n    \"\"\"Label function for step7.choose: returns the goals of row i from the test data.\"\"\"\n    def label(i):\n        return {g: rows[i].get(g) for g, _ in goals}\n    return label\n\n\ndef _best_measured(measured, goals):\n    \"\"\"Best measured row index (ties to the lower index), as step7 does.\"\"\"\n    totals = step7._totals(measured, goals)\n    return min(measured, key=lambda i: (-totals[i], i))\n\n\ndef _random_search(rows, goals, seed):\n    rng = random.Random(seed)\n    picks = rng.sample(range(len(rows)), min(_BUDGET, len(rows)))\n    measured = {i: _measure(rows, goals, i) for i in picks}\n    return _best_measured(measured, goals)\n\n\ndef _local_search(rows, feats, goals, seed):\n    n = len(rows)\n    rng = random.Random(seed)\n    budget = min(_BUDGET, n)\n    start = rng.randrange(n)\n    measured = {start: _measure(rows, goals, start)}\n    best = start\n    while len(measured) < budget:\n        cands = [j for j in range(n) if j not in measured]\n        nxt = min(cands, key=lambda j: (step1._dist2(feats[j], feats[best]), j))\n        measured[nxt] = _measure(rows, goals, nxt)\n        best = _best_measured(measured, goals)\n    return best\n\n\ndef _tuning(test_csv, test_rows, inputs, goals):\n    n = len(test_rows)\n    full = {i: _measure(test_rows, goals, i) for i in range(n)}\n    totals = step7._totals(full, goals)  # normalised over all test rows\n\n    def score(i):\n        return float(totals[i] / len(goals))\n\n    feats = step1._features(test_rows, inputs)\n\n    ours = step7.choose(test_csv, _labeller(test_rows, goals), budget=_BUDGET)\n    out = {\"ours\": score(ours)}\n    out[\"random_search\"] = (\n        sum(score(_random_search(test_rows, goals, s)) for s in _SEEDS) / len(_SEEDS)\n    )\n    out[\"local_search\"] = (\n        sum(score(_local_search(test_rows, feats, goals, s)) for s in _SEEDS)\n        / len(_SEEDS)\n    )\n    return out\n\n\ndef _fit_solve(A, b):\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        if abs(M[piv][col]) < _EPS:\n            continue\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        for r in range(n):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col] / p\n                for c in range(col, n + 1):\n                    M[r][c] -= f * M[col][c]\n    return [M[i][n] / M[i][i] if abs(M[i][i]) >= _EPS else 0.0 for i in range(n)]\n\n\ndef _fit_ridge(X, y):\n    \"\"\"Closed-form ridge regression weights for rows X (already with a bias term) and targets y.\"\"\"\n    d = len(X[0])\n    A = [[0.0] * d for _ in range(d)]\n    b = [0.0] * d\n    for x, t in zip(X, y):\n        for i in range(d):\n            xi = x[i]\n            b[i] += xi * t\n            Ai = A[i]\n            for j in range(d):\n                Ai[j] += xi * x[j]\n    for i in range(d):\n        A[i][i] += _RIDGE\n    return _fit_solve(A, b)\n\n\ndef _ridge_predictions(train_rows, test_rows, inputs, goals_used):\n    \"\"\"{goal: predictions for every test row} from a ridge model fitted on train_rows.\"\"\"\n    feats = step1._features(train_rows + test_rows, inputs)\n    ntr = len(train_rows)\n    X = [list(f) + [1.0] for f in feats]\n    preds = {}\n    for g in goals_used:\n        pairs = []\n        for i in range(ntr):\n            t = step7._num(train_rows[i].get(g))\n            if t is not None:\n                pairs.append((X[i], t))\n        xs = [x for x, _ in pairs]\n        ys = [t for _, t in pairs]\n        ym = sum(ys) / len(ys)\n        sd = math.sqrt(sum((t - ym) ** 2 for t in ys) / len(ys)) or 1.0\n        w = _fit_ridge(xs, [(t - ym) / sd for t in ys])\n        preds[g] = [\n            ym + sd * sum(a * b for a, b in zip(w, X[ntr + j]))\n            for j in range(len(test_rows))\n        ]\n    return preds\n\n\ndef _goal_score(preds, actuals, span):\n    \"\"\"1 - MAE / span, clipped to [0, 1]. Missing or non-finite predictions count as span.\"\"\"\n    errs = 0.0\n    got = 0\n    for p, a in zip(preds, actuals):\n        if a is None:\n            continue\n        got += 1\n        if math.isfinite(p):\n            errs += abs(p - a)\n        else:\n            errs += span\n    if got == 0:\n        return None\n    mae = errs / got\n    if span <= 0:\n        return 1.0 if mae <= _EPS else 0.0\n    return max(0.0, min(1.0, 1.0 - mae / span))\n\n\ndef _prediction(train_csv, train_rows, test_rows, inputs, goals):\n    spans = {}\n    usable = []\n    for g, _ in goals:\n        vals = [v for v in (step7._num(r.get(g)) for r in train_rows) if v is not None]\n        if len(vals) >= 2:\n            usable.append(g)\n            spans[g] = max(vals) - min(vals)\n    if not usable:\n        return {\"ours_guesser\": 0.0, \"linear_model\": 0.0}\n\n    actual = {g: [step7._num(r.get(g)) for r in test_rows] for g in usable}\n\n    guessed = {g: [] for g in usable}\n    for r in test_rows:\n        flags = {n: r[n] for n in inputs if n in r}\n        est = step2.guess(train_csv, flags)\n        for g in usable:\n            guessed[g].append(float(est.get(g, (math.nan,))[0]))\n\n    ridge = _ridge_predictions(train_rows, test_rows, inputs, usable)\n\n    def average(preds):\n        per = []\n        for g in usable:\n            s = _goal_score(preds[g], actual[g], spans[g])\n            if s is not None:\n                per.append(s)\n        return float(sum(per) / len(per)) if per else 0.0\n\n    return {\"ours_guesser\": average(guessed), \"linear_model\": average(ridge)}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our tuner and guesser against stdlib-only rivals on test_csv.\n\n    Returns {method: score}, higher is better, all in [0, 1]:\n      \"ours\", \"random_search\", \"local_search\"  - tuning, normalised goal quality\n      \"ours_guesser\", \"linear_model\"           - prediction, 1 - MAE / range\n    \"\"\"\n    header, test_rows = step1._read(test_csv)\n    _, train_rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    if not test_rows or not goals:\n        return _zeros()\n\n    results = {}\n    results.update(_tuning(test_csv, test_rows, inputs, goals))\n    results.update(_prediction(train_csv, train_rows, test_rows, inputs, goals))\n    return results\n```",
+ "ttft_ms": 59380,
+ "type": "result",
+ "duration_ms": 69309,
+ "uuid": "a802b514-a8e1-4076-9f15-843acceeb1d1",
+ "ttft_stream_ms": 592,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
