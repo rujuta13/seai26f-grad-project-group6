@@ -8,16 +8,9 @@ differences `same` calls real. Gaps are shown in rating points (means of the two
 import random
 import sys
 
-from blame import blame, split
+from blame import blame, show, split
 from domains.players.step11 import DATA, SKIP
 from table import Table
-
-
-def show(t, found, bad, good, label, top=6):
-    mean = lambda g, c: sum(r.cells[c.at] for r in g) / len(g)
-    at = {c.name: c for c in t.x}
-    for name, d, real in [f for f in found if f[2]][:top]:
-        print(f"  {name:22} {label[0]} {mean(bad, at[name]):5.1f}   {label[1]} {mean(good, at[name]):5.1f}")
 
 
 def main(path=DATA, seed=1, share=0.1):

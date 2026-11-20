@@ -20,3 +20,11 @@ def blame(t, bad, good, rng, n=100):
         a, b = ([size(r) for r in rng.sample(g, min(n, len(g))) if size(r) != "?"] for g in (bad, good))
         out.append((c.name, sum(a) / len(a) - sum(b) / len(b), not same(sorted(a), sorted(b))))
     return sorted(out, key=lambda o: -abs(o[1]))
+
+
+def show(t, found, bad, good, label, top=6):
+    """Print the `top` columns blame found real with the two groups' means (label = their two names)."""
+    mean = lambda g, c: sum(r.cells[c.at] for r in g) / len(g)
+    at = {c.name: c for c in t.x}
+    for name, d, real in [f for f in found if f[2]][:top]:
+        print(f"  {name:22} {label[0]} {mean(bad, at[name]):5.1f}   {label[1]} {mean(good, at[name]):5.1f}")
