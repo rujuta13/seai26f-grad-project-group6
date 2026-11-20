@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63613,
+ "stop_reason": "end_turn",
+ "session_id": "8273b73e-0032-4886-ac1d-ef21063a5506",
+ "total_cost_usd": 0.018206400000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9706,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15692,
+  "output_tokens_details": {
+   "thinking_tokens": 12838
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9706,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15692,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9706,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9706
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8344,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008419000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15692,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9706,
+   "webSearchRequests": 0,
+   "costUSD": 0.009787400000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step6.py: justify. Plain-language reasons for what makes a build good, and\na one-sentence verdict on any single build.\n\nReading, column splitting, number parsing, quantiles, goal scores, blame labels,\nthe Pareto best set and the dominance test come from steps 1, 2, 4 and 5.\nOnly the explanation text is new here.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nfrom step1 import BEST_PERCENT, _columns, _num, _read, best as pareto_best\nfrom step2 import _quantile\nfrom step4 import _dominates, _objectives\nfrom step5 import BAD_QUANTILE, BINS, SHRINK, _labels, _scores, blame\n\nTOP_INPUTS = 3      # input columns cited in explain()\nMIN_GROUP = 3       # a value must occur at least this often to be cited\n\n\ndef _fmt(v) -> str:\n    \"\"\"Show a cell value as plain text.\"\"\"\n    if isinstance(v, float):\n        return f\"{v:g}\"\n    if v is None or v == \"\":\n        return \"missing\"\n    return str(v)\n\n\ndef _describe(c: str, lab) -> str:\n    \"\"\"Plain-language name for a group label produced by step5._labels.\"\"\"\n    if isinstance(lab, tuple):\n        return f\"{c} in quantile bin {lab[1] + 1} of {BINS} (low to high)\"\n    if isinstance(lab, float):\n        return f\"{c} = {lab:g}\"\n    return f\"{c} = {lab}\"\n\n\ndef _lifts(rows: list[dict], c: str, good: set[int]) -> list[tuple]:\n    \"\"\"Values of input column c that are more common among good builds than\n    overall. Each entry is (score, description, share of the value's builds\n    that are good, number of builds with the value). Shrunk as in step5, so\n    small groups count for less. Best first.\"\"\"\n    n = len(rows)\n    p0 = len(good) / n\n    labels = _labels(rows, c)\n    size: dict = {}\n    hits: dict = {}\n    for i, lab in enumerate(labels):\n        size[lab] = size.get(lab, 0) + 1\n        if i in good:\n            hits[lab] = hits.get(lab, 0) + 1\n    out = []\n    for lab, t in size.items():\n        if t < MIN_GROUP:\n            continue\n        rate = hits.get(lab, 0) / t\n        score = (rate - p0) * t / (t + SHRINK)\n        if score > 0:\n            out.append((score, _describe(c, lab), rate, t))\n    out.sort(key=lambda x: -x[0])\n    return out\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons for what makes builds good. Every claim can be\n    checked against the training file.\"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    if n == 0 or not goals:\n        return (\"No explanation is possible: the data has no goal columns or no \"\n                \"rows, so no build can be called good.\")\n\n    ranked = pareto_best(train_csv)\n    if not ranked:\n        return \"No explanation is possible: no build could be ranked on the goals.\"\n    good = set(ranked)\n    p0 = len(good) / n\n    rec = rows[ranked[0]]\n\n    lines = [\n        \"1. What 'good' means. A build is good if no other build is at least as \"\n        \"good on every goal and strictly better on at least one (Pareto dominance). \"\n        f\"The {len(good)} best builds out of {n} ({p0:.0%}) are taken from the top \"\n        f\"Pareto fronts, capped at {BEST_PERCENT}% of rows, and ordered within each \"\n        \"front by mean normalised goal score.\",\n        \"\",\n        \"2. Goal values of the recommended build (first in the ranking) against \"\n        \"the median of all builds:\",\n    ]\n    for g in goals:\n        direction = \"higher is better\" if g in gmax else \"lower is better\"\n        v = _num(rec.get(g))\n        vals = [x for x in (_num(r.get(g)) for r in rows) if x is not None]\n        if v is None or not vals:\n            lines.append(f\"   {g}: no usable value.\")\n        else:\n            lines.append(\n                f\"   {g} = {v:g} (median {_quantile(vals, 0.5):g}; {direction}).\"\n            )\n\n    settings = \", \".join(f\"{c}={_fmt(rec.get(c))}\" for c in inputs)\n    lines += [\n        \"\",\n        \"3. Flag settings of the recommended build:\",\n        \"   \" + (settings if settings else \"(no input columns)\"),\n        \"\",\n        \"4. Input values that stand out among good builds:\",\n    ]\n\n    stand = []\n    for idx, c in enumerate(inputs):\n        found = _lifts(rows, c, good)\n        if found:\n            stand.append((found[0], idx))\n    stand.sort(key=lambda t: (-t[0][0], t[1]))\n    if not stand:\n        lines.append(\"   None: no input value is clearly more common among good builds.\")\n    for (_, desc, rate, size), _ in stand[:TOP_INPUTS]:\n        lines.append(\n            f\"   {desc}: {size} builds have it, {rate:.0%} of them are good, \"\n            f\"against {p0:.0%} overall.\"\n        )\n\n    names = blame(train_csv)[:TOP_INPUTS]\n    lines += [\n        \"\",\n        \"5. Cross-check from the blame ranking (columns most tied to bad builds): \"\n        + (\", \".join(names) if names else \"none\") + \".\",\n        \"\",\n        \"These are associations in one benchmark sample, not proven causes. \"\n        \"Confirm a claim by re-benchmarking before acting on it.\",\n    ]\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences: whether this build is good or bad, and why.\"\"\"\n    header, rows = _read(str(train_csv))\n    _, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    if not rows or not goals:\n        return \"This build cannot be rated: the data has no goal columns or no rows.\"\n\n    vec = _objectives(row, gmax, gmin)\n    if not any(math.isfinite(x) for x in vec):\n        return \"This build cannot be rated: it has no usable goal values.\"\n\n    m = len(goals)\n    obj = [_objectives(r, gmax, gmin) for r in rows]\n\n    # Normalise this build's goals with the same bounds used for training scores.\n    lo, span = [], []\n    for j in range(m):\n        fin = [o[j] for o in obj if math.isfinite(o[j])]\n        a = min(fin) if fin else 0.0\n        b = max(fin) if fin else 0.0\n        lo.append(a)\n        span.append(b - a)\n\n    nv = []\n    for j, x in enumerate(vec):\n        if not math.isfinite(x):\n            nv.append(0.0)\n        elif span[j] > 0:\n            nv.append(min(1.0, max(0.0, (x - lo[j]) / span[j])))\n        else:\n            nv.append(1.0)\n    s = sum(nv) / m\n\n    scores = _scores(obj, m)\n    lower = _quantile(scores, BAD_QUANTILE)\n    upper = _quantile(scores, 1.0 - BAD_QUANTILE)\n    if s <= lower:\n        verdict = \"bad\"\n    elif s >= upper:\n        verdict = \"good\"\n    else:\n        verdict = \"middling\"\n\n    first = (\n        f\"This build is rated {verdict}: its mean normalised goal score is \"\n        f\"{s:.2f}, against a bottom-quarter cutoff of {lower:.2f} and a \"\n        f\"top-quarter cutoff of {upper:.2f} over the {len(rows)} training builds.\"\n    )\n\n    dominators = sum(1 for o in obj if _dominates(o, vec))\n    if dominators == 0:\n        pareto = (\"no training build is at least as good on every goal and \"\n                  \"better on one\")\n    else:\n        pareto = (f\"{dominators} of {len(rows)} training builds are at least as \"\n                  \"good on every goal and better on one\")\n    j = min(range(m), key=lambda k: nv[k])\n    raw = _num(row.get(goals[j]))\n    raw_text = f\"{raw:g}\" if raw is not None else \"missing\"\n    second = f\"Pareto-wise, {pareto}; its weakest goal is {goals[j]} ({raw_text}).\"\n    return first + \" \" + second\n```",
+ "ttft_ms": 54878,
+ "type": "result",
+ "duration_ms": 62751,
+ "uuid": "2072fd27-f5cc-4bf2-a70f-1b4dbeb15050",
+ "ttft_stream_ms": 392,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
