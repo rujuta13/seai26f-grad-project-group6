@@ -15,11 +15,13 @@ def players():
     return Table.read(step11.DATA, step11.SKIP)
 
 
-def test_worse_pushes_a_higher_is_better_goal_down(players):
-    r = max(players.rows, key=lambda r: r.cells[players.y[0].at])
-    w = worse(players, r, 0.1)
-    assert abs(w.cells[players.y[0].at] - 0.9 * r.cells[players.y[0].at]) < 1e-9
-    assert players.disty(w) > players.disty(r) and w.x == r.x
+def test_worse_pushes_a_higher_is_better_goal_down_and_keeps_whole_numbers_whole(players):
+    at = players.y[0].at
+    rows = players.rows[:2000]
+    made = [worse(players, r, 0.1, random.Random(i)) for i, r in enumerate(rows)]
+    assert all(m.cells[at] == int(m.cells[at]) and m.x == r.x for m, r in zip(made, rows))
+    before, after = (sum(r.cells[at] for r in g) / len(g) for g in (rows, made))
+    assert abs(after - 0.9 * before) < 0.3  # the average moves by 10% although each value stays whole
 
 
 def test_keeper_keeps_mostly_top_players(players):
