@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 45967,
+ "stop_reason": "end_turn",
+ "session_id": "3cb5552e-5410-47f4-89b1-4c6e2434ecb2",
+ "total_cost_usd": 0.010636900000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 4766,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10235,
+  "output_tokens_details": {
+   "thinking_tokens": 8195
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4766,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10235,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4766,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 4766
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4491,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.004566000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10235,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4766,
+   "webSearchRequests": 0,
+   "costUSD": 0.0060709,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 4: streaming triage of nightly benchmark rows.\n\nstream() keeps a row when no known row (training data or earlier stream rows)\nbeats it on every goal at once, that is, when it lies on the Pareto front of\neverything seen so far. Only goal columns are used.\n\ndrift() compares the goal values of incoming rows with the training goal\nvalues using a two-sample Kolmogorov-Smirnov test, re-run after every new row.\nThe m-th row is tested at level alpha_m = 0.05 / (m (m+1)); these levels sum\nto 0.05 over all m, and each goal's share is divided by the number of goals.\nBy the union bound, the chance of any false warning over the whole stream is\nat most 0.05, however long the stream runs.\n\"\"\"\nimport bisect\nimport math\n\nfrom step1 import _load\n\n_ALPHA = 0.05\n\n\ndef _goals(header):\n    \"\"\"Return [(column, sign)]: sign +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None if it is not a finite number.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal values with signs applied (higher is always better), or None.\"\"\"\n    vec = []\n    for c, sg in goals:\n        f = _finite(row.get(c))\n        if f is None:\n            return None\n        vec.append(sg * f)\n    return vec\n\n\ndef _dominates(a, b):\n    \"\"\"True if a is at least as good as b on every goal and better on one.\"\"\"\n    strict = False\n    for x, y in zip(a, b):\n        if x < y:\n            return False\n        if x > y:\n            strict = True\n    return strict\n\n\ndef _insert(archive, v):\n    \"\"\"Try to add v to a Pareto archive.\n\n    Returns True if no archive member dominates v (v is then added, and any\n    members v dominates are dropped). Returns False and changes nothing\n    otherwise. Dropping dominated members is safe: whatever they dominate,\n    v also dominates, by transitivity.\n    \"\"\"\n    for a in archive:\n        if _dominates(a, v):\n            return False\n    archive[:] = [a for a in archive if not _dominates(v, a)]\n    archive.append(v)\n    return True\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide keep (True) or not (False) for each row, in arrival order.\n\n    A row is kept when no training row and no earlier kept or non-kept row\n    beats it on all goals at once; that is, it extends the Pareto front of\n    everything seen so far. Rows with missing or non-numeric goal values are\n    not kept.\n    \"\"\"\n    header, train = _load(train_csv)\n    goals = _goals(header)\n\n    archive = []\n    if goals:\n        for r in train:\n            v = _oriented(r, goals)\n            if v is not None:\n                _insert(archive, v)\n\n    out = []\n    for row in rows:\n        if not goals:\n            out.append(False)\n            continue\n        v = _oriented(row, goals)\n        if v is None:\n            out.append(False)\n            continue\n        out.append(_insert(archive, v))\n    return out\n\n\ndef _ks_stat(a, b):\n    \"\"\"Two-sample Kolmogorov-Smirnov statistic for sorted non-empty lists.\"\"\"\n    n1, n2 = len(a), len(b)\n    i = j = 0\n    d = 0.0\n    while i < n1 and j < n2:\n        x = a[i] if a[i] <= b[j] else b[j]\n        while i < n1 and a[i] == x:\n            i += 1\n        while j < n2 and b[j] == x:\n            j += 1\n        d = max(d, abs(i / n1 - j / n2))\n    return d\n\n\ndef _ks_pvalue(d, n1, n2):\n    \"\"\"Asymptotic two-sided p-value for KS statistic d with sizes n1, n2.\"\"\"\n    en = math.sqrt(n1 * n2 / (n1 + n2))\n    lam = (en + 0.12 + 0.11 / en) * d\n    if lam < 0.2:\n        return 1.0\n    total = 0.0\n    for k in range(1, 101):\n        term = math.exp(-2.0 * k * k * lam * lam)\n        total += (-1.0) ** (k - 1) * term\n        if term < 1e-12:\n            break\n    return min(1.0, max(0.0, 2.0 * total))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which new results stop matching training.\n\n    After the m-th incoming row, the first m values of each goal are tested\n    against the training values of that goal with a KS test at level\n    0.05 / (m (m+1) g), where g is the number of goals tested. The first\n    rejection warns at row index m-1. Returns None if no warning is raised.\n    \"\"\"\n    header, train = _load(train_csv)\n    goals = _goals(header)\n    rows = list(rows)\n    if not goals or not rows:\n        return None\n\n    ref = {}\n    for c, _ in goals:\n        vals = []\n        for r in train:\n            f = _finite(r.get(c))\n            if f is not None:\n                vals.append(f)\n        vals.sort()\n        ref[c] = vals\n\n    testable = [c for c, _ in goals if ref[c]]\n    if not testable:\n        return None\n    g = len(testable)\n\n    new = {c: [] for c in testable}\n    for m, row in enumerate(rows, start=1):\n        for c in testable:\n            f = _finite(row.get(c))\n            if f is not None:\n                bisect.insort(new[c], f)\n\n        alpha = _ALPHA / (m * (m + 1)) / g\n        for c in testable:\n            if not new[c]:\n                continue\n            d = _ks_stat(new[c], ref[c])\n            if _ks_pvalue(d, len(new[c]), len(ref[c])) < alpha:\n                return m - 1\n    return None\n```",
+ "ttft_ms": 38817,
+ "type": "result",
+ "duration_ms": 45242,
+ "uuid": "8b313800-047a-462c-b1ab-6a9979e771f9",
+ "ttft_stream_ms": 536,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
