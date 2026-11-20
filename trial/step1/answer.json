@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 19470,
+ "stop_reason": "end_turn",
+ "session_id": "89e69f46-83ce-4896-8675-40da168f98ad",
+ "total_cost_usd": 0.0036605800000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 200,
+  "cache_read_input_tokens": 838,
+  "output_tokens": 4342,
+  "output_tokens_details": {
+   "thinking_tokens": 2547
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 200,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4342,
+    "cache_read_input_tokens": 838,
+    "cache_creation_input_tokens": 200,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 200
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 1366,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.001441,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4342,
+   "cacheReadInputTokens": 838,
+   "cacheCreationInputTokens": 200,
+   "webSearchRequests": 0,
+   "costUSD": 0.0022195800000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport csv\nimport random\n\n\ndef _load(train_csv):\n    \"\"\"Return (header, rows) where rows are dicts {column: float or str}.\"\"\"\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.reader(f)\n        header = [h.strip() for h in next(reader)]\n        rows = []\n        for raw in reader:\n            if not raw or all(not c.strip() for c in raw):\n                continue\n            row = {}\n            for name, cell in zip(header, raw):\n                cell = cell.strip()\n                try:\n                    row[name] = float(cell)\n                except ValueError:\n                    row[name] = cell\n            rows.append(row)\n    return header, rows\n\n\ndef _as_float(v):\n    return v if isinstance(v, float) else 0.0\n\n\ndef _sq_dist(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _kmeans(X, k, seed=1, max_iter=100):\n    \"\"\"Plain Lloyd's k-means with k-means++ seeding. Deterministic for a given seed.\"\"\"\n    rng = random.Random(seed)\n    n = len(X)\n    centers = [list(X[rng.randrange(n)])]\n    while len(centers) < k:\n        d = [min(_sq_dist(x, c) for c in centers) for x in X]\n        total = sum(d)\n        if total <= 0:\n            centers.append(list(X[rng.randrange(n)]))\n            continue\n        r = rng.random() * total\n        acc = 0.0\n        pick = n - 1\n        for i, di in enumerate(d):\n            acc += di\n            if acc >= r:\n                pick = i\n                break\n        centers.append(list(X[pick]))\n\n    labels = [-1] * n\n    for _ in range(max_iter):\n        changed = False\n        for i, x in enumerate(X):\n            best_c = min(range(k), key=lambda c: _sq_dist(x, centers[c]))\n            if labels[i] != best_c:\n                labels[i] = best_c\n                changed = True\n        if not changed:\n            break\n        for c in range(k):\n            members = [X[i] for i in range(n) if labels[i] == c]\n            if members:\n                centers[c] = [sum(col) / len(members) for col in zip(*members)]\n    return labels\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\n\n    Clusters are computed on the input (flag) columns only. Labels are\n    renumbered 0..k-1 in order of first appearance in the file.\n    \"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n\n    input_cols = [\n        c for c in header\n        if not (c.endswith(\"+\") or c.endswith(\"-\") or c.endswith(\"X\"))\n    ]\n    if not input_cols:\n        return [0] * n\n\n    X = [[_as_float(r.get(c, 0.0)) for c in input_cols] for r in rows]\n\n    k = min(5, n)\n    raw = _kmeans(X, k)\n\n    relabel = {}\n    out = []\n    for lab in raw:\n        if lab not in relabel:\n            relabel[lab] = len(relabel)\n        out.append(relabel[lab])\n    return out\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together).\n\n    Goals ending in '+' are maximised, goals ending in '-' are minimised.\n    Rows are ordered by non-dominated front (Pareto layers), then by a\n    normalised sum of goal scores within each layer. At most 5% of rows\n    are returned.\n    \"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    cap = int(0.05 * n)\n    if cap == 0:\n        return []\n\n    goals = []\n    for c in header:\n        if c.endswith(\"+\"):\n            goals.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            goals.append((c, -1.0))\n    if not goals:\n        return []\n\n    # Oriented values: higher is always better.\n    V = [[sg * _as_float(r.get(c, 0.0)) for c, sg in goals] for r in rows]\n\n    g = len(goals)\n    lo = [min(V[i][j] for i in range(n)) for j in range(g)]\n    hi = [max(V[i][j] for i in range(n)) for j in range(g)]\n    score = []\n    for i in range(n):\n        s = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            s += 1.0 if span == 0 else (V[i][j] - lo[j]) / span\n        score.append(s)\n\n    def dominates(a, b):\n        ge = True\n        gt = False\n        for x, y in zip(a, b):\n            if x < y:\n                ge = False\n                break\n            if x > y:\n                gt = True\n        return ge and gt\n\n    remaining = set(range(n))\n    order = []\n    while remaining and len(order) < cap:\n        front = [\n            i for i in remaining\n            if not any(dominates(V[j], V[i]) for j in remaining if j != i)\n        ]\n        if not front:  # cannot happen for a finite partial order; safety\n            front = list(remaining)\n        front.sort(key=lambda i: (-score[i], i))\n        order.extend(front)\n        remaining.difference_update(front)\n\n    return order[:cap]\n```",
+ "ttft_ms": 12676,
+ "type": "result",
+ "duration_ms": 18189,
+ "uuid": "4e599d24-7686-4c0c-9995-61b9acde10c9",
+ "ttft_stream_ms": 451,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}

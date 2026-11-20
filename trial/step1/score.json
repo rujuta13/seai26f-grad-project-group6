@@ -1,0 +1,13 @@
+{
+ "domain": "ssw",
+ "step": 1,
+ "skill": "remember",
+ "ok": true,
+ "score": 0.3432598097709845,
+ "baseline": 0.5093101549557443,
+ "better": "lower",
+ "extra": {
+  "families": 5,
+  "within_family_spread": 0.9730327461497114
+ }
+}
