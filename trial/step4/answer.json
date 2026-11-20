@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 51842,
+ "stop_reason": "end_turn",
+ "session_id": "b4ee8289-760e-4f10-9fb3-f8180cbe4f6d",
+ "total_cost_usd": 0.0117464,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5226,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11674,
+  "output_tokens_details": {
+   "thinking_tokens": 9800
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5226,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11674,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5226,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5226
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4784,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.004864,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11674,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5226,
+   "webSearchRequests": 0,
+   "costUSD": 0.0068824,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Keep/drop decisions and drift warnings for streamed nightly benchmark rows.\n\nKeep rule: a row is worth keeping when no training row or earlier row beats it\non every goal, i.e. it lies on the Pareto front of train + earlier rows + itself.\nThis is the same notion of \"unusually good\" that step1.best uses.\n\nDrift rule: over a sliding window of WINDOW rows, warn when either\n  - most window rows are novel in input space (their nearest training row is\n    farther away than almost all training rows are from their own neighbour), or\n  - a goal's window mean sits far outside the training distribution\n    (|z| > GOAL_Z, using the training standard deviation).\n\"\"\"\nimport math\n\nfrom step1 import _load\nfrom step2 import _column_kinds, _medians, _vector\n\nWINDOW = 15        # rows judged together for drift\nNOVEL_FRAC = 0.5   # share of window rows that must look novel to warn on inputs\nGOAL_Z = 4.0       # |z| of a goal's window mean that counts as drift\nCALIB = 200        # training rows used to calibrate input novelty\nNOVEL_Q = 0.95     # quantile of training leave-one-out distances defining \"normal\"\n\n\ndef _sq(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal vector with higher always better, or None if any goal cell is unusable.\"\"\"\n    out = []\n    for c, sign in goals:\n        try:\n            out.append(sign * float(row[c]))\n        except (KeyError, TypeError, ValueError):\n            return None\n    return out\n\n\ndef _dominated(p, points):\n    for q in points:\n        if all(qk >= pk for qk, pk in zip(q, p)) and any(qk > pk for qk, pk in zip(q, p)):\n            return True\n    return False\n\n\ndef _nearest_sq(x, pool, skip=-1):\n    best = math.inf\n    for j, y in enumerate(pool):\n        if j != skip:\n            d = _sq(x, y)\n            if d < best:\n                best = d\n    return best\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) a row if no training row or earlier row beats it on every goal.\"\"\"\n    train_rows, _, goals = _load(train_csv)\n    if not goals:\n        return [False] * len(rows)\n\n    reference = []\n    for r in train_rows:\n        p = _oriented(r, goals)\n        if p is not None:\n            reference.append(p)\n\n    seen = []\n    keep = []\n    for row in rows:\n        p = _oriented(row, goals)\n        if p is None:\n            keep.append(False)\n            continue\n        keep.append(not (_dominated(p, reference) or _dominated(p, seen)))\n        seen.append(p)\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` where the rows first stop looking like train_csv, or None.\"\"\"\n    train_rows, inputs, goals = _load(train_csv)\n    n = len(train_rows)\n    m = len(rows)\n    if n == 0 or m == 0:\n        return None\n\n    kinds, cats = _column_kinds(train_rows, inputs)\n    med = _medians(train_rows, inputs, kinds)\n    X = [_vector(r, inputs, kinds, cats, med) for r in train_rows]\n    Q = [_vector(r, inputs, kinds, cats, med) for r in rows]\n\n    # Input novelty: a query is novel if its nearest training row is farther away\n    # than NOVEL_Q of the training rows are from their own nearest neighbour.\n    input_check = bool(X[0]) and n >= 2\n    novel = [False] * m\n    if input_check:\n        step = max(1, n // CALIB)\n        loo = sorted(_nearest_sq(X[i], X, skip=i) for i in range(0, n, step))\n        thresh = loo[min(len(loo) - 1, int(NOVEL_Q * (len(loo) - 1)))]\n        novel = [_nearest_sq(q, X) > thresh for q in Q]\n\n    # Goal statistics from training, and per-row goal values of the new rows.\n    names = [c for c, _ in goals]\n    stats = {}\n    for c in names:\n        ys = [float(r[c]) for r in train_rows]\n        mu = sum(ys) / n\n        sd = math.sqrt(sum((y - mu) ** 2 for y in ys) / (n - 1)) if n > 1 else 0.0\n        stats[c] = (mu, sd)\n\n    qvals = []\n    for r in rows:\n        vals = {}\n        for c in names:\n            try:\n                vals[c] = float(r[c])\n            except (KeyError, TypeError, ValueError):\n                pass\n        qvals.append(vals)\n\n    for i in range(WINDOW - 1, m):\n        win = range(i - WINDOW + 1, i + 1)\n\n        if input_check and sum(novel[k] for k in win) >= NOVEL_FRAC * WINDOW:\n            return i\n\n        for c in names:\n            ws = [qvals[k][c] for k in win if c in qvals[k]]\n            if len(ws) < 3:\n                continue\n            mu, sd = stats[c]\n            wm = sum(ws) / len(ws)\n            if sd > 0:\n                z = (wm - mu) / (sd / math.sqrt(len(ws)))\n                if abs(z) > GOAL_Z:\n                    return i\n            elif abs(wm - mu) > 1e-9 * max(1.0, abs(mu)):\n                return i\n\n    return None\n```",
+ "ttft_ms": 45996,
+ "type": "result",
+ "duration_ms": 51043,
+ "uuid": "51fa008b-348c-4599-934a-e67088e26387",
+ "ttft_stream_ms": 356,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}

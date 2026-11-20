@@ -1,0 +1,366 @@
+Use only the Python 3.13 standard library. No third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+import csv
+import random
+
+K = 5          # number of families reported
+SEED = 1       # fixed seed so results are reproducible
+MAX_ITER = 200
+
+
+def _load(path):
+    """Read a MOOT csv. Returns (rows, input_columns, goal_columns).
+    goal_columns is a list of (name, sign): +1 maximise, -1 minimise."""
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        cols = reader.fieldnames or []
+    inputs, goals = [], []
+    for c in cols:
+        if c.endswith("+"):
+            goals.append((c, 1))
+        elif c.endswith("-"):
+            goals.append((c, -1))
+        elif c.endswith("X"):
+            continue
+        else:
+            inputs.append(c)
+    return rows, inputs, goals
+
+
+def _encode(rows, inputs):
+    """Turn input columns into one numeric vector per row.
+    Numeric columns are used as-is; text columns are one-hot encoded."""
+    X = [[] for _ in rows]
+    for c in inputs:
+        raw = [r[c] for r in rows]
+        try:
+            nums = [float(v) for v in raw]
+            for i, v in enumerate(nums):
+                X[i].append(v)
+        except ValueError:
+            cats = sorted(set(raw))
+            for i, v in enumerate(raw):
+                X[i].extend(1.0 if v == cat else 0.0 for cat in cats)
+    return X
+
+
+def _sq(a, b):
+    return sum((x - y) * (x - y) for x, y in zip(a, b))
+
+
+def _kmeans(X, k, seed):
+    """Plain k-means with k-means++ initialisation, standard library only."""
+    n = len(X)
+    d = len(X[0])
+    rng = random.Random(seed)
+
+    # k-means++ seeding
+    centers = [list(X[rng.randrange(n)])]
+    while len(centers) < k:
+        dists = [min(_sq(x, c) for c in centers) for x in X]
+        total = sum(dists)
+        if total == 0:
+            centers.append(list(X[rng.randrange(n)]))
+            continue
+        r = rng.random() * total
+        acc = 0.0
+        chosen = n - 1
+        for i, dv in enumerate(dists):
+            acc += dv
+            if acc >= r:
+                chosen = i
+                break
+        centers.append(list(X[chosen]))
+
+    labels = [-1] * n
+    for _ in range(MAX_ITER):
+        changed = False
+        for i, x in enumerate(X):
+            best_c = min(range(k), key=lambda c: _sq(x, centers[c]))
+            if best_c != labels[i]:
+                labels[i] = best_c
+                changed = True
+        if not changed:
+            break
+        sums = [[0.0] * d for _ in range(k)]
+        counts = [0] * k
+        for i, x in enumerate(X):
+            c = labels[i]
+            counts[c] += 1
+            for j in range(d):
+                sums[c][j] += x[j]
+        for c in range(k):
+            if counts[c]:
+                centers[c] = [s / counts[c] for s in sums[c]]
+            else:
+                centers[c] = list(X[rng.randrange(n)])
+    return labels
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    rows, inputs, _ = _load(train_csv)
+    n = len(rows)
+    if n == 0:
+        return []
+    X = _encode(rows, inputs)
+    if not X[0]:
+        return [0] * n
+    distinct = len({tuple(x) for x in X})
+    k = max(1, min(K, distinct))
+    return _kmeans(X, k, SEED)
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together),
+    at most 5% of rows. Uses the Pareto front over the goals, ranked by
+    mean normalised goal score."""
+    rows, _, goals = _load(train_csv)
+    n = len(rows)
+    m = int(0.05 * n)
+    if n == 0 or m == 0 or not goals:
+        return []
+
+    # Oriented values: higher is always better.
+    raw = [[float(r[c]) for c, _ in goals] for r in rows]
+    oriented = [[sign * v for v, (_, sign) in zip(row, goals)] for row in raw]
+
+    g = len(goals)
+    lo = [min(o[j] for o in oriented) for j in range(g)]
+    hi = [max(o[j] for o in oriented) for j in range(g)]
+
+    # Normalised scores in [0, 1]; a constant goal contributes 0 to everyone.
+    scores = []
+    for o in oriented:
+        s = []
+        for j in range(g):
+            span = hi[j] - lo[j]
+            s.append((o[j] - lo[j]) / span if span > 0 else 0.0)
+        scores.append(sum(s) / g)
+
+    # Pareto front: rows not dominated by any other row.
+    front = []
+    for i in range(n):
+        oi = oriented[i]
+        dominated = False
+        for j in range(n):
+            if j == i:
+                continue
+            oj = oriented[j]
+            if all(oj[k] >= oi[k] for k in range(g)) and any(oj[k] > oi[k] for k in range(g)):
+                dominated = True
+                break
+        if not dominated:
+            front.append(i)
+
+    front.sort(key=lambda i: (-scores[i], i))
+    return front[:m]
+```
+
+### step2.py
+```python
+import math
+
+from step1 import _load
+
+NEIGHBOURS = 15   # how many nearest training rows inform the guess
+TAIL = 0.10       # interval core is the 10th..90th percentile of neighbour values
+
+
+def _text(v):
+    if isinstance(v, str):
+        return v
+    return "" if v is None else str(v)
+
+
+def _column_kinds(rows, inputs):
+    """Mirror step1's encoding: numeric columns stay numeric, others are one-hot."""
+    kinds, cats = {}, {}
+    for c in inputs:
+        raw = [r[c] for r in rows]
+        try:
+            for v in raw:
+                float(v)
+            kinds[c] = "num"
+        except (TypeError, ValueError):
+            kinds[c] = "cat"
+            cats[c] = sorted({_text(v) for v in raw})
+    return kinds, cats
+
+
+def _medians(rows, inputs, kinds):
+    med = {}
+    for c in inputs:
+        if kinds[c] == "num":
+            vals = sorted(float(r[c]) for r in rows)
+            med[c] = vals[len(vals) // 2] if vals else 0.0
+    return med
+
+
+def _vector(values, inputs, kinds, cats, med):
+    out = []
+    for c in inputs:
+        x = values.get(c)
+        if kinds[c] == "num":
+            try:
+                out.append(float(x))
+            except (TypeError, ValueError):
+                out.append(med[c])   # unusable query cell: fall back to training median
+        else:
+            s = _text(x)
+            out.extend(1.0 if s == cat else 0.0 for cat in cats[c])
+    return out
+
+
+def _quantile(vals, q):
+    """Linear-interpolated quantile of a non-empty ascending list."""
+    pos = q * (len(vals) - 1)
+    lo = int(math.floor(pos))
+    hi = min(lo + 1, len(vals) - 1)
+    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo)
+
+
+def _weighted_median(pairs):
+    """pairs: list of (value, weight) with positive weights."""
+    pairs = sorted(pairs)
+    total = sum(w for _, w in pairs)
+    acc = 0.0
+    for v, w in pairs:
+        acc += w
+        if acc >= total / 2:
+            return v
+    return pairs[-1][0]
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate every goal for a flag set `row` (goal columns already removed).
+
+    Method: nearest-neighbour regression over the training rows.
+      - estimate: distance-weighted median of the nearest training rows' goal values
+      - core interval: 10th..90th percentile of those neighbours' values
+      - widened by a margin that grows when the query is unlike its neighbours
+        (novelty) and when the goal varies a lot across the whole training set.
+    Returns {goal: (estimate, low, high)} with low <= estimate <= high.
+    """
+    rows, inputs, goals = _load(train_csv)
+    names = [c for c, _ in goals]
+    n = len(rows)
+    if not names:
+        return {}
+    if n == 0:
+        return {c: (0.0, 0.0, 0.0) for c in names}
+
+    kinds, cats = _column_kinds(rows, inputs)
+    med = _medians(rows, inputs, kinds)
+    X = [_vector(r, inputs, kinds, cats, med) for r in rows]
+    q = _vector(row, inputs, kinds, cats, med)
+    F = len(q)
+
+    if F:
+        d = [sum((a - b) * (a - b) for a, b in zip(x, q)) for x in X]
+        order = sorted(range(n), key=lambda i: (d[i], i))
+        nb = order[:min(NEIGHBOURS, n)]
+        w = {i: 1.0 / (1.0 + d[i]) for i in nb}
+        mean_d = sum(d[i] for i in nb) / len(nb)
+        # Roughly the fraction of features on which the query differs from its neighbours.
+        nov = min(1.0, math.sqrt(mean_d) / math.sqrt(F))
+    else:
+        # No usable inputs: know nothing about the row, use the whole training set, wide interval.
+        nb = list(range(n))
+        w = {i: 1.0 for i in nb}
+        nov = 1.0
+
+    out = {}
+    for name in names:
+        y = [float(r[name]) for r in rows]
+        span = max(y) - min(y)
+
+        est = _weighted_median([(y[i], w[i]) for i in nb])
+        vals = sorted(y[i] for i in nb)
+        lo_q = _quantile(vals, TAIL)
+        hi_q = _quantile(vals, 1.0 - TAIL)
+
+        margin = 0.02 * abs(est) + span * (0.05 + 0.25 * nov)
+        low = min(lo_q, est) - margin
+        high = max(hi_q, est) + margin
+        out[name] = (float(est), float(low), float(high))
+    return out
+```
+
+### step3.py
+```python
+import random
+
+ALPHA = 0.05        # below this p-value, the gap is treated as real
+PERMUTATIONS = 4000 # number of label shuffles in the permutation test
+SEED = 1            # fixed seed so results are reproducible
+
+
+def same(xs, ys) -> bool:
+    """True if the gap between xs and ys is noise, False if the difference is real.
+
+    Two-sample permutation test on the difference of means. If the groups
+    were not really different, shuffling the pooled values between the two
+    groups would often produce a gap at least as large as the observed one.
+    """
+    a = [float(x) for x in xs]
+    b = [float(y) for y in ys]
+    if not a or not b:
+        return True  # nothing to compare, so no evidence of a difference
+
+    na = len(a)
+    pooled = a + b
+    n = len(pooled)
+    nb = n - na
+
+    observed = abs(sum(a) / na - sum(b) / nb)
+    if observed == 0.0:
+        return True
+
+    rng = random.Random(SEED)
+    count = 0
+    for _ in range(PERMUTATIONS):
+        rng.shuffle(pooled)
+        ma = sum(pooled[:na]) / na
+        mb = sum(pooled[na:]) / nb
+        if abs(ma - mb) >= observed - 1e-12:
+            count += 1
+
+    # Add-one correction keeps the p-value away from exactly zero.
+    p = (count + 1) / (PERMUTATIONS + 1)
+    return p >= ALPHA
+```
+
+Step 4: flow.
+The client asks:
+  - "As nightly benchmark results come in, tell me right away which ones are worth keeping."
+  - "Warn me as soon as tonight's results stop looking like last month's."
+
+Write step4.py defining exactly these functions:
+def stream(train_csv, rows) -> list[bool]
+    `rows` arrive one at a time, in order. For each, decide keep (True) or not, using only
+    train_csv and the rows before it. Keep the ones worth keeping (good on the goals).
+def drift(train_csv, rows) -> int | None
+    Index into `rows` of the first row at which you warn that new rows have stopped looking
+    like train_csv, or None if they never do.
+
+Reply with the complete step4.py in one ```python block.
