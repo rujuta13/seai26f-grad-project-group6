@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 96128,
+ "stop_reason": "end_turn",
+ "session_id": "928f44d7-e884-41aa-bcab-fc44331c89bd",
+ "total_cost_usd": 0.033048499999999995,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20269,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 23065,
+  "output_tokens_details": {
+   "thinking_tokens": 18367
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20269,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 23065,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20269,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20269
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17387,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017462,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 23065,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20269,
+   "webSearchRequests": 0,
+   "costUSD": 0.0155865,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 10: race our tuner and guesser against standard-library rivals on test_csv.\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every key.\n\nTuner race: the test builds form a blind pool, and each method may label at\nmost _BUDGET of them. The score is the chosen build's mean goal score over the\ncomplete test builds, each goal scaled over those builds (0 worst, 1 best).\n  \"ours\"                 step7.choose\n  \"random_search\"        label random builds, keep the best labelled one\n  \"off_the_shelf_model\"  refit a ridge regression after each label, label the\n                         build it predicts best, keep the best labelled one\n\nGuesser race: every test build's goal values are predicted from train_csv. The\nscore is minus the mean absolute error, each goal's error scaled by its\ntraining range.\n  \"guesser_neg_mae\"      step2.guess median estimate (\"ours\")\n  \"ridge_model_neg_mae\"  ridge regression fitted on train_csv\n\nThe standard library has no hyper-parameter tuner or regression model, so the\nrivals are small standard-library implementations written here.\n\"\"\"\nimport csv\nimport math\nimport os\nimport random\nimport tempfile\n\nfrom step1 import _load\nfrom step2 import guess\nfrom step7 import choose\n\n_BUDGET = 30   # labels each tuner may spend on the test pool\n_SEED = 1      # seed for the random baselines\n_RIDGE = 1.0   # ridge penalty for the regression rival\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _level(v):\n    \"\"\"Comparable key for a cell: finite float, non-empty string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _goal_specs(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _complete(rows, specs):\n    \"\"\"Indices of rows with every goal finite, and their oriented goal vectors.\"\"\"\n    keep, vecs = [], []\n    for i, r in enumerate(rows):\n        vec = []\n        ok = True\n        for c, sg in specs:\n            f = _finite(r.get(c))\n            if f is None:\n                ok = False\n                break\n            vec.append(sg * f)\n        if ok:\n            keep.append(i)\n            vecs.append(vec)\n    return keep, vecs\n\n\ndef _combined(vecs):\n    \"\"\"Mean goal score of each oriented vector, each goal scaled over vecs (0 worst, 1 best).\"\"\"\n    if not vecs:\n        return []\n    g = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(g)]\n    hi = [max(v[j] for v in vecs) for j in range(g)]\n    out = []\n    for v in vecs:\n        t = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            t += 1.0 if span == 0 else (v[j] - lo[j]) / span\n        out.append(t / g)\n    return out\n\n\ndef _best_of(ids, vecs):\n    \"\"\"Index (into vecs) of the best labelled build; ties go to the lower index.\"\"\"\n    comb = _combined([vecs[i] for i in ids])\n    k = max(range(len(ids)), key=lambda t: (comb[t], -ids[t]))\n    return ids[k]\n\n\ndef _write_blind(path, header, rows):\n    \"\"\"Write rows as a blind MOOT csv: goal cells become '?'.\"\"\"\n    with open(path, \"w\", newline=\"\") as f:\n        w = csv.writer(f)\n        w.writerow(header)\n        for r in rows:\n            cells = []\n            for c in header:\n                if _is_goal(c):\n                    cells.append(\"?\")\n                    continue\n                v = r.get(c, \"\")\n                cells.append(repr(v) if isinstance(v, float) else str(v))\n            w.writerow(cells)\n\n\ndef _solve(A, b):\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        if abs(p) < 1e-12:\n            continue\n        for r in range(n):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col] / p\n                for k in range(col, n + 1):\n                    M[r][k] -= f * M[col][k]\n    return [\n        M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n        for i in range(n)\n    ]\n\n\nclass _Encoder:\n    \"\"\"Turns input cells into numbers: numeric columns are standardised, others one-hot.\"\"\"\n\n    def __init__(self, rows, inputs):\n        self.spec = []\n        for c in inputs:\n            cells = [_level(r.get(c)) for r in rows]\n            cells = [v for v in cells if v is not None]\n            nums = [v for v in cells if isinstance(v, float)]\n            if cells and len(nums) == len(cells):\n                mu = sum(nums) / len(nums)\n                sd = math.sqrt(sum((v - mu) ** 2 for v in nums) / len(nums))\n                self.spec.append((\"num\", c, (mu, sd if sd > 0.0 else 1.0)))\n            else:\n                levels = sorted(set(cells), key=lambda v: (isinstance(v, str), v))\n                self.spec.append((\"cat\", c, {v: k for k, v in enumerate(levels)}))\n\n    def encode(self, row):\n        out = []\n        for kind, c, data in self.spec:\n            v = _level(row.get(c))\n            if kind == \"num\":\n                mu, sd = data\n                out.append((v - mu) / sd if isinstance(v, float) else 0.0)\n            else:\n                cell = [0.0] * len(data)\n                if v is not None and v in data:\n                    cell[data[v]] = 1.0\n                out.extend(cell)\n        return out\n\n\nclass _Ridge:\n    \"\"\"Ridge regression with an unpenalised intercept, fitted by normal equations.\"\"\"\n\n    def __init__(self, X, y, lam=_RIDGE):\n        n = len(X)\n        d = len(X[0]) if X else 0\n        self.ybar = sum(y) / n\n        self.xbar = [sum(row[j] for row in X) / n for j in range(d)]\n        A = [[0.0] * d for _ in range(d)]\n        b = [0.0] * d\n        for row, yv in zip(X, y):\n            xc = [row[j] - self.xbar[j] for j in range(d)]\n            yc = yv - self.ybar\n            for j in range(d):\n                xj = xc[j]\n                if xj == 0.0:\n                    continue\n                b[j] += xj * yc\n                for k in range(d):\n                    A[j][k] += xj * xc[k]\n        for j in range(d):\n            A[j][j] += lam\n        self.w = _solve(A, b)\n\n    def predict(self, x):\n        return self.ybar + sum(\n            (x[j] - self.xbar[j]) * self.w[j] for j in range(len(self.w))\n        )\n\n\ndef _random_search(n, vecs, budget):\n    \"\"\"Label budget random builds and return the best labelled one.\"\"\"\n    ids = random.Random(_SEED).sample(range(n), budget)\n    return _best_of(ids, vecs)\n\n\ndef _model_search(X, vecs, budget):\n    \"\"\"Label a random third of the budget, then greedily label the builds the ridge model rates best.\"\"\"\n    n = len(X)\n    labelled = random.Random(_SEED).sample(range(n), max(1, budget // 3))\n    taken = set(labelled)\n    while len(labelled) < budget and len(taken) < n:\n        target = _combined([vecs[i] for i in labelled])\n        model = _Ridge([X[i] for i in labelled], target)\n        k = max(\n            (j for j in range(n) if j not in taken),\n            key=lambda j: (model.predict(X[j]), -j),\n        )\n        labelled.append(k)\n        taken.add(k)\n    return _best_of(labelled, vecs)\n\n\ndef _spans(rows, goal_names):\n    \"\"\"Training range of each goal (1.0 where the range is zero or unknown).\"\"\"\n    out = []\n    for c in goal_names:\n        vals = []\n        for r in rows:\n            f = _finite(r.get(c))\n            if f is not None:\n                vals.append(f)\n        span = (max(vals) - min(vals)) if vals else 0.0\n        out.append(span if span > 0.0 else 1.0)\n    return out\n\n\ndef _guesser_preds(train_csv, test, train_inputs, goal_names):\n    \"\"\"Per test row, the step2 median estimate of each goal (None if unavailable).\"\"\"\n    preds = []\n    for r in test:\n        row = {c: r[c] for c in train_inputs if c in r}\n        est = guess(train_csv, row)\n        preds.append([est[c][0] if c in est else None for c in goal_names])\n    return preds\n\n\ndef _ridge_preds(train, test, train_inputs, goal_names):\n    \"\"\"Per test row, a ridge prediction of each goal fitted on train (None if unavailable).\"\"\"\n    enc = _Encoder(train, train_inputs)\n    X_train = [enc.encode(r) for r in train]\n    X_test = [enc.encode(r) for r in test]\n    preds = [[None] * len(goal_names) for _ in test]\n    for j, c in enumerate(goal_names):\n        idx = [i for i, r in enumerate(train) if _finite(r.get(c)) is not None]\n        if not idx:\n            continue\n        X = [X_train[i] for i in idx]\n        y = [_finite(train[i][c]) for i in idx]\n        model = _Ridge(X, y)\n        for k, x in enumerate(X_test):\n            preds[k][j] = model.predict(x)\n    return preds\n\n\ndef _neg_mae(preds, test, goal_names, spans):\n    \"\"\"Minus the mean absolute error over all predicted goal cells, scaled by training range.\"\"\"\n    total = 0.0\n    count = 0\n    for pred, row in zip(preds, test):\n        for j, c in enumerate(goal_names):\n            t = _finite(row.get(c))\n            if t is None or pred[j] is None:\n                continue\n            total += abs(pred[j] - t) / spans[j]\n            count += 1\n    if count == 0:\n        return -math.inf\n    return -total / count\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores (higher is better) for our tuner and guesser and the stdlib rivals.\n\n    Keys: \"ours\", \"random_search\", \"off_the_shelf_model\" (tuner race on the\n    test pool, score = mean goal score of the chosen build) and\n    \"guesser_neg_mae\", \"ridge_model_neg_mae\" (prediction race, score = minus\n    the mean scaled absolute error on the test goals).\n    \"\"\"\n    header, train = _load(train_csv)\n    theader, test = _load(test_csv)\n    specs = _goal_specs(theader)\n    train_inputs = [c for c in header if _is_input(c)]\n    test_inputs = [c for c in theader if _is_input(c)]\n    goal_names = [c for c, _ in _goal_specs(header)]\n\n    scores = {\n        \"ours\": 0.0,\n        \"random_search\": 0.0,\n        \"off_the_shelf_model\": 0.0,\n        \"guesser_neg_mae\": -math.inf,\n        \"ridge_model_neg_mae\": -math.inf,\n    }\n\n    # Tuner race on the complete test builds.\n    keep, vecs = _complete(test, specs)\n    pool = [test[i] for i in keep]\n    n = len(pool)\n    if n > 0 and specs:\n        pool_score = _combined(vecs)\n        budget = min(_BUDGET, n)\n        goal_cols = [c for c, _ in specs]\n\n        def label(i):\n            return {c: pool[i][c] for c in goal_cols}\n\n        with tempfile.TemporaryDirectory() as tmp:\n            blind = os.path.join(tmp, \"blind.csv\")\n            _write_blind(blind, theader, pool)\n            ours = choose(blind, label, budget=budget)\n        scores[\"ours\"] = float(pool_score[ours])\n\n        scores[\"random_search\"] = float(\n            pool_score[_random_search(n, vecs, budget)]\n        )\n\n        enc = _Encoder(pool, test_inputs)\n        X = [enc.encode(r) for r in pool]\n        scores[\"off_the_shelf_model\"] = float(\n            pool_score[_model_search(X, vecs, budget)]\n        )\n\n    # Guesser race: predict every test build's goals from the training builds.\n    if goal_names:\n        spans = _spans(train, goal_names)\n        g_preds = _guesser_preds(train_csv, test, train_inputs, goal_names)\n        scores[\"guesser_neg_mae\"] = float(\n            _neg_mae(g_preds, test, goal_names, spans)\n        )\n        r_preds = _ridge_preds(train, test, train_inputs, goal_names)\n        scores[\"ridge_model_neg_mae\"] = float(\n            _neg_mae(r_preds, test, goal_names, spans)\n        )\n\n    return scores\n```",
+ "ttft_ms": 81767,
+ "type": "result",
+ "duration_ms": 95221,
+ "uuid": "07aa9633-eb49-44c0-93d3-af255d331cda",
+ "ttft_stream_ms": 598,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
