@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 36385,
+ "stop_reason": "end_turn",
+ "session_id": "628a20eb-f3b1-47e2-b987-e289adb88b72",
+ "total_cost_usd": 0.0095451,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5067,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7617,
+  "output_tokens_details": {
+   "thinking_tokens": 6344
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5067,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7617,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5067,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5067
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4643,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.004723000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7617,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5067,
+   "webSearchRequests": 0,
+   "costUSD": 0.0048221,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step4.py: streaming keep/drop decisions and drift warnings for nightly runs.\n\nstream: a row is kept when no known row (training or previously seen) dominates\nit, so kept rows form the running Pareto front of the goals.\n\ndrift: each incoming row's goals are compared with the k-nearest-neighbour\nprediction from step2. Over a sliding window, if the goals fall outside the\npredicted 10th..90th percentile range too often, new rows no longer look like\nthe training rows and a warning is issued.\n\nStandard library only.\n\"\"\"\nfrom collections import deque\n\nfrom step1 import _load, _columns, _dominates\nfrom step2 import guess\n\nWINDOW = 8          # number of recent rows in the drift window\nDRIFT_LEVEL = 0.5   # mean out-of-range fraction that triggers a warning\n\n\ndef _goals(cols, rows):\n    \"\"\"(column, sign) pairs for every goal; sign orients higher-is-better.\"\"\"\n    _, maxi, mini = _columns(cols, rows)\n    return [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n\n\ndef _orient(row, goals):\n    \"\"\"Goal vector of a row, oriented so higher is better; None if unusable.\"\"\"\n    try:\n        return [sgn * float(row[c]) for c, sgn in goals]\n    except (KeyError, TypeError, ValueError):\n        return None\n\n\ndef _add(front, v):\n    \"\"\"Insert v into the Pareto front in place.\n\n    Returns True if v is non-dominated (it joins the front and any points it\n    dominates leave it), False if some point on the front dominates v.\n    Dominance is transitive, so the front alone decides future keep decisions.\n    \"\"\"\n    if any(_dominates(f, v) for f in front):\n        return False\n    front[:] = [f for f in front if not _dominates(v, f)]\n    front.append(v)\n    return True\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"For each row in order, True if it is worth keeping.\n\n    A row is worth keeping when no training row or earlier row is at least as\n    good on every goal and better on one. Rows with missing or non-numeric\n    goals are not kept.\n    \"\"\"\n    cols, train = _load(train_csv)\n    goals = _goals(cols, train)\n    if not goals:\n        return [False] * len(rows)\n\n    front = []\n    for r in train:\n        v = _orient(r, goals)\n        if v is not None:\n            _add(front, v)\n\n    keep = []\n    for row in rows:\n        v = _orient(row, goals)\n        keep.append(v is not None and _add(front, v))\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the stream stops looking like\n    train_csv, or None if it never does.\n\n    Each row's goals are checked against the step2 prediction from its flags.\n    The fraction of goals outside the predicted 10th..90th percentile range is\n    averaged over the last WINDOW rows. Training-like rows give a mean near\n    0.2, so a mean above DRIFT_LEVEL signals a change.\n    \"\"\"\n    cols, train = _load(train_csv)\n    goals = [c for c, _ in _goals(cols, train)]\n    if not goals:\n        return None\n\n    recent = deque(maxlen=WINDOW)\n    for i, row in enumerate(rows):\n        pred = guess(train_csv, row)\n        counted = out = 0\n        for g in goals:\n            v = row.get(g)\n            if not isinstance(v, float):\n                continue\n            counted += 1\n            _, lo, hi = pred[g]\n            if v < lo or v > hi:\n                out += 1\n        recent.append(out / counted if counted else 0.0)\n        if len(recent) == WINDOW and sum(recent) / WINDOW > DRIFT_LEVEL:\n            return i\n    return None\n```",
+ "ttft_ms": 31324,
+ "type": "result",
+ "duration_ms": 35655,
+ "uuid": "71e65771-a157-4a04-bb8c-25a2910a663b",
+ "ttft_stream_ms": 547,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}

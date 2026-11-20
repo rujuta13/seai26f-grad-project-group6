@@ -1,0 +1,351 @@
+Use only the Python 3.13 standard library. No third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+"""step1.py: family labels and best-row selection for the MOOT flag data.
+
+The helpers from earlier steps are not available in this context, so the
+small CSV, clustering and dominance utilities needed here are defined inline.
+Standard library only.
+"""
+import csv
+import random
+
+K_FAMILIES = 5        # "a handful" of families
+BEST_FRACTION = 0.05  # best() returns at most 5% of rows
+
+
+def _load(path):
+    """Read a MOOT csv. Numeric cells become floats; others stay strings."""
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = reader.fieldnames or []
+        rows = []
+        for raw in reader:
+            row = {}
+            for c in cols:
+                v = raw[c]
+                try:
+                    row[c] = float(v)
+                except (TypeError, ValueError):
+                    row[c] = v
+            rows.append(row)
+    return cols, rows
+
+
+def _columns(cols, rows):
+    """Split columns into numeric inputs, maximise goals and minimise goals.
+
+    Columns ending in "X" are ignored. Columns ending in "+" are maximised,
+    columns ending in "-" are minimised, and every other column is an input.
+    Only inputs whose values are all numeric are returned.
+    """
+    inputs, maxi, mini = [], [], []
+    for c in cols:
+        if c.endswith("X"):
+            continue
+        if c.endswith("+"):
+            maxi.append(c)
+        elif c.endswith("-"):
+            mini.append(c)
+        else:
+            inputs.append(c)
+    numeric_inputs = [c for c in inputs
+                      if all(isinstance(r[c], float) for r in rows)]
+    return numeric_inputs, maxi, mini
+
+
+def _sqd(a, b):
+    return sum((x - y) ** 2 for x, y in zip(a, b))
+
+
+def _kmeanspp(X, k, rng):
+    """k-means++ seeding."""
+    centers = [list(X[rng.randrange(len(X))])]
+    while len(centers) < k:
+        dist = [min(_sqd(x, c) for c in centers) for x in X]
+        total = sum(dist)
+        if total <= 0:
+            centers.append(list(X[rng.randrange(len(X))]))
+            continue
+        r = rng.uniform(0, total)
+        acc = 0.0
+        pick = len(X) - 1
+        for i, dx in enumerate(dist):
+            acc += dx
+            if acc >= r:
+                pick = i
+                break
+        centers.append(list(X[pick]))
+    return centers
+
+
+def _centroids(X, labels, k, old):
+    d = len(X[0])
+    sums = [[0.0] * d for _ in range(k)]
+    counts = [0] * k
+    for x, l in zip(X, labels):
+        counts[l] += 1
+        s = sums[l]
+        for t, v in enumerate(x):
+            s[t] += v
+    return [[v / counts[j] for v in sums[j]] if counts[j] else old[j]
+            for j in range(k)]
+
+
+def _kmeans(X, k, restarts=5, iters=100, seed=0):
+    """Plain k-means with several restarts. Returns labels in 0..k-1."""
+    rng = random.Random(seed)
+    best_labels, best_inertia = None, None
+    for _ in range(restarts):
+        centers = _kmeanspp(X, k, rng)
+        labels = None
+        for _ in range(iters):
+            new = [min(range(k), key=lambda j: _sqd(x, centers[j])) for x in X]
+            if new == labels:
+                break
+            labels = new
+            centers = _centroids(X, labels, k, centers)
+        inertia = sum(_sqd(x, centers[l]) for x, l in zip(X, labels))
+        if best_inertia is None or inertia < best_inertia:
+            best_inertia, best_labels = inertia, labels
+    return best_labels
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    cols, rows = _load(train_csv)
+    n = len(rows)
+    if n == 0:
+        return []
+    inputs, _, _ = _columns(cols, rows)
+    if not inputs:
+        return [0] * n
+    X = [[r[c] for c in inputs] for r in rows]
+    k = min(K_FAMILIES, n)
+    return [int(l) for l in _kmeans(X, k)]
+
+
+def _dominates(a, b):
+    """a dominates b when a is at least as good everywhere and better somewhere.
+    Both vectors are oriented so that higher is better."""
+    return all(x >= y for x, y in zip(a, b)) and any(x > y for x, y in zip(a, b))
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together),
+    at most 5% of rows.
+
+    "Best on all goals together" is taken as the non-dominated (Pareto) front.
+    If the front is larger than the cap, the front rows are ranked by their
+    normalised goal sum and the top ones are kept.
+    """
+    cols, rows = _load(train_csv)
+    n = len(rows)
+    cap = int(BEST_FRACTION * n)
+    if n == 0 or cap == 0:
+        return []
+    _, maxi, mini = _columns(cols, rows)
+    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]
+    if not goals:
+        return []
+
+    # Orient every goal so that higher is better.
+    V = [[sgn * float(r[c]) for c, sgn in goals] for r in rows]
+
+    front = [i for i in range(n)
+             if not any(_dominates(V[j], V[i]) for j in range(n) if j != i)]
+
+    if len(front) > cap:
+        g = len(goals)
+        lo = [min(V[i][t] for i in range(n)) for t in range(g)]
+        hi = [max(V[i][t] for i in range(n)) for t in range(g)]
+
+        def score(i):
+            s = 0.0
+            for t in range(g):
+                span = hi[t] - lo[t]
+                s += (V[i][t] - lo[t]) / span if span > 0 else 1.0
+            return s
+
+        front.sort(key=lambda i: (-score(i), i))
+        front = front[:cap]
+
+    return sorted(front)
+```
+
+### step2.py
+```python
+"""step2.py: guess the performance and CPU cost of a flag set.
+
+Uses k-nearest-neighbour regression over the input (flag) columns. For each
+goal, the estimate is the median goal value of the nearest training rows, and
+the range is their 10th to 90th percentile, so it reflects how much similar
+flag sets disagree. Standard library only.
+"""
+import math
+
+from step1 import _load, _columns
+
+LOW_Q = 0.10
+HIGH_Q = 0.90
+
+
+def _quantile(sorted_vals, q):
+    """Linear-interpolated quantile of a non-empty sorted list."""
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    pos = q * (n - 1)
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
+    frac = pos - lo
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * frac
+
+
+def _as_float(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Return {goal: (estimate, low, high)} for every goal column of train_csv.
+
+    `row` is a flag set with its goal columns removed. The estimate is the
+    median goal value of the nearest training rows; low..high is their
+    10th..90th percentile range.
+    """
+    cols, rows = _load(train_csv)
+    inputs, maxi, mini = _columns(cols, rows)
+    goals = maxi + mini
+    n = len(rows)
+
+    if n == 0:
+        return {g: (0.0, -math.inf, math.inf) for g in goals}
+
+    # Scale each input by its span so that no column dominates the distance.
+    spans = {}
+    for c in inputs:
+        vals = [r[c] for r in rows]
+        spans[c] = max(vals) - min(vals)
+
+    x = {c: _as_float(row.get(c)) for c in inputs}
+
+    def dist(i):
+        s = 0.0
+        r = rows[i]
+        for c in inputs:
+            span = spans[c]
+            if span > 0:
+                s += ((x[c] - r[c]) / span) ** 2
+        return s
+
+    d = [dist(i) for i in range(n)]
+    order = sorted(range(n), key=lambda i: (d[i], i))
+    k = min(n, max(3, round(math.sqrt(n))))
+    near = order[:k]
+
+    out = {}
+    for g in goals:
+        vals = sorted(rows[i][g] for i in near if isinstance(rows[i][g], float))
+        if not vals:
+            out[g] = (0.0, -math.inf, math.inf)
+            continue
+        out[g] = (
+            _quantile(vals, 0.5),
+            _quantile(vals, LOW_Q),
+            _quantile(vals, HIGH_Q),
+        )
+    return out
+```
+
+### step3.py
+```python
+"""step3.py: are two sets of measurements (e.g. run times) really different?
+
+A difference is called real only if both checks pass:
+  1. Significance: a permutation test on the difference of medians gives
+     p < ALPHA, so the gap is unlikely to be run-to-run noise.
+  2. Practical size: |Cliff's delta| >= SMALL_DELTA, so a tiny but
+     significant gap is not reported as a real difference.
+Otherwise the gap is treated as noise. Standard library only.
+"""
+import random
+import statistics
+
+ALPHA = 0.05          # significance level for the permutation test
+SMALL_DELTA = 0.147   # Romano et al.'s threshold for a negligible effect
+N_PERM = 2000         # number of random permutations
+SEED = 1              # fixed seed so results are reproducible
+
+
+def same(xs, ys) -> bool:
+    """True if xs and ys are NOT really different (the gap is noise),
+    False if the difference is real."""
+    xs = [float(x) for x in xs]
+    ys = [float(y) for y in ys]
+    if not xs or not ys:
+        return True  # no evidence of any difference
+
+    # Effect size: Cliff's delta, in [-1, 1].
+    gt = lt = 0
+    for x in xs:
+        for y in ys:
+            if x > y:
+                gt += 1
+            elif x < y:
+                lt += 1
+    delta = (gt - lt) / (len(xs) * len(ys))
+    if abs(delta) < SMALL_DELTA:
+        return True  # negligible effect, whatever the p-value
+
+    # Significance: permutation test on the absolute difference of medians.
+    observed = abs(statistics.median(xs) - statistics.median(ys))
+    pooled = xs + ys
+    nx = len(xs)
+    rng = random.Random(SEED)
+    hits = 0
+    for _ in range(N_PERM):
+        rng.shuffle(pooled)
+        a = pooled[:nx]
+        b = pooled[nx:]
+        if abs(statistics.median(a) - statistics.median(b)) >= observed:
+            hits += 1
+    p = (hits + 1) / (N_PERM + 1)
+    return p >= ALPHA
+```
+
+Step 4: flow.
+The client asks:
+  - "As nightly benchmark results come in, tell me right away which ones are worth keeping."
+  - "Warn me as soon as tonight's results stop looking like last month's."
+
+Write step4.py defining exactly these functions:
+def stream(train_csv, rows) -> list[bool]
+    `rows` arrive one at a time, in order. For each, decide keep (True) or not, using only
+    train_csv and the rows before it. Keep the ones worth keeping (good on the goals).
+def drift(train_csv, rows) -> int | None
+    Index into `rows` of the first row at which you warn that new rows have stopped looking
+    like train_csv, or None if they never do.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step4.py in one ```python block.
