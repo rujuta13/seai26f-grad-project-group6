@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 16851,
+ "stop_reason": "end_turn",
+ "session_id": "1cfc8267-d9c1-411d-b504-03099d3e9859",
+ "total_cost_usd": 0.005853499999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 3259,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3823,
+  "output_tokens_details": {
+   "thinking_tokens": 2830
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3259,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3823,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3259,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 3259
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 3195,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00329,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3823,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3259,
+   "webSearchRequests": 0,
+   "costUSD": 0.0025635,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step2.py: guess the performance and CPU cost of a flag set.\n\nUses k-nearest-neighbour regression over the input (flag) columns. For each\ngoal, the estimate is the median goal value of the nearest training rows, and\nthe range is their 10th to 90th percentile, so it reflects how much similar\nflag sets disagree. Standard library only.\n\"\"\"\nimport math\n\nfrom step1 import _load, _columns\n\nLOW_Q = 0.10\nHIGH_Q = 0.90\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    n = len(sorted_vals)\n    if n == 1:\n        return sorted_vals[0]\n    pos = q * (n - 1)\n    lo = math.floor(pos)\n    hi = math.ceil(pos)\n    frac = pos - lo\n    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * frac\n\n\ndef _as_float(v, default=0.0):\n    try:\n        return float(v)\n    except (TypeError, ValueError):\n        return default\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal column of train_csv.\n\n    `row` is a flag set with its goal columns removed. The estimate is the\n    median goal value of the nearest training rows; low..high is their\n    10th..90th percentile range.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = maxi + mini\n    n = len(rows)\n\n    if n == 0:\n        return {g: (0.0, -math.inf, math.inf) for g in goals}\n\n    # Scale each input by its span so that no column dominates the distance.\n    spans = {}\n    for c in inputs:\n        vals = [r[c] for r in rows]\n        spans[c] = max(vals) - min(vals)\n\n    x = {c: _as_float(row.get(c)) for c in inputs}\n\n    def dist(i):\n        s = 0.0\n        r = rows[i]\n        for c in inputs:\n            span = spans[c]\n            if span > 0:\n                s += ((x[c] - r[c]) / span) ** 2\n        return s\n\n    d = [dist(i) for i in range(n)]\n    order = sorted(range(n), key=lambda i: (d[i], i))\n    k = min(n, max(3, round(math.sqrt(n))))\n    near = order[:k]\n\n    out = {}\n    for g in goals:\n        vals = sorted(rows[i][g] for i in near if isinstance(rows[i][g], float))\n        if not vals:\n            out[g] = (0.0, -math.inf, math.inf)\n            continue\n        out[g] = (\n            _quantile(vals, 0.5),\n            _quantile(vals, LOW_Q),\n            _quantile(vals, HIGH_Q),\n        )\n    return out\n```",
+ "ttft_ms": 13104,
+ "type": "result",
+ "duration_ms": 15999,
+ "uuid": "fc4fec05-37c6-433c-8337-5ad3a49a4cb4",
+ "ttft_stream_ms": 505,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
