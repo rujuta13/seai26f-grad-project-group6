@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 14836,
+ "stop_reason": "end_turn",
+ "session_id": "5d6a4712-8a39-4ecc-812a-d31aa7395774",
+ "total_cost_usd": 0.005214099999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 2882,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3211,
+  "output_tokens_details": {
+   "thinking_tokens": 2164
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2882,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3211,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2882,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 2882
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 2932,
+   "outputTokens": 20,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.003032,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3211,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2882,
+   "webSearchRequests": 0,
+   "costUSD": 0.0021820999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 2: guess how fast a flag set will run and how much CPU it costs.\n\nThe guess comes from the training rows whose flag settings are closest to\nthe given row. For each goal, the estimate is the median of those\nneighbours' values, and the range is their 10th to 90th percentile.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    n = len(sorted_vals)\n    if n == 1:\n        return sorted_vals[0]\n    pos = q * (n - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, n - 1)\n    frac = pos - lo\n    return sorted_vals[lo] * (1.0 - frac) + sorted_vals[hi] * frac\n\n\ndef _distance(row, other, cols):\n    \"\"\"Sum of absolute differences over the input columns both rows share.\"\"\"\n    d = 0.0\n    for c in cols:\n        a = row[c]\n        b = other.get(c)\n        if isinstance(a, float) and isinstance(b, float):\n            d += abs(a - b)\n        elif a != b:\n            d += 1.0\n    return d\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal in the training file.\n\n    `row` is a dict of input columns only (goal columns removed). The\n    estimate is the median goal value among the nearest training rows, and\n    low..high is their 10th..90th percentile range.\n    \"\"\"\n    header, rows = _load(train_csv)\n    goals = [c for c in header if _is_goal(c)]\n    if not goals:\n        return {}\n\n    n = len(rows)\n    if n == 0:\n        return {g: (0.0, 0.0, 0.0) for g in goals}\n\n    # Input columns that appear both in the training file and in the query row.\n    input_cols = [\n        c for c in header\n        if not _is_goal(c) and not c.endswith(\"X\") and c in row\n    ]\n\n    dists = [_distance(row, r, input_cols) for r in rows]\n    order = sorted(range(n), key=lambda i: (dists[i], i))\n    k = min(n, max(10, int(math.sqrt(n))))\n    nearest = order[:k]\n\n    out = {}\n    for g in goals:\n        vals = sorted(\n            rows[i][g] for i in nearest if isinstance(rows[i].get(g), float)\n        )\n        if len(vals) < 3:\n            # Too few usable neighbours: fall back to all training values.\n            vals = sorted(\n                r[g] for r in rows if isinstance(r.get(g), float)\n            )\n        if not vals:\n            out[g] = (0.0, 0.0, 0.0)\n            continue\n\n        est = _quantile(vals, 0.5)\n        low = min(_quantile(vals, 0.1), est)\n        high = max(_quantile(vals, 0.9), est)\n        out[g] = (float(est), float(low), float(high))\n\n    return out\n```",
+ "ttft_ms": 10293,
+ "type": "result",
+ "duration_ms": 13496,
+ "uuid": "d526064f-3f8d-49ae-9b44-cb822ce6ed0d",
+ "ttft_stream_ms": 444,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
