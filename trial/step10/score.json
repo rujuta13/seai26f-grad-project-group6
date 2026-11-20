@@ -1,0 +1,21 @@
+{
+ "domain": "ssw",
+ "step": 10,
+ "skill": "race",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "oracle": 0.8368677960051105,
+  "ours": 0.7685793647590862,
+  "random_search": 0.6778328766950354,
+  "stdlib_hill_climb": 0.7794690359598306,
+  "ours_predict_r2": 0.5364981030901732,
+  "linear_predict_r2": 0.6341921881086423,
+  "ours_predict_r2:Performance-": 0.8072045852204134,
+  "linear_predict_r2:Performance-": 0.9911050742118814,
+  "ours_predict_r2:Cpu-": 0.26579162095993314,
+  "linear_predict_r2:Cpu-": 0.2772793020054033
+ }
+}

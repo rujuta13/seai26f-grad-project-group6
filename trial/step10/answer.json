@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 71671,
+ "stop_reason": "end_turn",
+ "session_id": "23e00a01-e7ee-447c-bca4-8b1e6181a3bb",
+ "total_cost_usd": 0.0292493,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19973,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16883,
+  "output_tokens_details": {
+   "thinking_tokens": 13018
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19973,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16883,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19973,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19973
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16703,
+   "outputTokens": 22,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016812999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16883,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19973,
+   "webSearchRequests": 0,
+   "costUSD": 0.0124363,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 10: race. Benchmark our tuner (step7.choose) against a random search and a\nhand-written stdlib hill climb, and our guesser (step2.guess) against a stdlib\nridge regression, on test_csv.\n\nThe standard library ships no tuner and no regression model, so the two rivals\nare stand-ins written here with only the standard library:\n  - stdlib_hill_climb: greedy walk through the candidate pool. From the best build\n    benchmarked so far, benchmark the nearest unbenchmarked build in raw input\n    cells (fewest differing cells). This is a simple local-search tuner.\n  - linear_predict_r2: ridge-regularised least squares on the one-hot encoded\n    inputs (step1._encode), fitted on train_csv.\n\nTuning scores use the step1 scale on test_csv: each goal is min-max scaled over\nthe test builds with complete goal values (0 = worst, 1 = best) and averaged.\nEach method sees only the builds it benchmarks. The returned score is the true\nscore of the build it picks. \"oracle\" is the best true score in test_csv, an\nupper bound no method can exceed.\n\nPrediction scores are R^2 per goal on test_csv (higher is better). \"ours_predict_r2\"\nand \"linear_predict_r2\" are means over goals; per-goal keys carry a \":goal\" suffix.\n\nAll returned values are higher-is-better.\n\"\"\"\nimport csv\nimport math\nimport os\nimport random\nimport tempfile\n\nfrom step1 import _load, _encode\nfrom step2 import guess\nfrom step7 import choose, _scores\n\nBUDGET = 30    # benchmark builds allowed for each tuner\nSEED = 1       # fixed seed so results are reproducible\nRIDGE = 1e-6   # tiny ridge term keeps the least-squares system solvable\n\n\ndef _finite(v):\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _goal_values(row, goals):\n    \"\"\"Goal cells of a row as {name: float}, leaving out unusable cells.\"\"\"\n    out = {}\n    for c, _ in goals:\n        x = _finite(row.get(c))\n        if x is not None:\n            out[c] = x\n    return out\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal vector with higher always better, or None if any goal cell is unusable.\"\"\"\n    vals = []\n    for c, sign in goals:\n        x = _finite(row.get(c))\n        if x is None:\n            return None\n        vals.append(sign * x)\n    return vals\n\n\ndef _true_scores(rows, goals):\n    \"\"\"Step1-scale score of every row over all rows (None where unusable).\"\"\"\n    ori = [_oriented(r, goals) for r in rows]\n    usable = [o for o in ori if o is not None]\n    if not usable:\n        return [None] * len(rows)\n    k = len(goals)\n    lo = [min(o[j] for o in usable) for j in range(k)]\n    hi = [max(o[j] for o in usable) for j in range(k)]\n    out = []\n    for o in ori:\n        if o is None:\n            out.append(None)\n            continue\n        total = 0.0\n        for j in range(k):\n            span = hi[j] - lo[j]\n            if span > 0:\n                total += (o[j] - lo[j]) / span\n        out.append(total / k)\n    return out\n\n\ndef _truth_at(truth, i):\n    s = truth[i] if 0 <= i < len(truth) else None\n    return 0.0 if s is None else s\n\n\ndef _pick(labelled, goals, fallback):\n    \"\"\"Best benchmarked index under step7's scale, mirroring choose()'s final pick.\"\"\"\n    scores = _scores(labelled, goals)\n    if not scores:\n        return fallback\n    return max(scores, key=lambda i: (scores[i], -i))\n\n\ndef _random_search(n, label, goals, budget):\n    rng = random.Random(SEED)\n    picks = rng.sample(range(n), budget)\n    labelled = {i: label(i) for i in picks}\n    return _pick(labelled, goals, picks[0])\n\n\ndef _hill_climb(rows, inputs, label, goals, budget):\n    \"\"\"Stdlib stand-in tuner: walk to the nearest unbenchmarked build of the best so far.\"\"\"\n    n = len(rows)\n    rng = random.Random(SEED)\n    start = rng.randrange(n)\n    labelled = {start: label(start)}\n    while len(labelled) < budget:\n        best_i = _pick(labelled, goals, start)\n        base = rows[best_i]\n        cand = [i for i in range(n) if i not in labelled]\n        nxt = min(cand, key=lambda i: (sum(1 for c in inputs\n                                           if rows[i].get(c) != base.get(c)), i))\n        labelled[nxt] = label(nxt)\n    return _pick(labelled, goals, start)\n\n\ndef _write_blind(test_csv, goal_names, path):\n    \"\"\"Copy test_csv with every goal cell set to '?', keeping the header and row order.\"\"\"\n    with open(test_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        fields = reader.fieldnames or []\n        with open(path, \"w\", newline=\"\") as g:\n            writer = csv.DictWriter(g, fieldnames=fields, extrasaction=\"ignore\")\n            writer.writeheader()\n            for r in reader:\n                for c in goal_names:\n                    r[c] = \"?\"\n                writer.writerow(r)\n\n\ndef _solve(A, b):\n    \"\"\"Gauss-Jordan elimination with partial pivoting for a square system.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        if p == 0.0:\n            continue\n        for r in range(n):\n            if r != col:\n                f = M[r][col] / p\n                if f:\n                    for c in range(col, n + 1):\n                        M[r][c] -= f * M[col][c]\n    return [M[i][n] / M[i][i] if M[i][i] != 0.0 else 0.0 for i in range(n)]\n\n\ndef _ridge(X, y, p):\n    \"\"\"Ridge least squares weights for rows X (each of length p) and targets y.\"\"\"\n    A = [[0.0] * p for _ in range(p)]\n    b = [0.0] * p\n    for x, t in zip(X, y):\n        for i in range(p):\n            xi = x[i]\n            b[i] += xi * t\n            row = A[i]\n            for j in range(p):\n                row[j] += xi * x[j]\n    for i in range(p):\n        A[i][i] += RIDGE\n    return _solve(A, b)\n\n\ndef _r2(ys, preds):\n    if len(ys) < 2:\n        return 0.0\n    mean = sum(ys) / len(ys)\n    sst = sum((y - mean) ** 2 for y in ys)\n    if sst <= 0:\n        return 0.0\n    sse = sum((y - p) ** 2 for y, p in zip(ys, preds))\n    return 1.0 - sse / sst\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score each method on test_csv (higher is better). Keys:\n      'ours'               step7.choose, tuning on test builds, true score of the pick\n      'random_search'      random benchmarks, true score of the pick\n      'stdlib_hill_climb'  stdlib stand-in tuner, true score of the pick\n      'oracle'             best true score in test_csv (upper bound)\n      'ours_predict_r2'    step2.guess, mean R^2 over goals on test_csv\n      'linear_predict_r2'  stdlib ridge regression, mean R^2 over goals\n      plus per-goal prediction keys 'ours_predict_r2:<goal>' and\n      'linear_predict_r2:<goal>'.\n    \"\"\"\n    test_rows, inputs, goals = _load(test_csv)\n    n = len(test_rows)\n    if n == 0 or not goals:\n        return {\"ours\": 0.0, \"random_search\": 0.0, \"stdlib_hill_climb\": 0.0,\n                \"oracle\": 0.0, \"ours_predict_r2\": 0.0, \"linear_predict_r2\": 0.0}\n\n    # Tuning race.\n    truth = _true_scores(test_rows, goals)\n    results = {\"oracle\": max((s for s in truth if s is not None), default=0.0)}\n    budget = min(BUDGET, n)\n\n    def label(i):\n        return _goal_values(test_rows[i], goals)\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _write_blind(test_csv, [c for c, _ in goals], blind)\n        ours = choose(blind, label, budget=budget)\n\n    results[\"ours\"] = _truth_at(truth, ours)\n    results[\"random_search\"] = _truth_at(truth, _random_search(n, label, goals, budget))\n    results[\"stdlib_hill_climb\"] = _truth_at(\n        truth, _hill_climb(test_rows, inputs, label, goals, budget))\n\n    # Prediction race.\n    train_rows, train_inputs, train_goals = _load(train_csv)\n    train_names = {c for c, _ in train_goals}\n    names = [c for c, _ in goals if c in train_names]\n    ntr, nte = len(train_rows), n\n\n    enc = _encode(train_rows + test_rows, train_inputs)\n    Xall = [[1.0] + x for x in enc]\n    Xtr, Xte = Xall[:ntr], Xall[ntr:]\n    p = len(Xall[0]) if Xall else 1\n\n    guess_preds = [guess(train_csv, {c: r.get(c) for c in train_inputs})\n                   for r in test_rows]\n\n    per_goal = {}\n    for name in names:\n        tr_x, tr_y = [], []\n        for i, r in enumerate(train_rows):\n            y = _finite(r.get(name))\n            if y is not None:\n                tr_x.append(Xtr[i])\n                tr_y.append(y)\n        if tr_y:\n            w = _ridge(tr_x, tr_y, p)\n            lin = [sum(a * b for a, b in zip(w, x)) for x in Xte]\n        else:\n            lin = [0.0] * nte\n\n        idx, ys = [], []\n        for i, r in enumerate(test_rows):\n            y = _finite(r.get(name))\n            if y is not None:\n                idx.append(i)\n                ys.append(y)\n        g_pred = [guess_preds[i][name][0] for i in idx]\n        l_pred = [lin[i] for i in idx]\n        per_goal[name] = (_r2(ys, g_pred), _r2(ys, l_pred))\n\n    if per_goal:\n        g_vals = [g for g, _ in per_goal.values()]\n        l_vals = [l for _, l in per_goal.values()]\n        results[\"ours_predict_r2\"] = sum(g_vals) / len(g_vals)\n        results[\"linear_predict_r2\"] = sum(l_vals) / len(l_vals)\n        for name, (g, l) in per_goal.items():\n            results[f\"ours_predict_r2:{name}\"] = g\n            results[f\"linear_predict_r2:{name}\"] = l\n    else:\n        results[\"ours_predict_r2\"] = 0.0\n        results[\"linear_predict_r2\"] = 0.0\n\n    return results\n```",
+ "ttft_ms": 58723,
+ "type": "result",
+ "duration_ms": 70637,
+ "uuid": "742b2dc8-f20f-4ec5-83f4-47501f5e197f",
+ "ttft_stream_ms": 489,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
