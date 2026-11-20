@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 94038,
+ "stop_reason": "end_turn",
+ "session_id": "ac97104c-a806-458f-8938-ed8d77533a89",
+ "total_cost_usd": 0.0288258,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 16438,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 23194,
+  "output_tokens_details": {
+   "thinking_tokens": 19047
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16438,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 23194,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 16438,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 16438
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 13876,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.013941,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 23194,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16438,
+   "webSearchRequests": 0,
+   "costUSD": 0.0148848,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step10.py: race our tuner and guesser against simple rivals.\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every method.\n\nTuner race. test_csv is the pool of candidate builds. The tuners see only the\nflags; a goal is revealed only when a build is benchmarked. Each method may\nbenchmark at most BUDGET builds.\n  - ours: step7.choose.\n  - random_search: benchmark BUDGET random builds and keep the best measured.\n  - hill_climb: greedy local search in flag space. After each benchmark, the\n    next build is the unmeasured one with the fewest flag differences from the\n    best build measured so far.\n  The score of a chosen build is its goal sum over the test pool, with each goal\n  scaled to [0, 1] (1 = best on every goal), averaged over goals and SEEDS.\n\nGuesser race. Models are trained on train_csv and tested on test_csv.\n  - guess_ours: step2.guess, the median goal of the nearest flag sets.\n  - guess_linear: ordinary least squares on the numeric flags, solved with the\n    normal equations and a tiny ridge term.\n  The score is the mean R^2 over goals on test_csv (1 = perfect, 0 = no better\n  than predicting the test mean).\n\nThe standard library has no tuner and no ML model. The hill climber and the\nleast-squares fit are therefore written here with the standard library only.\nStandard library only.\n\"\"\"\nimport csv\nimport math\nimport os\nimport random\nimport tempfile\n\nimport step7\nfrom step1 import _load, _columns\nfrom step2 import guess\n\nBUDGET = 30            # benchmarks allowed per tuner per seed\nSEEDS = (1, 2, 3, 4, 5)\nRIDGE = 1e-6           # tiny ridge term on the linear model's non-intercept weights\n\n\n# ---------------------------------------------------------------- shared helpers\n\ndef _oriented(d, goals):\n    \"\"\"Goal vector of a dict or row, oriented so higher is better; None if unusable.\"\"\"\n    vec = []\n    for c, sgn in goals:\n        try:\n            x = float(d.get(c))\n        except (TypeError, ValueError):\n            return None\n        if not math.isfinite(x):\n            return None\n        vec.append(sgn * x)\n    return vec\n\n\ndef _quality(V, g):\n    \"\"\"Per-vector score in [0, 1]: the mean position of each goal between the\n    worst and best value in V (1 = best on every goal). None entries score 0.\"\"\"\n    usable = [v for v in V if v is not None]\n    if not usable:\n        return [0.0] * len(V)\n    lo = [min(v[t] for v in usable) for t in range(g)]\n    hi = [max(v[t] for v in usable) for t in range(g)]\n    out = []\n    for v in V:\n        if v is None:\n            out.append(0.0)\n            continue\n        s = 0.0\n        for t in range(g):\n            span = hi[t] - lo[t]\n            s += (v[t] - lo[t]) / span if span > 0 else 1.0\n        out.append(s / g)\n    return out\n\n\ndef _best_index(seen, g):\n    \"\"\"Index of the best measured build (normalised over measured builds only),\n    or None if nothing usable has been measured.\"\"\"\n    items = [(i, v) for i, v in sorted(seen.items()) if v is not None]\n    if not items:\n        return None\n    s = _quality([v for _, v in items], g)\n    k = max(range(len(items)), key=lambda k: (s[k], -items[k][0]))\n    return items[k][0]\n\n\ndef _chosen_quality(seen, q, g):\n    best = _best_index(seen, g)\n    return q[best] if best is not None else 0.0\n\n\nclass _Bench:\n    \"\"\"Benchmarks builds through label, at most `budget` times, and remembers them.\"\"\"\n\n    def __init__(self, label, goals, budget):\n        self._label = label\n        self._goals = goals\n        self._budget = budget\n        self.seen = {}\n\n    def __call__(self, i):\n        if i not in self.seen:\n            if len(self.seen) >= self._budget:\n                raise RuntimeError(\"benchmark budget exhausted\")\n            self.seen[i] = _oriented(self._label(i), self._goals)\n        return self.seen[i]\n\n\ndef _write_blind(cols, rows, goal_set, path):\n    \"\"\"Write rows with every goal cell replaced by '?' (a blind candidate pool).\"\"\"\n    with open(path, \"w\", newline=\"\") as f:\n        w = csv.DictWriter(f, fieldnames=cols)\n        w.writeheader()\n        for r in rows:\n            w.writerow({c: (\"?\" if c in goal_set else r[c]) for c in cols})\n\n\n# ---------------------------------------------------------------- tuners\n\ndef _run_ours(blind, label, seed):\n    \"\"\"step7.choose with its random seed set to `seed` (restored afterwards).\"\"\"\n    old = step7.SEED\n    step7.SEED = seed\n    try:\n        return step7.choose(blind, label, budget=BUDGET)\n    finally:\n        step7.SEED = old\n\n\ndef _random_search(n, bench, seed, budget):\n    rng = random.Random(seed)\n    for i in rng.sample(range(n), budget):\n        bench(i)\n\n\ndef _hill_climb(n, flags, bench, g, seed, budget):\n    \"\"\"Greedy local search: always benchmark the unmeasured build closest in\n    flags to the best build measured so far (random while nothing is usable).\"\"\"\n    rng = random.Random(seed)\n    bench(rng.randrange(n))\n    while len(bench.seen) < budget:\n        cur = _best_index(bench.seen, g)\n        unseen = [i for i in range(n) if i not in bench.seen]\n        if cur is None:\n            pick = rng.choice(unseen)\n        else:\n            dist = {i: sum(a != b for a, b in zip(flags[i], flags[cur]))\n                    for i in unseen}\n            m = min(dist.values())\n            pick = rng.choice([i for i in unseen if dist[i] == m])\n        bench(pick)\n\n\ndef _race_tuners(cols, rows, goals, flag_cols):\n    names = [c for c, _ in goals]\n    g = len(goals)\n    n = len(rows)\n    budget = min(BUDGET, n)\n    q = _quality([_oriented(r, goals) for r in rows], g)\n    flags = [tuple(r.get(c) for c in flag_cols) for r in rows]\n\n    def label(i):\n        return {c: rows[i][c] for c in names}\n\n    totals = {\"ours\": 0.0, \"random_search\": 0.0, \"hill_climb\": 0.0}\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _write_blind(cols, rows, set(names), blind)\n        for seed in SEEDS:\n            totals[\"ours\"] += q[_run_ours(blind, label, seed)]\n\n            bench = _Bench(label, goals, budget)\n            _random_search(n, bench, seed, budget)\n            totals[\"random_search\"] += _chosen_quality(bench.seen, q, g)\n\n            bench = _Bench(label, goals, budget)\n            _hill_climb(n, flags, bench, g, seed, budget)\n            totals[\"hill_climb\"] += _chosen_quality(bench.seen, q, g)\n    return {k: v / len(SEEDS) for k, v in totals.items()}\n\n\n# ---------------------------------------------------------------- guessers\n\ndef _solve(A, b):\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    n = len(b)\n    M = [list(row) + [b[i]] for i, row in enumerate(A)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        if abs(M[piv][col]) < 1e-12:\n            continue\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        M[col] = [x / p for x in M[col]]\n        for r in range(n):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col]\n                M[r] = [a - f * c for a, c in zip(M[r], M[col])]\n    return [M[i][n] for i in range(n)]\n\n\ndef _fit_one(X, y):\n    \"\"\"Least-squares weights for rows X (each starting with 1.0) and targets y.\"\"\"\n    d = len(X[0])\n    A = [[0.0] * d for _ in range(d)]\n    b = [0.0] * d\n    for x, t in zip(X, y):\n        for i in range(d):\n            b[i] += x[i] * t\n            for j in range(d):\n                A[i][j] += x[i] * x[j]\n    for i in range(1, d):\n        A[i][i] += RIDGE\n    return _solve(A, b)\n\n\ndef _predict(w, x):\n    return sum(a * b for a, b in zip(w, x))\n\n\ndef _r2(pairs):\n    \"\"\"R^2 of (truth, prediction) pairs.\"\"\"\n    if len(pairs) < 2:\n        return 0.0\n    ys = [y for y, _ in pairs]\n    mean = sum(ys) / len(ys)\n    sst = sum((y - mean) ** 2 for y in ys)\n    sse = sum((y - p) ** 2 for y, p in pairs)\n    if sst <= 0:\n        return 1.0 if sse == 0 else 0.0\n    return 1.0 - sse / sst\n\n\ndef _mean_r2(pairs_by_goal):\n    scores = [_r2(p) for p in pairs_by_goal.values() if p]\n    return sum(scores) / len(scores) if scores else 0.0\n\n\ndef _race_guessers(train_csv, rows, goal_names):\n    tcols, trows = _load(train_csv)\n    inputs, maxi, mini = _columns(tcols, trows)\n    train_goals = set(maxi + mini)\n    common = [g for g in goal_names if g in train_goals]\n\n    # Inputs are numeric in every training row (step1._columns guarantees it).\n    X_all = [[1.0] + [float(r[c]) for c in inputs] for r in trows]\n    models = {}\n    for g in common:\n        pts = [(x, float(r[g])) for x, r in zip(X_all, trows)\n               if isinstance(r[g], float) and math.isfinite(r[g])]\n        if pts:\n            models[g] = _fit_one([x for x, _ in pts], [y for _, y in pts])\n\n    guess_pairs = {g: [] for g in common}\n    lin_pairs = {g: [] for g in common}\n    for r in rows:\n        flags = {c: r.get(c) for c in inputs}\n        pred = guess(train_csv, flags)\n        x = [1.0] + [float(r[c]) if isinstance(r.get(c), float) else 0.0\n                     for c in inputs]\n        for g in common:\n            y = r.get(g)\n            if not (isinstance(y, float) and math.isfinite(y)):\n                continue\n            guess_pairs[g].append((y, pred[g][0]))\n            w = models.get(g)\n            lin_pairs[g].append((y, _predict(w, x) if w is not None else 0.0))\n\n    return {\"guess_ours\": _mean_r2(guess_pairs),\n            \"guess_linear\": _mean_r2(lin_pairs)}\n\n\n# ---------------------------------------------------------------- entry point\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our tuner (key \"ours\") and guesser against rivals on test_csv.\n\n    Tuner scores lie in [0, 1]; guesser scores are mean R^2 (at most 1).\n    Higher is better for every key.\n    \"\"\"\n    cols, rows = _load(test_csv)\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals or not rows:\n        raise ValueError(f\"{test_csv} needs goal columns and rows\")\n    flag_cols = [c for c in cols if not c.endswith((\"X\", \"+\", \"-\"))]\n\n    out = {}\n    out.update(_race_tuners(cols, rows, goals, flag_cols))\n    out.update(_race_guessers(train_csv, rows, [c for c, _ in goals]))\n    return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 81039,
+ "type": "result",
+ "duration_ms": 93191,
+ "uuid": "cfa37f6a-ad64-4b70-a114-0af4850711bd",
+ "ttft_stream_ms": 543,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
