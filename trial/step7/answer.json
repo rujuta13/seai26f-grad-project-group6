@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37106,
+ "stop_reason": "end_turn",
+ "session_id": "23603d89-0e51-477a-b998-fa968397ead0",
+ "total_cost_usd": 0.0175869,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12596,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8577,
+  "output_tokens_details": {
+   "thinking_tokens": 6277
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12596,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8577,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12596,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12596
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10689,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010779,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8577,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12596,
+   "webSearchRequests": 0,
+   "costUSD": 0.0068078999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step7.py: choose. Find a good flag set while benchmarking at most `budget` builds.\n\nblind_csv has the input cells of every candidate build, and every goal cell is '?'.\nGoals are only learned by calling label(i), which may be called at most `budget`\ntimes. The search spreads a first pass over the input space (farthest-point\nsampling), then alternates between refining near the current leader and\nexploring again. The leader is chosen with the same Pareto-then-mean-score rule\nas step1.best, applied to the builds measured so far. With `goal` set, only that\ngoal is optimised.\n\nReading, column splitting, feature scaling, distances, the seed, number checks and\nthe dominance test come from steps 1 and 4.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport random\n\nfrom step1 import _SEED, _columns, _dist2, _features, _num, _read\nfrom step4 import _dominates\n\nEXPLORE_SHARE = 0.5     # share of the budget spent on the first, spread-out pass\nEXPLOIT_EVERY = 3       # every third follow-up benchmark explores instead of refining\n\n\ndef _value(v) -> float | None:\n    \"\"\"Return v as a finite float, or None if it is not a usable number.\"\"\"\n    if isinstance(v, bool):\n        return None\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return _num(x)\n\n\ndef _resolve_goal(goal, goals: list[str]) -> str:\n    \"\"\"Accept a full goal column name, or the name without its trailing + or -.\"\"\"\n    if goal in goals:\n        return goal\n    hits = [g for g in goals if g[:-1] == goal and g[-1:] in (\"+\", \"-\")]\n    if len(hits) == 1:\n        return hits[0]\n    raise ValueError(f\"unknown goal {goal!r}; goals are {goals}\")\n\n\ndef _signed(got: dict, active: list[str], sign: list[float]) -> list[float]:\n    \"\"\"Signed goal vector for one measured build: larger is better on every axis.\n    A missing or non-numeric goal counts as the worst possible value.\"\"\"\n    out = []\n    for g, s in zip(active, sign):\n        v = _value(got.get(g))\n        out.append(s * v if v is not None else -math.inf)\n    return out\n\n\ndef _scores(obs: dict[int, list[float]], m: int) -> dict[int, float]:\n    \"\"\"Mean min-max-normalised score per measured build, bounds taken from the\n    measured builds only. Missing values score 0, as in step1.best.\"\"\"\n    norm = {i: [0.0] * m for i in obs}\n    for j in range(m):\n        col = [(i, v[j]) for i, v in obs.items() if math.isfinite(v[j])]\n        if not col:\n            continue\n        xs = [x for _, x in col]\n        lo, hi = min(xs), max(xs)\n        span = hi - lo\n        for i, x in col:\n            norm[i][j] = (x - lo) / span if span > 0 else 1.0\n    return {i: sum(v) / m for i, v in norm.items()}\n\n\ndef _leader(obs: dict[int, list[float]], m: int) -> int:\n    \"\"\"Best measured build: the top of the Pareto front over the measured builds,\n    ordered by mean normalised score. With one goal this is the best value.\"\"\"\n    score = _scores(obs, m)\n    front = [\n        i for i in obs\n        if not any(_dominates(obs[j], obs[i]) for j in obs if j != i)\n    ]\n    return min(front, key=lambda i: (-score[i], i))\n\n\ndef _nearest(target: int, candidates: list[int], feats: list[list[float]]) -> int:\n    \"\"\"Unmeasured candidate whose inputs are closest to the target's inputs.\"\"\"\n    return min(candidates, key=lambda i: (_dist2(feats[i], feats[target]), i))\n\n\ndef _farthest(candidates: list[int], measured: list[int],\n              feats: list[list[float]]) -> int:\n    \"\"\"Unmeasured candidate whose inputs are farthest from every measured build.\"\"\"\n    return max(\n        candidates,\n        key=lambda i: (min(_dist2(feats[i], feats[j]) for j in measured), -i),\n    )\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best build found while calling label at most `budget` times.\n\n    blind_csv: a MOOT csv whose goal cells are all '?'.\n    label(i): returns the goals of row i as a dict {goal column: value}.\n    budget: the most label calls allowed. Going over raises RuntimeError.\n    goal: optional goal column name (or its name without the trailing + or -).\n          When given, only that goal is optimised. When None, all goals are\n          optimised by Pareto fronts, as in step1.best.\n    \"\"\"\n    if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:\n        raise ValueError(\"budget must be a positive integer\")\n\n    header, rows = _read(str(blind_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no rows\")\n    if not goals:\n        raise ValueError(\"blind_csv has no goal columns\")\n\n    if goal is None:\n        active = list(goals)\n    else:\n        active = [_resolve_goal(goal, goals)]\n    m = len(active)\n    sign = [1.0 if g in gmax else -1.0 for g in active]\n\n    limit = min(budget, n)\n    feats = _features(rows, inputs)\n\n    obs: dict[int, list[float]] = {}\n    calls = 0\n\n    def measure(i: int) -> None:\n        nonlocal calls\n        if calls >= budget:\n            raise RuntimeError(\"label budget exhausted\")\n        calls += 1\n        got = label(i) or {}\n        obs[i] = _signed(got, active, sign)\n\n    # First pass: spread the measurements over the input space.\n    explore_n = min(limit, max(1, math.ceil(limit * EXPLORE_SHARE)))\n    rng = random.Random(_SEED)\n    measure(rng.randrange(n))\n    while len(obs) < explore_n:\n        rest = [i for i in range(n) if i not in obs]\n        if not rest:\n            break\n        measure(_farthest(rest, list(obs), feats))\n\n    # Remaining budget: mostly refine near the current leader, sometimes explore.\n    step = 0\n    while len(obs) < limit:\n        rest = [i for i in range(n) if i not in obs]\n        if not rest:\n            break\n        step += 1\n        if step % EXPLOIT_EVERY == 0:\n            nxt = _farthest(rest, list(obs), feats)\n        else:\n            nxt = _nearest(_leader(obs, m), rest, feats)\n        measure(nxt)\n\n    return _leader(obs, m)\n```",
+ "ttft_ms": 28958,
+ "type": "result",
+ "duration_ms": 36005,
+ "uuid": "b1a8e18c-a7df-401b-933e-8eaa44aa167c",
+ "ttft_stream_ms": 456,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
