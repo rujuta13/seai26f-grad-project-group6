@@ -1,0 +1,10 @@
+{
+ "domain": "ssw",
+ "step": 9,
+ "skill": "spot",
+ "ok": true,
+ "score": 0.2,
+ "baseline": 0.05,
+ "better": "higher",
+ "extra": {}
+}
