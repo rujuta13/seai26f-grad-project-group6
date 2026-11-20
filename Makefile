@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28
+.PHONY: data test loc step1 step2 step3 step4 step5 step6 step7 step8 step9 step10 step11 step12 step13 step14 step15 step16 step17 step18 step19 step20 step21 step22 step23 step24 step25 step26 step27 step28 step29
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
@@ -95,3 +95,6 @@ step27: data     ## choose (marketing): best customers from 50 test mailings
 
 step28: data     ## fix (marketing): nudge a slipping customer, offer to a deal-only one
 	PYTHONPATH=src $(PY) -m domains.marketing.step28
+
+step29: data     ## spot (marketing): doubtful customer records, customers unlike anyone else
+	PYTHONPATH=src $(PY) -m domains.marketing.step29
