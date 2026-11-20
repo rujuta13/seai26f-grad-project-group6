@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 26302,
+ "stop_reason": "end_turn",
+ "session_id": "ed703296-55c8-49cb-83ab-6f8e0ef4ceff",
+ "total_cost_usd": 0.010592500000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6699,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6051,
+  "output_tokens_details": {
+   "thinking_tokens": 4299
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6699,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6051,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6699,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6699
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6157,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006227,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6051,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6699,
+   "webSearchRequests": 0,
+   "costUSD": 0.0043655000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 5: which input columns are to blame for bad rows.\n\nA row is \"bad\" when it is poor on the goals taken together. Each goal is\nnormalised over the training rows, with its orientation fixed so that higher\nis better. A row's badness is 1 minus its mean normalised goal value, so 0\nmeans best on every goal and 1 means worst on every goal. Rows missing a goal\nvalue are left out.\n\nFor each input column, the scored rows are grouped by their value in that\ncolumn. Numeric columns with many distinct values are binned by rank. The\ncolumn's blame is the share of badness variance explained by the groups whose\nmean badness is above the overall mean (eta squared, one-sided). A column\nscores high when some of its values are reliably associated with bad rows.\nColumns are returned most to blame first, with ties kept in file order.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\n_MAX_LEVELS = 8   # numeric inputs with more distinct values are rank-binned\n_BINS = 4\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _goals(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _scores(rows, goals):\n    \"\"\"Return (scored_indices, badness) for rows with all goal values finite.\"\"\"\n    if not goals:\n        return [], []\n\n    vecs = []\n    for r in rows:\n        vec = []\n        for c, sg in goals:\n            f = _finite(r.get(c))\n            if f is None:\n                vec = None\n                break\n            vec.append(sg * f)\n        vecs.append(vec)\n\n    idx = [i for i, v in enumerate(vecs) if v is not None]\n    if not idx:\n        return [], []\n\n    g = len(goals)\n    lo = [min(vecs[i][j] for i in idx) for j in range(g)]\n    hi = [max(vecs[i][j] for i in idx) for j in range(g)]\n\n    bad = []\n    for i in idx:\n        total = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            total += 1.0 if span == 0 else (vecs[i][j] - lo[j]) / span\n        bad.append(1.0 - total / g)\n    return idx, bad\n\n\ndef _keys(raw):\n    \"\"\"Group keys for one input column over the scored rows.\"\"\"\n    raw = [\n        None if (isinstance(v, float) and not math.isfinite(v)) else v\n        for v in raw\n    ]\n    floats = [i for i, v in enumerate(raw) if isinstance(v, float)]\n    distinct = {raw[i] for i in floats}\n\n    bins = {}\n    if len(distinct) > _MAX_LEVELS:\n        order = sorted(floats, key=lambda i: (raw[i], i))\n        m = len(order)\n        for rank, i in enumerate(order):\n            bins[i] = rank * _BINS // m\n\n    keys = []\n    for i, v in enumerate(raw):\n        if v is None:\n            keys.append((\"missing\", None))\n        elif isinstance(v, float):\n            keys.append((\"bin\", bins[i]) if i in bins else (\"num\", v))\n        else:\n            keys.append((\"str\", v))\n    return keys\n\n\ndef _blame_score(scores, keys):\n    \"\"\"One-sided eta squared: variance share of groups worse than average.\"\"\"\n    n = len(scores)\n    if n == 0:\n        return 0.0\n    mu = sum(scores) / n\n    sst = sum((s - mu) ** 2 for s in scores)\n    if sst <= 0.0:\n        return 0.0\n\n    groups = {}\n    for s, k in zip(scores, keys):\n        t = groups.setdefault(k, [0, 0.0])\n        t[0] += 1\n        t[1] += s\n\n    ssb = 0.0\n    for cnt, tot in groups.values():\n        m = tot / cnt\n        if m > mu:\n            ssb += cnt * (m - mu) ** 2\n    return ssb / sst\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Input columns are every column that is not a goal ('+' or '-') and not\n    ignored ('X'). Ties keep their order in the file.\n    \"\"\"\n    header, rows = _load(train_csv)\n    inputs = [c for c in header if not _is_goal(c) and not c.endswith(\"X\")]\n    if not inputs:\n        return []\n\n    goals = _goals(header)\n    idx, bad = _scores(rows, goals)\n\n    position = {c: p for p, c in enumerate(header)}\n    score = {}\n    for c in inputs:\n        raw = [rows[i].get(c) for i in idx]\n        score[c] = _blame_score(bad, _keys(raw))\n\n    return sorted(inputs, key=lambda c: (-score[c], position[c]))\n```",
+ "ttft_ms": 20085,
+ "type": "result",
+ "duration_ms": 25454,
+ "uuid": "142f64c2-eeb7-4528-a1c6-943b9e416bd0",
+ "ttft_stream_ms": 495,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
