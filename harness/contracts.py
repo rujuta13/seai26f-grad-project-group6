@@ -318,12 +318,22 @@ def score_fix(m, env, n=10):
 def score_spot(m, env, n_bad=10):
     rng, header = random.Random(SEED), env["header"]
     gs = goals(header)
+    h, full = env["heaven"], env["full"]
+    sd = {g: statistics.pstdev(r[g] for r in full) for g in gs}
     rows = [dict(r) for r in rng.sample(env["test"], len(env["test"]) - n_bad)]
     bad = []
-    for r in rng.sample(env["test"], n_bad):
+    # Glitches stay inside the file's normal range, so a range check alone can't catch
+    # them: spotting them needs a model of how goals follow from inputs.
+    for i, r in enumerate(rng.sample(env["test"], n_bad)):
         r = dict(r)
-        g = rng.choice(gs)
-        r[g] = r[g] * 10 if r[g] else 999999.0       # a glitch: one goal off by 10x
+        if i % 2 == 0:   # a mixed-up record: goals copied from a very different row
+            far = max(rng.sample(full, 50), key=lambda s: abs(h(s) - h(r)))
+            for g in gs:
+                r[g] = far[g]
+        else:            # a shifted measurement: one goal moved by 1.5 sd, kept in range
+            g = rng.choice(gs)
+            step = 1.5 * sd[g] * (1 if r[g] < h.lo[g] + (h.hi[g] - h.lo[g]) / 2 else -1)
+            r[g] = min(h.hi[g], max(h.lo[g], r[g] + step))
         bad.append(r)
     allrows = rows + bad
     order = list(range(len(allrows)))
