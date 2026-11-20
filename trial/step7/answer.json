@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49542,
+ "stop_reason": "end_turn",
+ "session_id": "c52d3c11-39eb-4e3f-938a-b65b0d4bd0fe",
+ "total_cost_usd": 0.019692599999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12977,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11834,
+  "output_tokens_details": {
+   "thinking_tokens": 9612
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12977,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11834,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12977,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12977
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11090,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011179999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11834,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12977,
+   "webSearchRequests": 0,
+   "costUSD": 0.0085126,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 7: choose. Find a good flag set while benchmarking only a limited number of builds.\n\nMethod: an adaptive search that labels rows one at a time through `label`.\n  1. Explore: spend about 40% of the budget on rows spread across the input\n     space (farthest-point sampling over step1's flag features), so the search\n     sees the whole landscape before committing.\n  2. Exploit: for each unlabelled candidate, predict its goal total from the\n     nearest measured rows (distance-weighted k-nearest-neighbour), add a bonus\n     for being far from anything measured, and label the candidate with the\n     highest combined score. Each round labels exactly one new row.\n\nGoals are direction-aware and min-max normalised over the measured rows; a\nmissing value counts as worst. With goal=None all goals are summed (as in\nstep1.best). With one goal named, only that goal is optimised. The returned\nindex is the best measured row, ties going to the lower index.\n\"\"\"\n\nimport heapq\nimport math\nimport random\n\nimport step1\n\n_SEED = 12345            # fixed seed so results are reproducible\n_EXPLORE_FRACTION = 0.4  # share of the budget spent on spread-out exploration\n_NEIGHBOURS = 5          # measured neighbours used for each prediction\n_KAPPA = 0.5             # weight of the distance (uncertainty) bonus\n_EPS = 1e-9\n\n\ndef _resolve_goals(goal, goals_max, goals_min):\n    \"\"\"Return [(goal name, sign)] to optimise. A bare name such as 'Cpu' matches 'Cpu-'.\"\"\"\n    every = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    if goal is None:\n        return every\n    for g, sign in every:\n        if g == goal:\n            return [(g, sign)]\n    matches = [(g, sign) for g, sign in every if g[:-1] == goal]\n    if len(matches) == 1:\n        return matches\n    raise ValueError(f\"goal {goal!r} is not a goal column; goals are \"\n                     f\"{[g for g, _ in every]}\")\n\n\ndef _num(v):\n    \"\"\"Finite float for v, or None if v is missing or not a number.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _totals(measured, goals):\n    \"\"\"Normalised goal total per measured row (higher is better).\n\n    measured: {row index: {goal: raw value or None}}. Each goal is signed so\n    that higher is better, scaled to [0, 1] over the measured rows, and summed.\n    Missing values count as 0 (worst).\n    \"\"\"\n    totals = {i: 0.0 for i in measured}\n    for g, sign in goals:\n        present = [sign * d[g] for d in measured.values() if d[g] is not None]\n        if not present:\n            continue\n        lo, hi = min(present), max(present)\n        span = hi - lo\n        for i, d in measured.items():\n            if d[g] is None:\n                continue\n            x = sign * d[g]\n            totals[i] += (x - lo) / span if span > 0 else 1.0\n    return totals\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, labelling at most `budget` rows.\n\n    blind_csv: MOOT csv whose goal cells are '?'; only its input columns are used.\n    label(i): returns the goals of row i as a dict {goal: value}. It is called at\n        most `budget` times (a row is never labelled twice).\n    goal: optional goal name (e.g. 'Performance-' or 'Performance'); when given,\n        only that goal is optimised.\n    \"\"\"\n    header, rows = step1._read(blind_csv)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no data rows\")\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = _resolve_goals(goal, goals_max, goals_min)\n    if not goals:\n        raise ValueError(\"blind_csv has no goal columns (names ending in + or -)\")\n\n    feats = step1._features(rows, inputs)\n    budget = min(budget, n)\n\n    measured = {}                      # row index -> {goal: value or None}\n    unlabelled = set(range(n))\n    dmin = [math.inf] * n              # squared distance to nearest measured row\n\n    def measure(i):\n        if len(measured) >= budget:\n            raise RuntimeError(\"label budget exhausted\")\n        got = label(i) or {}\n        measured[i] = {g: _num(got.get(g)) for g, _ in goals}\n        unlabelled.discard(i)\n        fi = feats[i]\n        for j in range(n):\n            d = step1._dist2(feats[j], fi)\n            if d < dmin[j]:\n                dmin[j] = d\n\n    # Phase 1: spread-out exploration.\n    rng = random.Random(_SEED)\n    n_explore = min(budget, max(1, round(budget * _EXPLORE_FRACTION)))\n    measure(rng.randrange(n))\n    while len(measured) < n_explore and unlabelled:\n        j = max(sorted(unlabelled), key=lambda k: dmin[k])\n        measure(j)\n\n    # Phase 2: predict-and-probe, one row per round.\n    while len(measured) < budget and unlabelled:\n        totals = _totals(measured, goals)\n        vals = list(totals.values())\n        spread = (max(vals) - min(vals)) if max(vals) > min(vals) else 1.0\n\n        cand = []  # (predicted total, distance to measured set, row index)\n        for j in sorted(unlabelled):\n            near = heapq.nsmallest(\n                _NEIGHBOURS,\n                ((step1._dist2(feats[j], feats[i]), i) for i in measured),\n            )\n            wsum = sum(1.0 / (d + _EPS) for d, _ in near)\n            pred = sum(totals[i] / (d + _EPS) for d, i in near) / wsum\n            cand.append((pred, math.sqrt(dmin[j]), j))\n\n        dmax = max(u for _, u, _ in cand) or 1.0\n        best_j, best_score = None, -math.inf\n        for pred, unc, j in cand:\n            score = pred + _KAPPA * spread * unc / dmax\n            if score > best_score:\n                best_j, best_score = j, score\n        measure(best_j)\n\n    totals = _totals(measured, goals)\n    return min(measured, key=lambda i: (-totals[i], i))\n```",
+ "ttft_ms": 42326,
+ "type": "result",
+ "duration_ms": 48624,
+ "uuid": "6f1814d6-bcf9-41a2-9fff-70c116aebc92",
+ "ttft_stream_ms": 533,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
