@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 38603,
+ "stop_reason": "end_turn",
+ "session_id": "0d541c37-64db-4956-a3b2-b075c4f0326b",
+ "total_cost_usd": 0.0081501,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 2947,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9067,
+  "output_tokens_details": {
+   "thinking_tokens": 7369
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2947,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9067,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2947,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 2947
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 2952,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.003027,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9067,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2947,
+   "webSearchRequests": 0,
+   "costUSD": 0.0051231,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\n\nfrom step1 import _load\n\nNEIGHBOURS = 15   # how many nearest training rows inform the guess\nTAIL = 0.10       # interval core is the 10th..90th percentile of neighbour values\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _column_kinds(rows, inputs):\n    \"\"\"Mirror step1's encoding: numeric columns stay numeric, others are one-hot.\"\"\"\n    kinds, cats = {}, {}\n    for c in inputs:\n        raw = [r[c] for r in rows]\n        try:\n            for v in raw:\n                float(v)\n            kinds[c] = \"num\"\n        except (TypeError, ValueError):\n            kinds[c] = \"cat\"\n            cats[c] = sorted({_text(v) for v in raw})\n    return kinds, cats\n\n\ndef _medians(rows, inputs, kinds):\n    med = {}\n    for c in inputs:\n        if kinds[c] == \"num\":\n            vals = sorted(float(r[c]) for r in rows)\n            med[c] = vals[len(vals) // 2] if vals else 0.0\n    return med\n\n\ndef _vector(values, inputs, kinds, cats, med):\n    out = []\n    for c in inputs:\n        x = values.get(c)\n        if kinds[c] == \"num\":\n            try:\n                out.append(float(x))\n            except (TypeError, ValueError):\n                out.append(med[c])   # unusable query cell: fall back to training median\n        else:\n            s = _text(x)\n            out.extend(1.0 if s == cat else 0.0 for cat in cats[c])\n    return out\n\n\ndef _quantile(vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty ascending list.\"\"\"\n    pos = q * (len(vals) - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, len(vals) - 1)\n    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo)\n\n\ndef _weighted_median(pairs):\n    \"\"\"pairs: list of (value, weight) with positive weights.\"\"\"\n    pairs = sorted(pairs)\n    total = sum(w for _, w in pairs)\n    acc = 0.0\n    for v, w in pairs:\n        acc += w\n        if acc >= total / 2:\n            return v\n    return pairs[-1][0]\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a flag set `row` (goal columns already removed).\n\n    Method: nearest-neighbour regression over the training rows.\n      - estimate: distance-weighted median of the nearest training rows' goal values\n      - core interval: 10th..90th percentile of those neighbours' values\n      - widened by a margin that grows when the query is unlike its neighbours\n        (novelty) and when the goal varies a lot across the whole training set.\n    Returns {goal: (estimate, low, high)} with low <= estimate <= high.\n    \"\"\"\n    rows, inputs, goals = _load(train_csv)\n    names = [c for c, _ in goals]\n    n = len(rows)\n    if not names:\n        return {}\n    if n == 0:\n        return {c: (0.0, 0.0, 0.0) for c in names}\n\n    kinds, cats = _column_kinds(rows, inputs)\n    med = _medians(rows, inputs, kinds)\n    X = [_vector(r, inputs, kinds, cats, med) for r in rows]\n    q = _vector(row, inputs, kinds, cats, med)\n    F = len(q)\n\n    if F:\n        d = [sum((a - b) * (a - b) for a, b in zip(x, q)) for x in X]\n        order = sorted(range(n), key=lambda i: (d[i], i))\n        nb = order[:min(NEIGHBOURS, n)]\n        w = {i: 1.0 / (1.0 + d[i]) for i in nb}\n        mean_d = sum(d[i] for i in nb) / len(nb)\n        # Roughly the fraction of features on which the query differs from its neighbours.\n        nov = min(1.0, math.sqrt(mean_d) / math.sqrt(F))\n    else:\n        # No usable inputs: know nothing about the row, use the whole training set, wide interval.\n        nb = list(range(n))\n        w = {i: 1.0 for i in nb}\n        nov = 1.0\n\n    out = {}\n    for name in names:\n        y = [float(r[name]) for r in rows]\n        span = max(y) - min(y)\n\n        est = _weighted_median([(y[i], w[i]) for i in nb])\n        vals = sorted(y[i] for i in nb)\n        lo_q = _quantile(vals, TAIL)\n        hi_q = _quantile(vals, 1.0 - TAIL)\n\n        margin = 0.02 * abs(est) + span * (0.05 + 0.25 * nov)\n        low = min(lo_q, est) - margin\n        high = max(hi_q, est) + margin\n        out[name] = (float(est), float(low), float(high))\n    return out\n```",
+ "ttft_ms": 32788,
+ "type": "result",
+ "duration_ms": 37848,
+ "uuid": "96a998e0-f35b-40da-9f0f-9e63a5039e5b",
+ "ttft_stream_ms": 458,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
