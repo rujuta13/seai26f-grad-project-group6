@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 13711,
+ "stop_reason": "end_turn",
+ "session_id": "9c181579-a888-4b78-836c-8d4dbdc22b7d",
+ "total_cost_usd": 0.008017300000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5778,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3053,
+  "output_tokens_details": {
+   "thinking_tokens": 2143
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5778,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3053,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5778,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5778
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5260,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005335,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3053,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5778,
+   "webSearchRequests": 0,
+   "costUSD": 0.0026823000000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 3: certify whether two sets of measurements really differ.\n\nMethod: a two-sided permutation test on the difference of medians. It makes no\nnormality assumption and is robust to outliers. A difference counts as real only\nwhen it is both statistically significant (p < _ALPHA) and non-negligible in\nsize (|Cliff's delta| >= _MIN_DELTA). Otherwise the gap is treated as noise.\n\"\"\"\n\nimport math\nimport random\nimport statistics\n\n_ALPHA = 0.05          # significance level for the permutation test\n_PERMUTATIONS = 2000   # number of random relabellings\n_MIN_DELTA = 0.147     # Cliff's delta threshold for a \"small\" effect (Romano et al.)\n_SEED = 12345          # fixed seed so results are reproducible\n\n\ndef _clean(xs):\n    \"\"\"Return the finite numeric values of xs as floats; other entries are dropped.\"\"\"\n    out = []\n    for x in xs:\n        try:\n            v = float(x)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(v):\n            out.append(v)\n    return out\n\n\ndef _cliffs_delta(xs, ys):\n    \"\"\"Cliff's delta in [-1, 1]: P(x > y) - P(x < y) over all pairs.\"\"\"\n    greater = 0\n    less = 0\n    for x in xs:\n        for y in ys:\n            if x > y:\n                greater += 1\n            elif x < y:\n                less += 1\n    return (greater - less) / (len(xs) * len(ys))\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the gap between xs and ys is noise, False if the difference is real.\n\n    xs, ys: lists of numbers (e.g. run times). Non-numeric and non-finite\n    entries are ignored. With no usable data on either side there is no\n    evidence of a difference, so the answer is True.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        return True\n\n    observed = abs(statistics.median(a) - statistics.median(b))\n    if observed == 0.0:\n        return True\n\n    na = len(a)\n    pooled = a + b\n    rng = random.Random(_SEED)\n    hits = 0\n    for _ in range(_PERMUTATIONS):\n        rng.shuffle(pooled)\n        d = abs(statistics.median(pooled[:na]) - statistics.median(pooled[na:]))\n        if d >= observed or math.isclose(d, observed):\n            hits += 1\n    p_value = (hits + 1) / (_PERMUTATIONS + 1)\n\n    if p_value >= _ALPHA:\n        return True\n    return abs(_cliffs_delta(a, b)) < _MIN_DELTA\n```",
+ "ttft_ms": 10290,
+ "type": "result",
+ "duration_ms": 13012,
+ "uuid": "f0c0d6b2-f9ac-418a-a390-91255bcbd252",
+ "ttft_stream_ms": 471,
+ "time_to_request_ms": 33,
+ "queued_turn_count": 0
+}
