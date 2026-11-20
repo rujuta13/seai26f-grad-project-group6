@@ -1,5 +1,7 @@
 """Fix: the fewest changes that turn a bad row into a good one."""
-from guess import guess
+import statistics
+
+from guess import guess, near
 from justify import averages
 from table import Row
 
@@ -45,3 +47,16 @@ def improve(t, row, found, good, frozen=(), most=3, floor=0.5):
     for _, _, _, med, at in changes:
         cells[at] = med
     return ([(n, v, m) for _, n, v, m, _ in changes], Row(cells, tuple(c.norm(cells[c.at]) for c in t.x), row.y)) if changes else None
+
+
+def evaluate(t, rng, pool, ref, found, good, want, frozen, ask, who, things, goal=0, trials=60):
+    """Make a plan for `trials` of the `pool` rows, then check each the only honest way available: do
+    the real rows in `ref` (never used by the plan) most like the changed row reach `want` on `goal`?"""
+    name, at = t.y[goal].name, t.y[goal].at
+    done = [(r, improve(t, r, found, good, frozen)) for r in rng.sample(pool, min(trials, len(pool)))]
+    done = [(r, p) for r, p in done if p]
+    before, after = [near(t, ref, r, goal=goal) for r, _ in done], [near(t, ref, p[1], goal=goal) for _, p in done]
+    print(f"ask {ask}: {things} {who}; target: {name} of {want:.0f}+; {len(done)} of {min(trials, len(pool))} fall short on a rating we can move")
+    print(f"  similar real {things}' median {name}: {statistics.median(before):.0f} before, {statistics.median(after):.0f} after; "
+          f"{sum(a >= want for a in after) / len(done):.0%} reach the target after, {sum(b >= want for b in before) / len(done):.0%} before")
+    print("  e.g. " + ", ".join(f"{n} {a:.0f} -> {b:.0f}" for n, a, b in done[0][1][0]) + "\n")
