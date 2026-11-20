@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 60587,
+ "stop_reason": "end_turn",
+ "session_id": "8c7cd928-578f-4829-ac65-ab9208510a9d",
+ "total_cost_usd": 0.0192859,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11321,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14295,
+  "output_tokens_details": {
+   "thinking_tokens": 12139
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11321,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14295,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11321,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11321
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9804,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009874,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14295,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11321,
+   "webSearchRequests": 0,
+   "costUSD": 0.0094119,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step6.py: justify the recommended flag set and rate single builds.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers and\nthe Pareto-front selection best()), step2 (training model), step4 (goal\nscores of one row against the training ranges) and step5 (input blame).\n\nexplain() states the rules in plain words and lists checks a sceptical\nreader can repeat by hand. why() rates one build from its goal scores.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport statistics\n\nfrom step1 import _classify, _read, _to_float, best\nfrom step2 import _model\nfrom step4 import _context, _row_scores, _score\nfrom step5 import blame\n\n_TOP_BLAME = 5\n_MIN_ROWS_FOR_FRONT = 20  # best() keeps 5% of rows, so fewer rows give nothing\n\n\ndef _median_of(rows: list[list[str]], j: int) -> float | None:\n    vals = [_to_float(r[j]) for r in rows]\n    ok = [v for v in vals if v is not None and not math.isnan(v)]\n    return statistics.median(ok) if ok else None\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language rules behind the recommended flag set, with checks.\"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    if not rows or not goals or not inputs:\n        return (\"Nothing to explain: the file needs rows, goal columns \"\n                \"and input columns.\")\n    picked = best(key)\n    if not picked:\n        return (\"Nothing to explain: too few rows to select good ones \"\n                f\"(need at least {_MIN_ROWS_FOR_FRONT}).\")\n\n    ctx = _context(key)\n    good = [rows[i] for i in picked]\n    lines: list[str] = []\n\n    goal_desc = \", \".join(\n        f\"{name} ({'maximised' if sign > 0 else 'minimised'})\"\n        for name, sign in zip(ctx[\"goal_names\"], ctx[\"signs\"])\n    )\n    lines.append(\n        f\"1. Goals: {goal_desc}. Each goal is rescaled to 0..1 over the \"\n        \"training range, where 1 is best and 0 is worst.\"\n    )\n    lines.append(\n        \"2. A row is good when no other training row is at least as good on \"\n        \"every goal (the Pareto front). best() keeps at most 5% of the rows \"\n        f\"from that front: {len(picked)} of {len(rows)} here, ranked by \"\n        \"mean score.\"\n    )\n\n    # Recommended set: most common value per input among the good rows.\n    rec: dict[int, tuple[str, float]] = {}\n    for j in inputs:\n        counts: dict[str, int] = {}\n        for r in good:\n            v = r[j].strip()\n            counts[v] = counts.get(v, 0) + 1\n        value = min(counts, key=lambda v: (-counts[v], v))\n        rec[j] = (value, counts[value] / len(good))\n\n    flat = \", \".join(\n        f\"{header[j]}={rec[j][0]} ({rec[j][1]:.0%})\" for j in inputs\n    )\n    lines.append(\n        \"3. Recommended flag set (most common value among good rows, \"\n        \"with its share of those rows):\"\n    )\n    lines.append(\"   \" + flat)\n\n    verbatim = sum(\n        1 for r in rows if all(r[j].strip() == rec[j][0] for j in inputs)\n    )\n    lines.append(\n        f\"4. That exact combination appears verbatim in {verbatim} of \"\n        f\"{len(rows)} training rows. If it is 0, it was never built in \"\n        \"training and is an untested recombination: treat it as a \"\n        \"hypothesis to measure.\"\n    )\n\n    for j, _ in goals:\n        gm = _median_of(good, j)\n        am = _median_of(rows, j)\n        if gm is not None and am is not None:\n            lines.append(\n                f\"5. Median {header[j]}: {gm:.4g} in good rows against \"\n                f\"{am:.4g} across all rows.\"\n            )\n\n    top = blame(key)[:_TOP_BLAME]\n    lines.append(\n        \"6. Input columns most associated with bad rows (association, not \"\n        \"proof of cause), strongest first: \" + \", \".join(top) + \".\"\n    )\n    lines.append(\n        \"7. Caveat: these are patterns in one training file. Check them on \"\n        \"the test file before relying on them.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences: why this row (goals included) is good or bad.\"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    _, goals = _classify(header)\n    if not rows or not goals:\n        return \"Cannot judge: the training file has no rows or no goal columns.\"\n\n    ctx = _context(key)\n    model = _model(key)\n    goal_vals = model[\"goal_vals\"]\n    train = [\n        _score([col[i] for col in goal_vals], ctx) for i in range(len(rows))\n    ]\n    train_means = [sum(s) / len(s) for s in train]\n    threshold = statistics.median(train_means)\n\n    names = ctx[\"goal_names\"]\n    s = _row_scores(row, ctx)\n    m = sum(s) / len(s)\n    verdict = \"GOOD\" if m >= threshold else \"BAD\"\n    missing = [\n        name for name in names\n        if row.get(name) is None or str(row.get(name)).strip() == \"\"\n    ]\n\n    strongest_name, strongest = max(zip(names, s), key=lambda p: p[1])\n    weakest_name, weakest = min(zip(names, s), key=lambda p: p[1])\n    beat = sum(1 for t in train if all(a >= b for a, b in zip(t, s)))\n\n    first = (\n        f\"{verdict}: mean normalised goal score {m:.2f} against a training \"\n        \"median of {:.2f} (1 is best on every goal).\".format(threshold)\n    )\n    second = (\n        f\"Strongest goal {strongest_name} ({strongest:.2f}); weakest \"\n        f\"{weakest_name} ({weakest:.2f})\"\n    )\n    if missing:\n        second += f\"; missing goal values score 0 for {', '.join(missing)}\"\n    second += (\n        f\"; {beat} training rows are at least as good on every goal.\"\n    )\n    return first + \" \" + second\n```",
+ "ttft_ms": 53922,
+ "type": "result",
+ "duration_ms": 59784,
+ "uuid": "d73af990-e65b-4bfa-98c4-0c6391e8675b",
+ "ttft_stream_ms": 547,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
