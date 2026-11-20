@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 45369,
+ "stop_reason": "end_turn",
+ "session_id": "79abeb2c-70f5-44d6-b43a-5e7085bef0e5",
+ "total_cost_usd": 0.007612699999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 201,
+  "cache_read_input_tokens": 880,
+  "output_tokens": 12199,
+  "output_tokens_details": {
+   "thinking_tokens": 8838
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 201,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12199,
+    "cache_read_input_tokens": 880,
+    "cache_creation_input_tokens": 201,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 201
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 1399,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.001464,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12199,
+   "cacheReadInputTokens": 880,
+   "cacheCreationInputTokens": 201,
+   "webSearchRequests": 0,
+   "costUSD": 0.006148699999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step1.py: families (clusters) and unusually good rows of a MOOT csv.\n\nStandard library only (Python 3.13). No earlier-step module was supplied\nwith this request, so the small csv and MOOT helpers are defined here.\n\"\"\"\nfrom __future__ import annotations\n\nimport csv\nimport math\nimport random\n\n_SEED = 1\n_MAX_K = 8\n_RESTARTS = 3\n_SIL_SAMPLE = 250\n_BEST_NUM, _BEST_DEN = 5, 100  # \"at most 5% of rows\"\n\n\ndef _read(path: str) -> tuple[list[str], list[list[str]]]:\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.reader(f)\n        header = [h.strip() for h in next(reader)]\n        rows = [r for r in reader if any(c.strip() for c in r)]\n    return header, rows\n\n\ndef _classify(header: list[str]) -> tuple[list[int], list[tuple[int, int]]]:\n    \"\"\"Return (input column indices, [(goal column index, sign)]).\"\"\"\n    inputs: list[int] = []\n    goals: list[tuple[int, int]] = []\n    for j, name in enumerate(header):\n        if name.endswith(\"+\"):\n            goals.append((j, 1))\n        elif name.endswith(\"-\"):\n            goals.append((j, -1))\n        elif name.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(j)\n    return inputs, goals\n\n\ndef _to_float(text: str) -> float | None:\n    try:\n        return float(text)\n    except ValueError:\n        return None\n\n\ndef _encode_inputs(rows: list[list[str]], cols: list[int]) -> list[list[float]]:\n    codes: dict[int, dict[str, int]] = {}\n    X: list[list[float]] = []\n    for r in rows:\n        vec: list[float] = []\n        for j in cols:\n            v = _to_float(r[j])\n            if v is None:\n                table = codes.setdefault(j, {})\n                v = float(table.setdefault(r[j], len(table)))\n            vec.append(v)\n        X.append(vec)\n    return X\n\n\ndef _minmax(X: list[list[float]]) -> list[list[float]]:\n    if not X:\n        return X\n    m = len(X[0])\n    lo = [min(r[k] for r in X) for k in range(m)]\n    hi = [max(r[k] for r in X) for k in range(m)]\n    out: list[list[float]] = []\n    for r in X:\n        out.append([\n            (r[k] - lo[k]) / (hi[k] - lo[k]) if hi[k] > lo[k] else 0.0\n            for k in range(m)\n        ])\n    return out\n\n\ndef _goal_scores(rows: list[list[str]],\n                 goals: list[tuple[int, int]]) -> list[list[float]]:\n    \"\"\"Normalise each goal to [0, 1] where 1 is best; missing values score 0.\"\"\"\n    n = len(rows)\n    columns: list[list[float]] = []\n    for j, sign in goals:\n        vals = [_to_float(r[j]) for r in rows]\n        ok = [v for v in vals if v is not None and not math.isnan(v)]\n        col = [0.0] * n\n        if ok:\n            lo, hi = min(ok), max(ok)\n            span = hi - lo\n            for i, v in enumerate(vals):\n                if v is None or math.isnan(v):\n                    continue\n                if span == 0:\n                    col[i] = 1.0\n                elif sign > 0:\n                    col[i] = (v - lo) / span\n                else:\n                    col[i] = (hi - v) / span\n        columns.append(col)\n    return [[col[i] for col in columns] for i in range(n)]\n\n\ndef _kmeans(X: list[list[float]], k: int, rng: random.Random,\n            iters: int = 100) -> tuple[list[int], float]:\n    n, dims = len(X), len(X[0])\n\n    def sqdist(a: list[float], b: list[float]) -> float:\n        return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n    # k-means++ initialisation\n    centers = [list(X[rng.randrange(n)])]\n    d2 = [sqdist(x, centers[0]) for x in X]\n    while len(centers) < k:\n        total = sum(d2)\n        if total > 0:\n            t = rng.uniform(0.0, total)\n            acc, pick = 0.0, n - 1\n            for i, d in enumerate(d2):\n                acc += d\n                if acc >= t:\n                    pick = i\n                    break\n        else:\n            pick = rng.randrange(n)\n        centers.append(list(X[pick]))\n        d2 = [min(d2[i], sqdist(X[i], centers[-1])) for i in range(n)]\n\n    labels = [-1] * n\n    for it in range(iters):\n        changed = False\n        for i, x in enumerate(X):\n            best_c, best_d = 0, math.inf\n            for c in range(k):\n                d = sqdist(x, centers[c])\n                if d < best_d:\n                    best_c, best_d = c, d\n            if best_c != labels[i]:\n                labels[i] = best_c\n                changed = True\n        if not changed and it > 0:\n            break\n        sums = [[0.0] * dims for _ in range(k)]\n        counts = [0] * k\n        for x, c in zip(X, labels):\n            counts[c] += 1\n            s = sums[c]\n            for d in range(dims):\n                s[d] += x[d]\n        for c in range(k):\n            if counts[c]:\n                centers[c] = [v / counts[c] for v in sums[c]]\n            else:\n                centers[c] = list(X[rng.randrange(n)])\n\n    inertia = sum(sqdist(x, centers[c]) for x, c in zip(X, labels))\n    return labels, inertia\n\n\ndef _best_kmeans(X: list[list[float]], k: int,\n                 rng: random.Random) -> list[int]:\n    best_labels, best_inertia = None, math.inf\n    for _ in range(_RESTARTS):\n        labels, inertia = _kmeans(X, k, rng)\n        if inertia < best_inertia:\n            best_labels, best_inertia = labels, inertia\n    assert best_labels is not None\n    return best_labels\n\n\ndef _silhouette(X: list[list[float]], labels: list[int],\n                rng: random.Random) -> float:\n    n = len(X)\n    idx = list(range(n))\n    if n > _SIL_SAMPLE:\n        idx = sorted(rng.sample(idx, _SIL_SAMPLE))\n    pts = [X[i] for i in idx]\n    lab = [labels[i] for i in idx]\n    k = max(lab) + 1\n    members: list[list[int]] = [[] for _ in range(k)]\n    for i, c in enumerate(lab):\n        members[c].append(i)\n    if sum(1 for m in members if m) < 2:\n        return -1.0\n\n    total = 0.0\n    for i, p in enumerate(pts):\n        own = members[lab[i]]\n        if len(own) <= 1:\n            continue\n        a = sum(math.dist(p, pts[j]) for j in own if j != i) / (len(own) - 1)\n        b = math.inf\n        for c, m in enumerate(members):\n            if c == lab[i] or not m:\n                continue\n            mean = sum(math.dist(p, pts[j]) for j in m) / len(m)\n            if mean < b:\n                b = mean\n        top = max(a, b)\n        if top > 0:\n            total += (b - a) / top\n    return total / len(pts)\n\n\ndef _relabel(labels: list[int]) -> list[int]:\n    mapping: dict[int, int] = {}\n    out: list[int] = []\n    for c in labels:\n        if c not in mapping:\n            mapping[c] = len(mapping)\n        out.append(mapping[c])\n    return out\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\n\n    Clusters the input columns with k-means, choosing k in 2..8 by\n    silhouette score. Labels are contiguous integers starting at 0.\n    \"\"\"\n    header, rows = _read(train_csv)\n    inputs, _ = _classify(header)\n    n = len(rows)\n    if n == 0:\n        return []\n    if not inputs:\n        return [0] * n\n\n    X = _minmax(_encode_inputs(rows, inputs))\n    rng = random.Random(_SEED)\n    chosen: list[int] | None = None\n    chosen_score = -math.inf\n    for k in range(2, min(_MAX_K, n) + 1):\n        labels = _best_kmeans(X, k, rng)\n        score = _silhouette(X, labels, rng)\n        if score > chosen_score:\n            chosen, chosen_score = labels, score\n    if chosen is None:\n        return [0] * n\n    return _relabel(chosen)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together).\n\n    Uses the Pareto front over the normalised goals (maximise and minimise\n    goals both scaled so that 1 is best). If the front has more rows than\n    5% of the data, it keeps those with the highest mean normalised score.\n    \"\"\"\n    header, rows = _read(train_csv)\n    _, goals = _classify(header)\n    n = len(rows)\n    cap = n * _BEST_NUM // _BEST_DEN\n    if n == 0 or not goals or cap == 0:\n        return []\n\n    S = _goal_scores(rows, goals)\n    front: list[int] = []\n    for i in range(n):\n        si = S[i]\n        dominated = False\n        for j in range(n):\n            if j == i:\n                continue\n            sj = S[j]\n            if all(b >= a for a, b in zip(si, sj)) and any(\n                    b > a for a, b in zip(si, sj)):\n                dominated = True\n                break\n        if not dominated:\n            front.append(i)\n\n    front.sort(key=lambda i: (-sum(S[i]), i))\n    return front[:cap]\n```",
+ "ttft_ms": 35376,
+ "type": "result",
+ "duration_ms": 44620,
+ "uuid": "fa12e74e-0562-43f3-8bfe-913d60212919",
+ "ttft_stream_ms": 546,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
