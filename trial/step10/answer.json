@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 98885,
+ "stop_reason": "end_turn",
+ "session_id": "686cb67b-c533-44a3-b3d0-6cc03b2885a5",
+ "total_cost_usd": 0.03311460000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20032,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 24388,
+  "output_tokens_details": {
+   "thinking_tokens": 20281
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20032,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 24388,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20032,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20032
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16799,
+   "outputTokens": 23,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016914000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 24388,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20032,
+   "webSearchRequests": 0,
+   "costUSD": 0.016200600000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step10.py: race our tuner and guesser against standard rivals.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers,\ngoal scoring, input encoding), step2 (guess) and step7 (choose).\n\nThe standard library has no hyperparameter tuner and no regression model,\nso the rivals are written here with the standard library only:\n  - random: uniform random search with the same label budget as ours.\n  - hillclimb: greedy nearest-neighbour local search with random restarts,\n    standing in for a generic tuner.\n  - ridge: ridge regression on the input flags predicting log build speed,\n    solved by normal equations in pure Python. It is the off-the-shelf-style\n    rival for the guesser.\n\nTuner scores: mean normalised goal score of the build each method picks\n(step1 scaling over the test file, 1 is best). \"oracle\" is the best test\nbuild, the ceiling. Higher is better.\n\nGuesser scores: negative mean absolute percentage error of build speed\n(the goal whose name starts with \"Performance\") on the test rows. 0 is\nperfect, so higher is better. \"guess_ours\" uses step2.guess and\n\"guess_ridge\" uses the ridge rival.\n\"\"\"\nfrom __future__ import annotations\n\nimport csv\nimport math\nimport os\nimport random\nimport tempfile\n\nfrom step1 import (\n    _classify,\n    _encode_inputs,\n    _goal_scores,\n    _minmax,\n    _read,\n    _to_float,\n)\nfrom step2 import guess\nfrom step7 import choose\n\n_BUDGET = 30          # label calls allowed to every tuner\n_SEED = 1\n_STALE_LIMIT = 3      # non-improving hill-climb probes before a restart\n_RIDGE = 1e-3         # ridge penalty on the input weights\n_SPEED_PREFIX = \"Performance\"\n_EXP_CAP = 700.0      # keeps math.exp finite\n\n\ndef _at(row: list[str], j: int) -> str:\n    \"\"\"Cell j of a row, or '' if the row is short.\"\"\"\n    return row[j] if j < len(row) else \"\"\n\n\ndef _label_fn(header: list[str], rows: list[list[str]], goals):\n    \"\"\"label(i): goal values of test row i as {goal column name: float}.\"\"\"\n    def label(i: int) -> dict[str, float]:\n        r = rows[i]\n        out: dict[str, float] = {}\n        for j, _ in goals:\n            v = _to_float(_at(r, j))\n            out[header[j]] = math.nan if v is None else v\n        return out\n    return label\n\n\ndef _write_blind(header: list[str], rows: list[list[str]],\n                 goal_cols: set[int], dest: str) -> None:\n    \"\"\"Write a copy of the test file with every goal cell replaced by '?'.\"\"\"\n    with open(dest, \"w\", newline=\"\", encoding=\"utf-8\") as f:\n        w = csv.writer(f)\n        w.writerow(header)\n        for r in rows:\n            w.writerow([\n                \"?\" if j in goal_cols else _at(r, j)\n                for j in range(len(header))\n            ])\n\n\ndef _budgeted(label, budget: int):\n    \"\"\"Return (probe, seen). probe(i) calls label once per new row.\"\"\"\n    seen: dict[int, dict[str, float]] = {}\n\n    def probe(i: int) -> None:\n        if i in seen:\n            return\n        if len(seen) >= budget:\n            raise RuntimeError(f\"label budget of {budget} calls exhausted\")\n        seen[i] = label(i)\n\n    return probe, seen\n\n\ndef _observed_scores(header: list[str], goals, seen) -> dict[int, float]:\n    \"\"\"Mean normalised score of each probed row, normalised over probed rows.\"\"\"\n    ids = sorted(seen)\n    table: list[list[str]] = []\n    for i in ids:\n        row = [\"?\"] * len(header)\n        for j, _ in goals:\n            row[j] = str(seen[i][header[j]])\n        table.append(row)\n    S = _goal_scores(table, goals)\n    return {i: sum(s) / len(s) for i, s in zip(ids, S)}\n\n\ndef _best_of(header: list[str], goals, seen) -> int:\n    sc = _observed_scores(header, goals, seen)\n    return max(sc, key=lambda i: (sc[i], -i))\n\n\ndef _hillclimb(X, budget: int, probe, seen, rng: random.Random,\n               header: list[str], goals) -> None:\n    \"\"\"Greedy nearest-neighbour local search with random restarts.\n\n    Each step probes the unprobed row nearest to the current best. After\n    _STALE_LIMIT steps without improvement it restarts at a random row.\n    \"\"\"\n    n = len(X)\n    probe(rng.randrange(n))\n    stale = 0\n    while len(seen) < budget:\n        unseen = [i for i in range(n) if i not in seen]\n        if not unseen:\n            break\n        sc = _observed_scores(header, goals, seen)\n        top = max(sc, key=lambda i: (sc[i], -i))\n        if stale >= _STALE_LIMIT:\n            nxt = rng.choice(unseen)\n            stale = 0\n        else:\n            nxt = min(unseen, key=lambda i: (math.dist(X[top], X[i]), i))\n        probe(nxt)\n        sc = _observed_scores(header, goals, seen)\n        stale = 0 if sc[nxt] > sc[top] else stale + 1\n\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    m = len(b)\n    M = [A[i][:] + [b[i]] for i in range(m)]\n    for c in range(m):\n        p = max(range(c, m), key=lambda r: abs(M[r][c]))\n        M[c], M[p] = M[p], M[c]\n        piv = M[c][c]\n        if abs(piv) < 1e-12:\n            continue\n        for r in range(m):\n            if r != c and M[r][c] != 0.0:\n                f = M[r][c] / piv\n                for k in range(c, m + 1):\n                    M[r][k] -= f * M[c][k]\n    return [\n        M[i][m] / M[i][i] if abs(M[i][i]) > 1e-12 else 0.0\n        for i in range(m)\n    ]\n\n\ndef _ridge_fit(X: list[list[float]], y: list[float], lam: float) -> list[float]:\n    \"\"\"Ridge weights via normal equations. X[0]-column is the intercept.\"\"\"\n    m = len(X[0])\n    A = [[0.0] * m for _ in range(m)]\n    b = [0.0] * m\n    for x, t in zip(X, y):\n        for p in range(m):\n            xp = x[p]\n            b[p] += xp * t\n            row = A[p]\n            for q in range(m):\n                row[q] += xp * x[q]\n    for p in range(1, m):  # the intercept is not penalised\n        A[p][p] += lam\n    return _solve(A, b)\n\n\ndef _dot(a: list[float], b: list[float]) -> float:\n    return sum(p * q for p, q in zip(a, b))\n\n\ndef _speed_goal(header: list[str], goals) -> str | None:\n    \"\"\"Name of the build-speed goal, if the file has one.\"\"\"\n    for j, _ in goals:\n        if header[j].startswith(_SPEED_PREFIX):\n            return header[j]\n    return None\n\n\ndef _guesser_scores(tr_path: str, train_header: list[str],\n                    train_rows: list[list[str]], header: list[str],\n                    rows: list[list[str]], speed: str) -> dict[str, float]:\n    \"\"\"Negative MAPE of build speed for step2.guess and the ridge rival.\"\"\"\n    tr_inputs, _ = _classify(train_header)\n    names = [train_header[j] for j in tr_inputs]\n    if any(nm not in header for nm in names) or speed not in train_header:\n        return {}\n\n    te_cols = [header.index(nm) for nm in names]\n    k = len(names)\n    tr_proj = [[_at(r, j) for j in tr_inputs] for r in train_rows]\n    te_proj = [[_at(r, j) for j in te_cols] for r in rows]\n    enc = _minmax(_encode_inputs(tr_proj + te_proj, list(range(k))))\n    m = len(tr_proj)\n    Xtr, Xte = enc[:m], enc[m:]\n\n    tr_j = train_header.index(speed)\n    te_j = header.index(speed)\n\n    fit_x: list[list[float]] = []\n    fit_y: list[float] = []\n    for x, r in zip(Xtr, train_rows):\n        v = _to_float(_at(r, tr_j))\n        if v is not None and math.isfinite(v) and v > 0:\n            fit_x.append([1.0] + x)\n            fit_y.append(math.log(v))\n    if not fit_x:\n        return {}\n    beta = _ridge_fit(fit_x, fit_y, _RIDGE)\n\n    ridge_err: list[float] = []\n    guess_err: list[float] = []\n    for x, r in zip(Xte, rows):\n        truth = _to_float(_at(r, te_j))\n        if truth is None or not math.isfinite(truth) or truth <= 0:\n            continue\n\n        z = min(_dot(beta, [1.0] + x), _EXP_CAP)\n        ridge_err.append(abs(math.exp(z) - truth) / truth)\n\n        row_in = {nm: _at(r, j) for nm, j in zip(names, te_cols)}\n        est = guess(tr_path, row_in).get(\n            speed, (math.nan, math.nan, math.nan))[0]\n        if math.isfinite(est):\n            guess_err.append(abs(est - truth) / truth)\n        else:\n            guess_err.append(1.0)  # no usable neighbour: count as 100% off\n\n    def neg_mean(errs: list[float]) -> float:\n        return -sum(errs) / len(errs) if errs else -math.inf\n\n    return {\n        \"guess_ours\": neg_mean(guess_err),\n        \"guess_ridge\": neg_mean(ridge_err),\n    }\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores of ours and the rivals on test_csv (higher is better).\n\n    Tuner keys: \"ours\", \"random\", \"hillclimb\", plus \"oracle\" (the best\n    test build). Guesser keys, when the file has a build-speed goal:\n    \"guess_ours\" and \"guess_ridge\".\n    \"\"\"\n    tr_path = os.fspath(train_csv)\n    te_path = os.fspath(test_csv)\n    train_header, train_rows = _read(tr_path)\n    header, rows = _read(te_path)\n    inputs, goals = _classify(header)\n    if not rows or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n\n    n = len(rows)\n    budget = min(_BUDGET, n)\n    goal_cols = {j for j, _ in goals}\n    truth = [sum(s) / len(s) for s in _goal_scores(rows, goals)]\n    label = _label_fn(header, rows, goals)\n\n    results: dict[str, float] = {\"oracle\": max(truth)}\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _write_blind(header, rows, goal_cols, blind)\n\n        results[\"ours\"] = truth[choose(blind, label, budget=budget)]\n\n        probe, seen = _budgeted(label, budget)\n        for i in random.Random(_SEED).sample(range(n), budget):\n            probe(i)\n        results[\"random\"] = truth[_best_of(header, goals, seen)]\n\n        probe, seen = _budgeted(label, budget)\n        X = _minmax(_encode_inputs(rows, inputs))\n        _hillclimb(X, budget, probe, seen, random.Random(_SEED),\n                   header, goals)\n        results[\"hillclimb\"] = truth[_best_of(header, goals, seen)]\n\n    speed = _speed_goal(header, goals)\n    if speed is not None:\n        results.update(_guesser_scores(\n            tr_path, train_header, train_rows, header, rows, speed))\n\n    return results\n```",
+ "ttft_ms": 86496,
+ "type": "result",
+ "duration_ms": 97807,
+ "uuid": "ef53faf7-3ef7-481c-bc8a-11983fb4aaca",
+ "ttft_stream_ms": 558,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
