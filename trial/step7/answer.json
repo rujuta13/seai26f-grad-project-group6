@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 35231,
+ "stop_reason": "end_turn",
+ "session_id": "35c86293-6bb9-4acc-a622-5be6a85c3518",
+ "total_cost_usd": 0.0166159,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11901,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7807,
+  "output_tokens_details": {
+   "thinking_tokens": 5535
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11901,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7807,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11901,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11901
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10237,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010332,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7807,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11901,
+   "webSearchRequests": 0,
+   "costUSD": 0.0062839,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 7: choose. Find a good flag set while benchmarking at most `budget` builds.\n\nblind_csv has the inputs of every candidate build, with every goal cell set to '?'.\nlabel(i) benchmarks build i and returns its goals as a dict. The budget is spent in\ntwo phases:\n  1. An exploration phase: maximin (farthest-point) sampling over the normalised\n     inputs, so the first builds cover the input space.\n  2. An adaptive phase: each new build is picked by an acquisition value,\n     (predicted score from the nearest benchmarked builds) + KAPPA * (distance to\n     the nearest benchmarked build). KAPPA cycles through exploit, exploit, explore.\n\nScores use the same scale as step1: each goal is min-max scaled over the benchmarked\nbuilds (0 = worst, 1 = best) and averaged over goals. With `goal` set, only that goal\nis scored. The returned index is the benchmarked build with the highest score.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load, _encode\n\nSEED = 1          # fixed seed so results are reproducible\nINIT_FRAC = 0.5   # share of the budget spent on the exploration phase\nK_NEAR = 3        # benchmarked neighbours used to predict an unbenchmarked build's score\nKAPPA = (0.0, 0.0, 0.5)   # exploit, exploit, explore cycle for the adaptive phase\n\n\ndef _unit(X):\n    \"\"\"Min-max scale each input column to [0, 1] so no column dominates distances.\"\"\"\n    if not X or not X[0]:\n        return X\n    d = len(X[0])\n    lo = [min(x[j] for x in X) for j in range(d)]\n    hi = [max(x[j] for x in X) for j in range(d)]\n    out = []\n    for x in X:\n        out.append([(x[j] - lo[j]) / (hi[j] - lo[j]) if hi[j] > lo[j] else 0.0\n                    for j in range(d)])\n    return out\n\n\ndef _dist(a, b):\n    return math.sqrt(sum((x - y) * (x - y) for x, y in zip(a, b)))\n\n\ndef _value(goal_dict, name):\n    \"\"\"A goal cell as a finite float, or None if missing or not a number.\"\"\"\n    try:\n        v = float(goal_dict.get(name))\n    except (AttributeError, TypeError, ValueError):\n        return None\n    return v if math.isfinite(v) else None\n\n\ndef _scores(labelled, goals):\n    \"\"\"Score each benchmarked build with complete goal values, on the scale of step1.\n\n    Returns {index: score in [0, 1]}. Higher is better. Empty if nothing is usable.\n    \"\"\"\n    oriented = {}\n    for i, g in labelled.items():\n        vec = []\n        for name, sign in goals:\n            v = _value(g, name)\n            if v is None:\n                break\n            vec.append(sign * v)\n        else:\n            oriented[i] = vec\n    if not oriented:\n        return {}\n\n    k = len(goals)\n    lo = [min(v[j] for v in oriented.values()) for j in range(k)]\n    hi = [max(v[j] for v in oriented.values()) for j in range(k)]\n    scores = {}\n    for i, vec in oriented.items():\n        total = 0.0\n        for j in range(k):\n            span = hi[j] - lo[j]\n            if span > 0:\n                total += (vec[j] - lo[j]) / span\n        scores[i] = total / k\n    return scores\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best build found while calling label() at most `budget` times.\n\n    goal: optional goal column name (e.g. 'Performance-' or 'Cpu-'). If given, only\n    that goal is optimised. Otherwise all goals are combined as in step1.\n    \"\"\"\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n\n    rows, inputs, goals = _load(blind_csv)\n    if not rows:\n        raise ValueError(\"no candidate builds in blind_csv\")\n\n    if goal is not None:\n        names = [c for c, _ in goals]\n        if goal not in names:\n            raise ValueError(f\"{goal!r} is not a goal column of {blind_csv}\")\n        goals = [(c, s) for c, s in goals if c == goal]\n\n    if not goals:\n        # Nothing can be measured or optimised; there is no basis for a choice.\n        return 0\n\n    n = len(rows)\n    budget = min(budget, n)   # cannot benchmark more distinct builds than exist\n\n    X = _unit(_encode(rows, inputs))\n    D = len(X[0]) if X and X[0] else 0\n    scale = math.sqrt(D) if D > 0 else 1.0\n\n    labelled = {}\n    calls = 0\n\n    def run(i):\n        nonlocal calls\n        if calls >= budget:\n            raise RuntimeError(\"benchmark budget exhausted\")\n        calls += 1\n        labelled[i] = label(i)\n\n    rng = random.Random(SEED)\n\n    # Phase 1: exploration by maximin (farthest-point) sampling.\n    n_init = max(1, min(budget, int(budget * INIT_FRAC)))\n    run(rng.randrange(n))\n    while len(labelled) < n_init:\n        pick, pick_d = None, -1.0\n        for i in range(n):\n            if i in labelled:\n                continue\n            d = min(_dist(X[i], X[j]) for j in labelled)\n            if d > pick_d:\n                pick, pick_d = i, d\n        run(pick)\n\n    # Phase 2: adaptive search.\n    step = 0\n    while len(labelled) < budget:\n        scores = _scores(labelled, goals)\n        scored_ids = sorted(scores)\n        kappa = KAPPA[step % len(KAPPA)]\n        step += 1\n\n        pick, pick_val = None, -math.inf\n        for i in range(n):\n            if i in labelled:\n                continue\n            near_all = min(_dist(X[i], X[j]) for j in labelled) / scale\n            if scored_ids:\n                nb = sorted((_dist(X[i], X[j]), j) for j in scored_ids)[:K_NEAR]\n                wsum = sum(1.0 / (d + 1e-6) for d, _ in nb)\n                pred = sum(scores[j] / (d + 1e-6) for d, j in nb) / wsum\n            else:\n                pred = 0.0\n            val = pred + kappa * near_all\n            if val > pick_val:\n                pick, pick_val = i, val\n        run(pick)\n\n    # Final choice: best benchmarked build under the final normalisation.\n    scores = _scores(labelled, goals)\n    if scores:\n        return max(scores, key=lambda i: (scores[i], -i))\n    return min(labelled)\n```",
+ "ttft_ms": 26587,
+ "type": "result",
+ "duration_ms": 34035,
+ "uuid": "352d4fc3-e417-4438-a6d8-86c27c6cb532",
+ "ttft_stream_ms": 427,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
