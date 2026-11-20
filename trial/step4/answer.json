@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 66518,
+ "stop_reason": "end_turn",
+ "session_id": "d5c0e0bd-0842-4432-84d0-3775fedd0659",
+ "total_cost_usd": 0.0159521,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 7612,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15029,
+  "output_tokens_details": {
+   "thinking_tokens": 12693
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7612,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15029,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 7612,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 7612
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6835,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006915,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15029,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7612,
+   "webSearchRequests": 0,
+   "costUSD": 0.0090371,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step4.py: streaming flow over nightly benchmark rows.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers),\nstep2 (the training model: encoded inputs, goal values, scaling) and step3\n(the significance test).\n\nstream(): a row is kept only if no training row and no earlier row is at\nleast as good on every goal, using the same normalisation as step1 (1 is\nbest, scaled by the training ranges). So a kept row is a new best on at\nleast one goal.\n\ndrift(): each new row's distance to its nearest training row, in the scaled\ninput space from step2, is collected in blocks of _BLOCK rows. Each block is\ntested against the leave-one-out nearest-neighbour distances of the training\nrows with step3.same. The index of the last row in the first differing block\nis returned, or None if no block differs.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport random\n\nfrom step1 import _classify, _read\nfrom step2 import _cell, _model, _num, _scale\nfrom step3 import same\n\n_SEED = 1\n_BLOCK = 20         # new rows per drift test\n_REF_SAMPLE = 200   # training rows used for the reference distances\n\n_cache: dict[str, dict] = {}\n\n\ndef _raw(row, name: str, j: int):\n    \"\"\"Cell of a row given as a dict (by name) or a list (by header index).\"\"\"\n    if isinstance(row, dict):\n        return row.get(name)\n    return row[j] if j < len(row) else None\n\n\ndef _ge(a, b) -> bool:\n    \"\"\"True if a is at least as good as b on every goal.\"\"\"\n    return all(x >= y for x, y in zip(a, b))\n\n\ndef _score(vals, ctx) -> tuple[float, ...]:\n    \"\"\"Normalise goal values so that 1 is best, using training ranges.\n\n    Missing values score 0, as in step1. Values outside the training range\n    are not clipped, so a row better than anything seen in training scores\n    above 1 (or below 0 for the wrong side).\n    \"\"\"\n    out: list[float] = []\n    for v, lo, hi, sign in zip(vals, ctx[\"glo\"], ctx[\"ghi\"], ctx[\"signs\"]):\n        if v is None or lo is None:\n            out.append(0.0)\n        elif hi == lo:\n            out.append(1.0)\n        elif sign > 0:\n            out.append((v - lo) / (hi - lo))\n        else:\n            out.append((hi - v) / (hi - lo))\n    return tuple(out)\n\n\ndef _context(train_csv) -> dict:\n    key = os.fspath(train_csv)\n    cached = _cache.get(key)\n    if cached is not None:\n        return cached\n\n    model = _model(key)\n    header, _ = _read(key)\n    _, goals = _classify(header)\n    goal_vals = model[\"goal_vals\"]  # one list per goal, aligned with train rows\n\n    glo: list[float | None] = []\n    ghi: list[float | None] = []\n    for col in goal_vals:\n        ok = [v for v in col if v is not None]\n        glo.append(min(ok) if ok else None)\n        ghi.append(max(ok) if ok else None)\n\n    ctx: dict = {\n        \"input_names\": model[\"input_names\"],\n        \"inputs\": model[\"inputs\"],\n        \"tables\": model[\"tables\"],\n        \"lo\": model[\"lo\"],\n        \"hi\": model[\"hi\"],\n        \"Z\": model[\"Z\"],\n        \"goal_names\": model[\"goal_names\"],\n        \"goal_idx\": [j for j, _ in goals],\n        \"signs\": [sign for _, sign in goals],\n        \"glo\": glo,\n        \"ghi\": ghi,\n    }\n\n    # Pareto front of the training rows (distinct score vectors only).\n    n = len(model[\"Z\"])\n    train_scores = {\n        _score([col[i] for col in goal_vals], ctx) for i in range(n)\n    }\n    uniq = sorted(train_scores)\n    ctx[\"front\"] = [\n        v for v in uniq if not any(w != v and _ge(w, v) for w in uniq)\n    ]\n\n    # Reference distribution for drift: leave-one-out nearest-neighbour\n    # distances of a sample of training rows, in scaled input space.\n    Z = model[\"Z\"]\n    ref: list[float] = []\n    if len(Z) >= 2:\n        rng = random.Random(_SEED)\n        idx = sorted(rng.sample(range(len(Z)), min(len(Z), _REF_SAMPLE)))\n        for i in idx:\n            zi = Z[i]\n            ref.append(min(\n                math.dist(zi, Z[j]) for j in range(len(Z)) if j != i\n            ))\n    ctx[\"ref\"] = ref\n\n    _cache[key] = ctx\n    return ctx\n\n\ndef _row_scores(row, ctx) -> tuple[float, ...]:\n    vals = [\n        _num(_raw(row, name, j))\n        for name, j in zip(ctx[\"goal_names\"], ctx[\"goal_idx\"])\n    ]\n    return _score(vals, ctx)\n\n\ndef _row_distance(row, ctx) -> float:\n    \"\"\"Distance from a row's inputs to its nearest training row.\"\"\"\n    tables = ctx[\"tables\"]\n    qvec = [\n        _cell(_raw(row, name, j), j, tables)\n        for name, j in zip(ctx[\"input_names\"], ctx[\"inputs\"])\n    ]\n    q = _scale(qvec, ctx[\"lo\"], ctx[\"hi\"])\n    return min(math.dist(q, z) for z in ctx[\"Z\"])\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or drop (False) each row, in arrival order.\n\n    A row is kept if it is not weakly dominated by the Pareto front of the\n    training rows plus all earlier rows. Each decision uses only train_csv\n    and the rows before it.\n    \"\"\"\n    ctx = _context(train_csv)\n    front: list[tuple[float, ...]] = list(ctx[\"front\"])\n    keep: list[bool] = []\n    for row in rows:\n        s = _row_scores(row, ctx)\n        if any(_ge(f, s) for f in front):\n            keep.append(False)\n            continue\n        keep.append(True)\n        front = [f for f in front if not _ge(s, f)]\n        front.append(s)\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows where new results first stop looking like train_csv.\n\n    Rows are tested in blocks of _BLOCK. The index returned is the last row\n    of the first block whose nearest-neighbour distances differ from the\n    training reference (step3.same returns False). None if no block differs.\n    A final partial block is not tested.\n    \"\"\"\n    ctx = _context(train_csv)\n    ref = ctx[\"ref\"]\n    if not ref:\n        return None\n    block: list[float] = []\n    for i, row in enumerate(rows):\n        block.append(_row_distance(row, ctx))\n        if len(block) == _BLOCK:\n            if not same(block, ref):\n                return i\n            block = []\n    return None\n```",
+ "ttft_ms": 58620,
+ "type": "result",
+ "duration_ms": 65740,
+ "uuid": "71fbd2ec-4acc-4d87-863c-eaf35778256d",
+ "ttft_stream_ms": 441,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
