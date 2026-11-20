@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37851,
+ "stop_reason": "end_turn",
+ "session_id": "74cd43e6-4b77-4a49-896c-c56a1d823a94",
+ "total_cost_usd": 0.018097000000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13069,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8538,
+  "output_tokens_details": {
+   "thinking_tokens": 6955
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13069,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8538,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13069,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13069
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11129,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011214,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8538,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13069,
+   "webSearchRequests": 0,
+   "costUSD": 0.006883,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step8.py: fix a bad build with as few flag changes as possible.\n\nfix(train_csv, row, frozen): a build is good when no training build is at least\nas good on every goal and better on one (the step6.why test). The goals of a\nchanged build are predicted from its flags with step2.guess, the median goal\nvalue of the nearest training flag sets. Changes are searched by size: all\nsingle-flag changes first, then pairs, up to MAX_CHANGES. The first size that\nyields a predicted-good build wins, and among those the build with the highest\npredicted normalised goal sum is returned. Flags named in `frozen` never change.\nIf no predicted-good build is found, the best-scoring build found is returned.\n\nStandard library only.\n\"\"\"\nfrom itertools import combinations, product\n\nfrom step1 import _load, _columns, _dominates\nfrom step2 import guess\n\nMAX_CHANGES = 3   # largest number of flag values changed\nMAX_VALUES = 10   # candidate values per flag: its training values, thinned to this many\nMAX_EVALS = 4000  # cap on predictions per call, to bound run time\n\n\ndef _thin(values, limit):\n    \"\"\"At most `limit` values, spread evenly over the sorted list.\"\"\"\n    if len(values) <= limit:\n        return values\n    step = (len(values) - 1) / (limit - 1)\n    return [values[round(i * step)] for i in range(limit)]\n\n\ndef _changesets(mutable, options, k):\n    \"\"\"Every way to change exactly k flags, each to one of its candidate values.\"\"\"\n    for cols_k in combinations(mutable, k):\n        for vals in product(*(options[c] for c in cols_k)):\n            yield dict(zip(cols_k, vals))\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return row's inputs with as few values changed as possible so the build\n    becomes good. Columns named in `frozen` are never changed.\n\n    Example: fix(csv, row, frozen=(\"inline\",)) answers \"the best fix without\n    touching inline\". The row is returned unchanged if it is already good or if\n    nothing can be changed.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    result = dict(row)\n    if not goals or not rows:\n        return result\n\n    # Training goal vectors, oriented so higher is better.\n    train = [[sgn * r[c] for c, sgn in goals]\n             for r in rows\n             if all(isinstance(r[c], float) for c, _ in goals)]\n    if not train:\n        return result\n\n    frozen = set(frozen)\n    mutable = [c for c in inputs if c not in frozen]\n\n    # Candidate new values per flag: its training values, thinned, minus the current one.\n    options = {}\n    for c in mutable:\n        current = row.get(c)\n        values = sorted({r[c] for r in rows})\n        options[c] = [v for v in _thin(values, MAX_VALUES) if v != current]\n\n    g = len(goals)\n    lo = [min(t[k] for t in train) for k in range(g)]\n    hi = [max(t[k] for t in train) for k in range(g)]\n\n    def score(v):\n        \"\"\"Sum over goals of the position between the worst and best training value.\"\"\"\n        s = 0.0\n        for k in range(g):\n            span = hi[k] - lo[k]\n            s += (v[k] - lo[k]) / span if span > 0 else 1.0\n        return s\n\n    def predict(flags):\n        \"\"\"Oriented goal vector predicted from a flag set by step2.guess.\"\"\"\n        p = guess(train_csv, flags)\n        return [sgn * p[c][0] for c, sgn in goals]\n\n    def is_good(v):\n        return not any(_dominates(t, v) for t in train)\n\n    v0 = predict(row)\n    if is_good(v0):\n        return result\n\n    # Fallback if nothing good is found: the best-scoring build seen so far.\n    fallback = (score(v0), {})\n    evals = 0\n    for k in range(1, min(MAX_CHANGES, len(mutable)) + 1):\n        found = []\n        for changes in _changesets(mutable, options, k):\n            if evals >= MAX_EVALS:\n                break\n            evals += 1\n            flags = dict(row)\n            flags.update(changes)\n            v = predict(flags)\n            s = score(v)\n            if is_good(v):\n                found.append((s, changes))\n            elif s > fallback[0]:\n                fallback = (s, changes)\n        if found:\n            _, changes = max(found, key=lambda t: t[0])\n            result.update(changes)\n            return result\n        if evals >= MAX_EVALS:\n            break\n\n    result.update(fallback[1])\n    return result\n```",
+ "ttft_ms": 32217,
+ "type": "result",
+ "duration_ms": 36933,
+ "uuid": "09fdf5a2-d783-4284-afe5-e4a8b6a7bf63",
+ "ttft_stream_ms": 554,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
