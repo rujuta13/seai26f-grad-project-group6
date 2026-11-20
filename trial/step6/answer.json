@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 58893,
+ "stop_reason": "end_turn",
+ "session_id": "27f70a2e-595c-4807-a0af-86a831f9e0fc",
+ "total_cost_usd": 0.017863900000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10036,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14207,
+  "output_tokens_details": {
+   "thinking_tokens": 11302
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10036,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14207,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10036,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10036
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8673,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008753,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14207,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10036,
+   "webSearchRequests": 0,
+   "costUSD": 0.0091109,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 6: justify. Plain-language reasons a skeptical engineer can check.\"\"\"\n\nimport math\n\nimport step1\nimport step3\nimport step5\n\n_MIN_GAP = 0.2     # smallest gap (share difference, or mean difference as a fraction of\n                   # the input's range) that counts as a reason\n_MAX_REASONS = 6   # cap on reasons listed by explain()\n\n\ndef _is_num(v):\n    return isinstance(v, float) and not math.isnan(v)\n\n\ndef _is_binary(rows, name):\n    \"\"\"True if the input column holds only 0.0 and 1.0 (flags).\"\"\"\n    vals = [r.get(name) for r in rows]\n    finite = [v for v in vals if _is_num(v)]\n    return (bool(finite) and all(isinstance(v, float) for v in vals)\n            and set(finite) <= {0.0, 1.0})\n\n\ndef _fmt(v):\n    \"\"\"Short, readable rendering of a cell value.\"\"\"\n    if isinstance(v, float) and v.is_integer():\n        return str(int(v))\n    if isinstance(v, float):\n        return f\"{v:.4g}\"\n    return str(v)\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons for what makes rows good.\n\n    Good rows are the step1.best set (at most 5% of training rows). Each input is\n    compared between good rows and the rest; large gaps become reasons. Goal\n    differences are checked with a permutation test (step3.same). Inputs most\n    tied to bad goal values come from step5.blame.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = goals_max + goals_min\n    if not rows or not goals:\n        return (\"No recommendation: the data needs at least one row and at least one \"\n                \"goal column (names ending in + or -).\")\n    order = step1.best(train_csv)\n    if not order:\n        return \"No recommendation: no row could be ranked on the goals.\"\n\n    good_set = set(order)\n    good = [rows[i] for i in order]\n    rest = [rows[i] for i in range(len(rows)) if i not in good_set]\n\n    top = rows[order[0]]\n    on = [n for n in inputs if _is_binary(rows, n) and top.get(n) == 1.0]\n    other = [f\"{n}={_fmt(top.get(n))}\" for n in inputs if not _is_binary(rows, n)]\n    measured = [f\"{g}={_fmt(top.get(g))}\" for g in goals]\n    lines = [\n        f\"Recommended row is training row {order[0]}: it turns on \"\n        f\"{', '.join(on) if on else 'no 0/1 flags'}\"\n        + (f\" and sets {', '.join(other)}\" if other else \"\")\n        + f\". Its measured goals are {', '.join(measured)}.\"\n    ]\n\n    reasons = []  # (negative strength, input position, sentence)\n    for idx, name in enumerate(inputs):\n        vals = [r.get(name) for r in rows]\n        if all(isinstance(v, float) for v in vals):\n            gv = [r[name] for r in good if _is_num(r.get(name))]\n            rv = [r[name] for r in rest if _is_num(r.get(name))]\n            allv = [v for v in vals if _is_num(v)]\n            if not gv or not rv or not allv:\n                continue\n            span = max(allv) - min(allv)\n            if span <= 0:\n                continue\n            mg = sum(gv) / len(gv)\n            mr = sum(rv) / len(rv)\n            gap = (mg - mr) / span\n            if abs(gap) < _MIN_GAP:\n                continue\n            if _is_binary(rows, name):\n                if gap > 0:\n                    text = (f\"flag {name} is on in {mg:.0%} of good rows \"\n                            f\"versus {mr:.0%} of the rest\")\n                else:\n                    text = (f\"flag {name} is off in {1 - mg:.0%} of good rows \"\n                            f\"versus {1 - mr:.0%} of the rest\")\n            else:\n                text = (f\"{name} averages {mg:.4g} in good rows \"\n                        f\"versus {mr:.4g} in the rest\")\n            reasons.append((-abs(gap), idx, text))\n        else:\n            goodstr = [str(r.get(name)) for r in good]\n            reststr = [str(r.get(name)) for r in rest]\n            best_gap, best_text = 0.0, None\n            for c in sorted(set(goodstr) | set(reststr)):\n                sg = goodstr.count(c) / len(goodstr)\n                sr = reststr.count(c) / len(reststr)\n                if abs(sg - sr) > abs(best_gap):\n                    best_gap = sg - sr\n                    best_text = (f\"{name}={c} in {sg:.0%} of good rows \"\n                                 f\"versus {sr:.0%} of the rest\")\n            if best_text is not None and abs(best_gap) >= _MIN_GAP:\n                reasons.append((-abs(best_gap), idx, best_text))\n\n    reasons.sort()\n    if reasons:\n        lines.append(\"Reasons the good rows differ from the rest, strongest first:\")\n        for _, _, text in reasons[:_MAX_REASONS]:\n            lines.append(f\"- {text}.\")\n    else:\n        lines.append(f\"No single input separates the good rows from the rest \"\n                     f\"by at least {_MIN_GAP:.0%}.\")\n\n    for g in goals:\n        gv = [r[g] for r in good if _is_num(r.get(g))]\n        rv = [r[g] for r in rest if _is_num(r.get(g))]\n        if not gv or not rv:\n            continue\n        mg = sum(gv) / len(gv)\n        mr = sum(rv) / len(rv)\n        real = not step3.same(gv, rv)\n        verdict = (\"this gap is real under a permutation test.\"\n                   if real else \"this gap could be noise.\")\n        lines.append(f\"{g}: good rows average {mg:.4g} versus {mr:.4g} elsewhere; \"\n                     + verdict)\n\n    blamed = step5.blame(train_csv)[:3]\n    if blamed:\n        lines.append(\"Inputs most tied to bad goal values (step5): \"\n                     + \", \".join(blamed) + \".\")\n    lines.append(\"These are associations in this one benchmark set, not proof of \"\n                 \"causes; to check a flag, rebuild with only that flag changed and \"\n                 \"compare the goals.\")\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row (goals included) is good or bad.\n\n    Per goal, the share of training rows the row is at least as good as is\n    computed, direction-aware (minimised goals are negated). Missing goal\n    values count as worst. The row is good if its average share exceeds 0.5.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    if not rows or not goals:\n        return (\"Cannot rate this row: the training data needs at least one row \"\n                \"and at least one goal column.\")\n\n    scored = []  # (goal, share of training builds this row is at least as good as)\n    for g, sign in goals:\n        pool = [t[g] * sign for t in rows if _is_num(t.get(g))]\n        if not pool:\n            continue\n        v = row.get(g)\n        if _is_num(v):\n            x = v * sign\n            share = sum(1 for p in pool if p <= x) / len(pool)\n        else:\n            share = 0.0  # missing counts as worst\n        scored.append((g, share))\n    if not scored:\n        return \"Cannot rate this row: no training values exist for any goal.\"\n\n    overall = sum(s for _, s in scored) / len(scored)\n    verdict = \"good\" if overall > 0.5 else \"bad\"\n    detail = \"; \".join(f\"{g} {s:.0%}\" for g, s in scored)\n    first = (f\"Rated {verdict}: on average it is at least as good as {overall:.0%} \"\n             f\"of training builds (per goal: {detail}).\")\n\n    second = \"\"\n    best_rows = step1.best(train_csv)\n    if best_rows and inputs:\n        ref = rows[best_rows[0]]\n        agree = sum(1 for n in inputs\n                    if row.get(n) is not None and row.get(n) == ref.get(n))\n        second = (f\" Its input settings match the recommended row \"\n                  f\"(training row {best_rows[0]}) on {agree} of {len(inputs)} inputs.\")\n    return first + second\n```",
+ "ttft_ms": 49274,
+ "type": "result",
+ "duration_ms": 57418,
+ "uuid": "3b0baf0d-e051-4eab-96c1-a4eacb884ee8",
+ "ttft_stream_ms": 461,
+ "time_to_request_ms": 33,
+ "queued_turn_count": 0
+}
