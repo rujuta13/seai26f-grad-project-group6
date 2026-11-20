@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 80663,
+ "stop_reason": "end_turn",
+ "session_id": "03f495b6-53f8-4503-bca6-d67d96d3408d",
+ "total_cost_usd": 0.0244401,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14152,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 18975,
+  "output_tokens_details": {
+   "thinking_tokens": 15994
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14152,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 18975,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14152,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14152
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12037,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012122,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 18975,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14152,
+   "webSearchRequests": 0,
+   "costUSD": 0.0123181,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 8: fix. The smallest change to a bad build's flags that makes it good.\n\nMethod: candidate flag sets are scored with a nearest-neighbour estimate of their\ngoals (the same idea as step2.guess, on cached training data), converted to the\nstep1 goal score. A build counts as good when its estimated score reaches the\nlowest score among the good builds that step1.best returns. Change sets are tried\nin order of size (one setting, then two, ...), so the first hit is a fewest-flags\nfix. Frozen columns are never changed. If nothing good is found within the search\nlimits, the change set with the highest estimated score is returned instead.\n\"\"\"\nimport heapq\nimport itertools\nimport os\n\nfrom step1 import _load, best\n\nNEIGHBOURS = 15        # nearest training rows that inform each estimate\nMAX_CHANGES = 4        # largest number of settings changed in one fix\nMAX_ALTERNATIVES = 6   # values tried per column (evenly spread for many-valued columns)\nEVAL_BUDGET = 2000     # cap on candidate evaluations, to keep runtime bounded\nEPS = 1e-12\n_CACHE = {}\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _spread(vals, limit):\n    \"\"\"At most `limit` values from an ascending list, evenly spread from first to last.\"\"\"\n    if len(vals) <= limit:\n        return list(vals)\n    idx = sorted({round(i * (len(vals) - 1) / (limit - 1)) for i in range(limit)})\n    return [vals[i] for i in idx]\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal vector with higher always better, or None if any goal cell is unusable.\"\"\"\n    out = []\n    for c, sign in goals:\n        try:\n            out.append(sign * float(row[c]))\n        except (KeyError, TypeError, ValueError):\n            return None\n    return out\n\n\ndef _score(o, lo, hi):\n    \"\"\"Mean of the per-goal scaled values; a constant goal contributes 0, as in step1.\"\"\"\n    total = 0.0\n    for j in range(len(o)):\n        span = hi[j] - lo[j]\n        if span > 0:\n            total += (o[j] - lo[j]) / span\n    return total / len(o)\n\n\ndef _block(c, v, d):\n    \"\"\"Encoded features of one input cell, mirroring step1's encoding.\"\"\"\n    if d[\"kinds\"][c] == \"num\":\n        try:\n            return [float(v)]\n        except (TypeError, ValueError):\n            return [d[\"med\"][c]]\n    s = _text(v)\n    return [1.0 if s == cat else 0.0 for cat in d[\"cats\"][c]]\n\n\ndef _vector(r, d):\n    return [x for c in d[\"inputs\"] for x in _block(c, r.get(c), d)]\n\n\ndef _weighted_median(pairs):\n    \"\"\"pairs: sorted list of (value, weight) with positive weights.\"\"\"\n    total = sum(w for _, w in pairs)\n    acc = 0.0\n    for v, w in pairs:\n        acc += w\n        if acc >= total / 2:\n            return v\n    return pairs[-1][0]\n\n\ndef _data(train_csv):\n    \"\"\"Cached training data: encodings, goal scales, and the good-build threshold.\"\"\"\n    stamp = (train_csv, os.path.getmtime(train_csv))\n    hit = _CACHE.get(stamp)\n    if hit is not None:\n        return hit\n\n    rows, inputs, goals = _load(train_csv)\n    kinds, cats, med, alt_vals = {}, {}, {}, {}\n    for c in inputs:\n        raw = [r.get(c) for r in rows]\n        try:\n            nums = sorted(float(v) for v in raw)\n        except (TypeError, ValueError):\n            kinds[c] = \"cat\"\n            cats[c] = sorted({_text(v) for v in raw})\n            alt_vals[c] = _spread(cats[c], MAX_ALTERNATIVES)\n        else:\n            kinds[c] = \"num\"\n            med[c] = nums[len(nums) // 2] if nums else 0.0\n            alt_vals[c] = _spread(sorted(set(nums)), MAX_ALTERNATIVES)\n\n    d = {\"inputs\": inputs, \"kinds\": kinds, \"cats\": cats, \"med\": med,\n         \"threshold\": None, \"X\": [], \"Y\": [], \"lo\": [], \"hi\": []}\n    d[\"alts\"] = {c: [(v, _block(c, v, d)) for v in alt_vals[c]] for c in inputs}\n\n    if goals and rows:\n        oriented = [_oriented(r, goals) for r in rows]\n        pool = [i for i, o in enumerate(oriented) if o is not None]\n        if pool:\n            g = len(goals)\n            lo = [min(oriented[i][j] for i in pool) for j in range(g)]\n            hi = [max(oriented[i][j] for i in pool) for j in range(g)]\n            d[\"lo\"], d[\"hi\"] = lo, hi\n            d[\"X\"] = [_vector(rows[i], d) for i in pool]\n            d[\"Y\"] = [oriented[i] for i in pool]\n            good = [i for i in best(train_csv) if oriented[i] is not None]\n            if good:\n                d[\"threshold\"] = min(_score(oriented[i], lo, hi) for i in good)\n\n    _CACHE.clear()\n    _CACHE[stamp] = d\n    return d\n\n\ndef _predict(q, d):\n    \"\"\"Estimated goal score of a feature vector q, from its nearest training rows.\"\"\"\n    X, Y, lo, hi = d[\"X\"], d[\"Y\"], d[\"lo\"], d[\"hi\"]\n    dist = [sum((a - b) * (a - b) for a, b in zip(x, q)) for x in X]\n    nb = heapq.nsmallest(min(NEIGHBOURS, len(X)), range(len(X)), key=dist.__getitem__)\n    g = len(lo)\n    total = 0.0\n    for j in range(g):\n        pairs = sorted((Y[i][j], 1.0 / (1.0 + dist[i])) for i in nb)\n        est = _weighted_median(pairs)\n        span = hi[j] - lo[j]\n        if span > 0:\n            total += (est - lo[j]) / span\n    return total / g\n\n\ndef _candidates(cols, opts):\n    \"\"\"Change sets in order of size: each is a tuple of (column, value, block).\"\"\"\n    for k in range(1, min(MAX_CHANGES, len(cols)) + 1):\n        for combo in itertools.combinations(cols, k):\n            for picks in itertools.product(*(opts[c] for c in combo)):\n                yield tuple((c, v, blk) for c, (v, blk) in zip(combo, picks))\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs with as few values changed as possible so it becomes good.\n\n    Columns named in `frozen` are never changed. If the row is already estimated to\n    be good, it is returned unchanged. If no good version is found within the search\n    limits, the change set with the highest estimated score is returned.\n    \"\"\"\n    d = _data(train_csv)\n    out = dict(row)\n    inputs = d[\"inputs\"]\n    threshold = d[\"threshold\"]\n    if threshold is None or not inputs:\n        return out\n\n    frozen = set(frozen)\n    base = {c: _block(c, row.get(c), d) for c in inputs}\n    offs, q0, pos = {}, [], 0\n    for c in inputs:\n        offs[c] = (pos, pos + len(base[c]))\n        q0.extend(base[c])\n        pos += len(base[c])\n\n    opts = {}\n    for c in inputs:\n        if c in frozen:\n            continue\n        alt = [(v, blk) for v, blk in d[\"alts\"][c] if blk != base[c]]\n        if alt:\n            opts[c] = alt\n    cols = [c for c in inputs if c in opts]\n\n    base_score = _predict(q0, d)\n    if base_score >= threshold - EPS:\n        return out\n\n    evals = 0\n    best_good = None           # (score, changes) for the smallest change size that works\n    best_any = (base_score, ())\n    for changes in _candidates(cols, opts):\n        k = len(changes)\n        if best_good is not None and k > len(best_good[1]):\n            break\n        if evals >= EVAL_BUDGET:\n            break\n        evals += 1\n\n        q = list(q0)\n        for c, _, blk in changes:\n            s, e = offs[c]\n            q[s:e] = blk\n        score = _predict(q, d)\n\n        if score >= threshold - EPS:\n            if best_good is None or score > best_good[0]:\n                best_good = (score, changes)\n        if score > best_any[0]:\n            best_any = (score, changes)\n\n    chosen = best_good[1] if best_good is not None else best_any[1]\n    for c, v, _ in chosen:\n        out[c] = v\n    return out\n```",
+ "ttft_ms": 71379,
+ "type": "result",
+ "duration_ms": 79652,
+ "uuid": "0c3d6b82-b6b3-4175-b7b3-ca2881950b01",
+ "ttft_stream_ms": 456,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
