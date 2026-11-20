@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 13177,
+ "stop_reason": "end_turn",
+ "session_id": "186c2e86-79dd-498a-bb54-cac68926ae25",
+ "total_cost_usd": 0.008548,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6289,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2890,
+  "output_tokens_details": {
+   "thinking_tokens": 1646
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6289,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2890,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6289,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6289
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5780,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005845,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2890,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6289,
+   "webSearchRequests": 0,
+   "costUSD": 0.002703,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step3.py: certify whether two sets of measurements really differ.\n\nStandard library only (Python 3.13). Nothing from steps 1 or 2 is needed:\nthis step works on plain lists of numbers, not on MOOT csv rows.\n\nA difference counts as real only if both hold:\n  1. Effect size: Cliff's delta is non-negligible (|delta| >= 0.147).\n  2. Significance: an Efron bootstrap test on the difference in means gives\n     p < 0.05.\nOtherwise the gap is treated as run-to-run noise.\n\"\"\"\nfrom __future__ import annotations\n\nimport bisect\nimport math\nimport random\n\n_SEED = 1\n_BOOTS = 1000\n_ALPHA = 0.05\n_DELTA_SMALL = 0.147  # Romano et al.: |Cliff's delta| below this is negligible\n\n\ndef _clean(xs) -> list[float]:\n    \"\"\"Numbers as floats, dropping None, NaN and unconvertible cells.\"\"\"\n    out: list[float] = []\n    for x in xs:\n        if x is None:\n            continue\n        try:\n            v = float(x)\n        except (TypeError, ValueError):\n            continue\n        if not math.isnan(v):\n            out.append(v)\n    return out\n\n\ndef _cliff_delta(xs: list[float], ys: list[float]) -> float:\n    \"\"\"Cliff's delta in [-1, 1]: P(x > y) - P(x < y) over all pairs.\"\"\"\n    ys_sorted = sorted(ys)\n    m = len(ys_sorted)\n    greater = 0  # pairs with x > y\n    less = 0     # pairs with x < y\n    for x in xs:\n        greater += bisect.bisect_left(ys_sorted, x)\n        less += m - bisect.bisect_right(ys_sorted, x)\n    return (greater - less) / (len(xs) * m)\n\n\ndef _bootstrap_p(xs: list[float], ys: list[float],\n                 rng: random.Random) -> float:\n    \"\"\"Efron's two-sample bootstrap p-value for a difference in means.\n\n    Both samples are shifted to the pooled mean, so resampling simulates\n    the null hypothesis of no difference. The p-value is the fraction of\n    resampled |mean difference| values at least as large as the observed one.\n    \"\"\"\n    n, m = len(xs), len(ys)\n    grand = sum(xs + ys) / (n + m)\n    mx = sum(xs) / n\n    my = sum(ys) / m\n    observed = abs(mx - my)\n\n    xs0 = [x - mx + grand for x in xs]\n    ys0 = [y - my + grand for y in ys]\n\n    hits = 0\n    for _ in range(_BOOTS):\n        bx = sum(xs0[rng.randrange(n)] for _ in range(n)) / n\n        by = sum(ys0[rng.randrange(m)] for _ in range(m)) / m\n        if abs(bx - by) >= observed:\n            hits += 1\n    return (hits + 1) / (_BOOTS + 1)\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise).\n\n    xs, ys: lists of numbers (e.g. run times). Returns False only when the\n    difference is both non-negligible in effect size and statistically\n    significant. Empty input or identical values count as the same.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        return True\n    if min(a + b) == max(a + b):\n        return True\n    if abs(_cliff_delta(a, b)) < _DELTA_SMALL:\n        return True\n    rng = random.Random(_SEED)\n    return _bootstrap_p(a, b, rng) >= _ALPHA\n```",
+ "ttft_ms": 8334,
+ "type": "result",
+ "duration_ms": 12338,
+ "uuid": "3156639b-c0f3-4363-9dc0-14c6ca663492",
+ "ttft_stream_ms": 527,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
