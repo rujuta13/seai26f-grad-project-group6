@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37962,
+ "stop_reason": "end_turn",
+ "session_id": "657c6e15-6bba-45f1-a6f6-2c1cc0d53c34",
+ "total_cost_usd": 0.0092155,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 3814,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9391,
+  "output_tokens_details": {
+   "thinking_tokens": 7422
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3814,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9391,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3814,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 3814
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 3672,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.003757,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9391,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3814,
+   "webSearchRequests": 0,
+   "costUSD": 0.0054585,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 2: guess how fast a flag set is and how much CPU it costs, before benchmarking.\n\nMethod: k-nearest-neighbour regression over the training rows. The flag sets\nclosest to the query (mean per-column mismatch over the input columns) are\nfound, and each goal's estimate is the median of those neighbours' measured\nvalues.\n\nThe low..high range is the 5th..95th percentile of the neighbours' values.\nWhen the query is unlike anything in training (the nearest neighbours are far\naway), the estimate and range are blended toward the whole-training-set\nstatistics, because the local neighbourhood says little about such a query.\n\"\"\"\n\nimport math\nfrom functools import lru_cache\n\nfrom step1 import _read, _classify\n\n_K = 15            # neighbours used for the local estimate\n_MIN_LOCAL = 5     # fewer usable neighbours than this -> rely on global statistics\n_LOW_Q = 0.05      # low end of the range (quantile of neighbour values)\n_HIGH_Q = 0.95     # high end of the range\n_FAR = 0.5         # mean neighbour distance at which the local estimate is fully distrusted\n\n_NAN = float(\"nan\")\n_INF = math.inf\n\n\ndef _is_num(v):\n    return isinstance(v, float) and not math.isnan(v)\n\n\n@lru_cache(maxsize=4)\ndef _load(train_csv):\n    \"\"\"Parse train_csv once. Returns (cols, rows, goal_values, goal_names).\n\n    cols: [(name, kind, lo, span)] for each input column; kind is \"num\" or \"cat\".\n    rows: the training rows (dicts).\n    goal_values: {goal: {row index: value}} over valid (numeric, non-NaN) cells.\n    goal_names: goal column names exactly as they appear in the header.\n    \"\"\"\n    header, rows = _read(train_csv)\n    inputs, goals_max, goals_min = _classify(header)\n\n    cols = []\n    for name in inputs:\n        values = [r.get(name) for r in rows]\n        if values and all(isinstance(v, float) for v in values):\n            finite = [v for v in values if not math.isnan(v)]\n            if finite:\n                lo, hi = min(finite), max(finite)\n                cols.append((name, \"num\", lo, hi - lo))\n                continue\n        cols.append((name, \"cat\", 0.0, 0.0))\n\n    goal_names = goals_max + goals_min\n    goal_values = {\n        g: {i: r[g] for i, r in enumerate(rows) if _is_num(r.get(g))}\n        for g in goal_names\n    }\n    return cols, rows, goal_values, goal_names\n\n\ndef _distance(cols, train_row, query):\n    \"\"\"Mean per-column mismatch in [0, 1] between a training row and the query.\"\"\"\n    if not cols:\n        return 0.0\n    total = 0.0\n    for name, kind, lo, span in cols:\n        a = train_row.get(name)\n        b = query.get(name)\n        if kind == \"num\":\n            if _is_num(a) and _is_num(b):\n                total += min(1.0, abs(a - b) / span) if span > 0 else 0.0\n            else:\n                total += 0.5\n        else:\n            if a is None or b is None:\n                total += 0.5\n            elif a != b:\n                total += 1.0\n    return total / len(cols)\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    pos = q * (len(sorted_vals) - 1)\n    lo = math.floor(pos)\n    hi = min(lo + 1, len(sorted_vals) - 1)\n    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a flag set `row` (goal columns already removed).\n\n    Returns {goal: (estimate, low, high)}, where low..high is the range the\n    true value is expected to fall in with high confidence.\n    \"\"\"\n    cols, rows, goal_values, goal_names = _load(train_csv)\n    if not rows:\n        return {g: (_NAN, -_INF, _INF) for g in goal_names}\n\n    ranked = sorted((_distance(cols, tr, row), i) for i, tr in enumerate(rows))\n\n    # Blend weight from the nearest neighbours: close neighbours mean the local\n    # estimate is trusted (far ~ 0); distant neighbours push toward global stats.\n    near = ranked[:_K]\n    mean_d = sum(d for d, _ in near) / len(near)\n    far = min(1.0, mean_d / _FAR)\n\n    result = {}\n    for g in goal_names:\n        vals = goal_values[g]\n        if not vals:\n            result[g] = (_NAN, -_INF, _INF)\n            continue\n\n        global_sorted = sorted(vals.values())\n\n        # Up to _K nearest rows that actually have a value for this goal.\n        local = []\n        for _, i in ranked:\n            v = vals.get(i)\n            if v is not None:\n                local.append(v)\n                if len(local) >= _K:\n                    break\n        local_sorted = sorted(local)\n\n        w = far if len(local_sorted) >= _MIN_LOCAL else 1.0\n\n        est = ((1 - w) * _quantile(local_sorted, 0.5)\n               + w * _quantile(global_sorted, 0.5))\n        low = ((1 - w) * _quantile(local_sorted, _LOW_Q)\n               + w * _quantile(global_sorted, _LOW_Q))\n        high = ((1 - w) * _quantile(local_sorted, _HIGH_Q)\n                + w * _quantile(global_sorted, _HIGH_Q))\n\n        low = min(low, est)\n        high = max(high, est)\n        result[g] = (float(est), float(low), float(high))\n    return result\n```",
+ "ttft_ms": 31757,
+ "type": "result",
+ "duration_ms": 37157,
+ "uuid": "aca90e0c-2edd-4b26-b590-b2060dfd7463",
+ "ttft_stream_ms": 528,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
