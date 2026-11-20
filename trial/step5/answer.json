@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 30874,
+ "stop_reason": "end_turn",
+ "session_id": "fa9008ef-b2da-4358-a754-b8ccacd2e216",
+ "total_cost_usd": 0.0105001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6232,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7233,
+  "output_tokens_details": {
+   "thinking_tokens": 5635
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6232,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7233,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6232,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6232
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5567,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005637,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7233,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6232,
+   "webSearchRequests": 0,
+   "costUSD": 0.0048631,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step5.py: which input flags are to blame for bad rows?\n\nBad rows are the worst rows on all goals together: the anti-Pareto front (rows\nthat no other row is worse than on every goal and worse on at least one),\ncapped at BEST_FRACTION of the rows, as step1.best does for good rows. Each\ninput is scored by how differently its values are spread among bad rows than\namong all rows:\n  - a column with few distinct values: the largest gap between the share of\n    bad rows and the share of all rows holding that value;\n  - a numeric column with many distinct values: the gap between the mean among\n    bad rows and the mean among all rows, scaled by the column's span.\nInputs are returned most to blame first. Standard library only.\n\"\"\"\nfrom step1 import _load, _columns, _dominates, BEST_FRACTION\n\nCATEGORY_LIMIT = 10  # up to this many distinct values, compare shares\n\n\ndef _bad_front(goal_rows, goals):\n    \"\"\"Indices (into goal_rows) of the worst rows on all goals together.\"\"\"\n    n = len(goal_rows)\n    # Orient so that higher means worse; the Pareto front is then the worst rows.\n    B = [[-sgn * float(r[c]) for c, sgn in goals] for r in goal_rows]\n    front = [i for i in range(n)\n             if not any(_dominates(B[j], B[i]) for j in range(n) if j != i)]\n    cap = max(1, int(BEST_FRACTION * n))\n    if len(front) > cap:\n        g = len(goals)\n        lo = [min(B[i][t] for i in range(n)) for t in range(g)]\n        hi = [max(B[i][t] for i in range(n)) for t in range(g)]\n\n        def badness(i):\n            s = 0.0\n            for t in range(g):\n                span = hi[t] - lo[t]\n                s += (B[i][t] - lo[t]) / span if span > 0 else 1.0\n            return s\n\n        front.sort(key=lambda i: (-badness(i), i))\n        front = front[:cap]\n    return front\n\n\ndef _share_gap(col, goal_rows, bad):\n    \"\"\"Largest gap between the share of bad rows and of all rows holding a value.\"\"\"\n    n = len(goal_rows)\n    nb = len(bad)\n    count_all, count_bad = {}, {}\n    for i, r in enumerate(goal_rows):\n        v = r[col]\n        count_all[v] = count_all.get(v, 0) + 1\n        if i in bad:\n            count_bad[v] = count_bad.get(v, 0) + 1\n    return max(abs(count_bad.get(v, 0) / nb - count_all[v] / n)\n               for v in count_all)\n\n\ndef _mean_gap(col, goal_rows, bad):\n    \"\"\"Gap between the mean among bad rows and among all rows, over the span.\"\"\"\n    vals = [r[col] for r in goal_rows]\n    span = max(vals) - min(vals)\n    if span <= 0:\n        return 0.0\n    all_mean = sum(vals) / len(vals)\n    bad_vals = [vals[i] for i in bad]\n    bad_mean = sum(bad_vals) / len(bad_vals)\n    return abs(bad_mean - all_mean) / span\n\n\ndef _score(col, goal_rows, bad):\n    distinct = {r[col] for r in goal_rows}\n    if (all(isinstance(v, float) for v in distinct)\n            and len(distinct) > CATEGORY_LIMIT):\n        return _mean_gap(col, goal_rows, bad)\n    return _share_gap(col, goal_rows, bad)\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    An input scores high when its values are unusually concentrated among the\n    worst rows on all goals together. Inputs with equal scores keep file order.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    goal_names = {c for c, _ in goals}\n    inputs = [c for c in cols\n              if not c.endswith(\"X\") and c not in goal_names]\n    if not inputs:\n        return []\n\n    goal_rows = [r for r in rows\n                 if all(isinstance(r[c], float) for c, _ in goals)]\n    if not goals or not goal_rows:\n        return list(inputs)\n\n    bad = set(_bad_front(goal_rows, goals))\n    scores = {c: _score(c, goal_rows, bad) for c in inputs}\n    order = sorted(range(len(inputs)),\n                   key=lambda k: (-scores[inputs[k]], k))\n    return [inputs[k] for k in order]\n```",
+ "ttft_ms": 25367,
+ "type": "result",
+ "duration_ms": 29828,
+ "uuid": "17edf881-f44e-40b3-abcf-0fef0c1c3ffb",
+ "ttft_stream_ms": 825,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
