@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 69655,
+ "stop_reason": "end_turn",
+ "session_id": "46b2ea63-0b9d-4ab8-9bd5-a0baa36a6f0c",
+ "total_cost_usd": 0.0175493,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8553,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16573,
+  "output_tokens_details": {
+   "thinking_tokens": 13258
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8553,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16573,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8553,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8553
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7487,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007552,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16573,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8553,
+   "webSearchRequests": 0,
+   "costUSD": 0.0099973,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 6: justify.\n\nexplain(): plain-language reasons for the recommended flag set. Each reason is a\ncount or comparison a sceptical engineer can recompute from the training csv.\n\nwhy(): one or two sentences on why a single build is rated good or bad.\n\nShared definitions:\n  - A \"good\" build is one that step1.best returns: on the Pareto front of the\n    goals, capped at 5% of rows. No other build is at least as good on every\n    goal and better on at least one.\n  - Goal score: each goal is scaled to [0, 1] over the training builds (0 = worst\n    training value, 1 = best), then averaged over goals. This is the same scale\n    step1.best uses to rank the front.\n\"\"\"\nimport os\nfrom collections import Counter\n\nfrom step1 import _load, best\nfrom step3 import same\n\nMIN_SUPPORT = 3    # a setting must appear at least this often on both sides of a comparison\nTOP_SETTINGS = 5   # how many associated settings explain() reports\nMAJORITY = 0.6     # a recommended setting is flagged \"mixed\" below this share of good builds\n_CACHE = {}\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal vector with higher always better, or None if any goal cell is unusable.\"\"\"\n    out = []\n    for c, sign in goals:\n        try:\n            out.append(sign * float(row[c]))\n        except (KeyError, TypeError, ValueError):\n            return None\n    return out\n\n\ndef _dominates(q, p):\n    \"\"\"True if q is at least as good as p on every goal and better on at least one.\"\"\"\n    return all(a >= b for a, b in zip(q, p)) and any(a > b for a, b in zip(q, p))\n\n\ndef _scale(vectors, g):\n    lo = [min(v[j] for v in vectors) for j in range(g)]\n    hi = [max(v[j] for v in vectors) for j in range(g)]\n    return lo, hi\n\n\ndef _score(o, lo, hi):\n    \"\"\"Mean of the per-goal scaled values; a constant goal contributes 0, as in step1.\"\"\"\n    total = 0.0\n    for j in range(len(o)):\n        span = hi[j] - lo[j]\n        if span > 0:\n            total += (o[j] - lo[j]) / span\n    return total / len(o)\n\n\ndef _data(train_csv):\n    \"\"\"(rows, inputs, goals, good) for a training file; good is a set of row indices.\"\"\"\n    stamp = (train_csv, os.path.getmtime(train_csv))\n    hit = _CACHE.get(stamp)\n    if hit is None:\n        rows, inputs, goals = _load(train_csv)\n        good = set(best(train_csv))\n        hit = (rows, inputs, goals, good)\n        _CACHE.clear()\n        _CACHE[stamp] = hit\n    return hit\n\n\ndef _majority(rows, inputs, idx):\n    \"\"\"Per input column: (most common value among rows idx, how many rows in idx have it).\"\"\"\n    out = {}\n    for c in inputs:\n        counts = Counter(_text(rows[i].get(c)) for i in idx)\n        value, k = counts.most_common(1)[0]\n        out[c] = (value, k)\n    return out\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for what makes rows good.\"\"\"\n    rows, inputs, goals, good_set = _data(train_csv)\n    n = len(rows)\n    if n == 0:\n        return \"There are no training rows, so no flag set can be recommended.\"\n    if not goals:\n        return (\"The file has no goal columns (names ending in + or -), so no build \"\n                \"can be called good and no set can be recommended.\")\n    if not inputs:\n        return \"The file has goals but no input settings, so there is nothing to recommend.\"\n\n    oriented = [_oriented(r, goals) for r in rows]\n    usable = [i for i, o in enumerate(oriented) if o is not None]\n    if not usable:\n        return \"No row has numeric values for every goal, so builds cannot be compared.\"\n    lo, hi = _scale([oriented[i] for i in usable], len(goals))\n    score = {i: _score(oriented[i], lo, hi) for i in usable}\n\n    good = sorted(i for i in good_set if i in score)\n    if not good:\n        return (\"No build is unusually good on all goals together, \"\n                \"so there is no evidence-based recommended set.\")\n\n    goal_names = \", \".join(c for c, _ in goals)\n    lines = [\n        f\"Goals: {goal_names}. Each goal is scaled to 0-1 over the {len(usable)} training \"\n        \"builds with complete goal values (0 = worst, 1 = best). A build's goal score is \"\n        \"the average of its scaled goals.\",\n        f\"Good builds: {len(good)} of {n} rows, the Pareto front of the goals (no other build \"\n        \"is at least as good on every goal and better on one), capped at 5% of rows. The \"\n        \"recommendation below is drawn from these rows.\",\n        \"Recommended settings (most common value among the good builds):\",\n    ]\n\n    maj = _majority(rows, inputs, good)\n    for c in inputs:\n        value, k = maj[c]\n        note = \"\"\n        if k / len(good) < MAJORITY:\n            note = f\"  [mixed: only {k} of {len(good)} good builds agree]\"\n        lines.append(f\"  {c} = {value}  ({k} of {len(good)} good builds){note}\")\n\n    cands = []\n    screened = 0\n    for c in inputs:\n        vals = [_text(r.get(c)) for r in rows]\n        for v in set(vals):\n            screened += 1\n            with_i = [i for i in usable if vals[i] == v]\n            without_i = [i for i in usable if vals[i] != v]\n            if len(with_i) < MIN_SUPPORT or len(without_i) < MIN_SUPPORT:\n                continue\n            mean_with = sum(score[i] for i in with_i) / len(with_i)\n            mean_without = sum(score[i] for i in without_i) / len(without_i)\n            if mean_with > mean_without:\n                cands.append((mean_with - mean_without, c, v, with_i, without_i,\n                              mean_with, mean_without))\n    cands.sort(key=lambda t: -t[0])\n\n    if not cands:\n        lines.append(\"No single setting is clearly associated with higher goal scores \"\n                     \"in this data.\")\n    else:\n        lines.append(\n            f\"Settings most associated with a higher goal score (of {screened} setting \"\n            \"values screened; mean score with the setting vs without it):\"\n        )\n        for _, c, v, wi, wo, mw, mo in cands[:TOP_SETTINGS]:\n            noise = same([score[i] for i in wi], [score[i] for i in wo])\n            verdict = (\"not distinguishable from noise by a permutation test\" if noise\n                       else \"unlikely to be noise (permutation test, p below 0.05)\")\n            lines.append(f\"  {c} = {v}: {mw:.2f} with vs {mo:.2f} without \"\n                         f\"(n = {len(wi)} vs {len(wo)}); {verdict}.\")\n\n    lines.append(\n        \"Caveats: these are associations in the training data, not proof that a setting \"\n        \"causes the better score. Each setting is judged on its own, so the combination \"\n        \"recommended above has not been tested as a whole, and with many settings screened \"\n        \"some results can be chance. Confirm the set with fresh measurements before relying on it.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row (goals included) is good or bad.\"\"\"\n    rows, inputs, goals, good_set = _data(train_csv)\n    if not goals:\n        return \"This file has no goal columns, so the build cannot be rated good or bad.\"\n\n    o_row = _oriented(row, goals)\n    if o_row is None:\n        return (\"The build cannot be rated: one or more of its goal values is missing \"\n                \"or not a number.\")\n\n    oriented = [_oriented(r, goals) for r in rows]\n    usable = [i for i, o in enumerate(oriented) if o is not None]\n    if not usable:\n        return \"The training data has no complete goal values, so the build cannot be compared.\"\n\n    lo, hi = _scale([oriented[i] for i in usable], len(goals))\n    s = _score(o_row, lo, hi)\n    pct = 100.0 * sum(1 for i in usable if _score(oriented[i], lo, hi) < s) / len(usable)\n    dominators = sum(1 for i in usable if _dominates(oriented[i], o_row))\n\n    tail = \"\"\n    if good_set:\n        gl = sorted(good_set)\n        maj = _majority(rows, inputs, gl)\n        differs = [c for c in inputs if _text(row.get(c)) != maj[c][0]]\n        if not differs:\n            tail = \"; its settings match the most common good-build setting on every input\"\n        else:\n            shown = \", \".join(\n                f\"{c}={_text(row.get(c))} (good builds mostly use {maj[c][0]})\"\n                for c in differs[:3]\n            )\n            more = f\" and {len(differs) - 3} more\" if len(differs) > 3 else \"\"\n            tail = f\"; its settings differ from the most common good-build setting in {shown}{more}\"\n\n    if dominators == 0:\n        return (f\"Rated good: no training build is at least as good on every goal and better \"\n                f\"on one, and its goal score {s:.2f} (0 = worst, 1 = best) is higher than \"\n                f\"{pct:.0f}% of training builds{tail}.\")\n    return (f\"Rated bad: {dominators} of {len(usable)} training builds are at least as good on \"\n            f\"every goal and better on one, and its goal score {s:.2f} (0 = worst, 1 = best) \"\n            f\"is higher than only {pct:.0f}% of training builds{tail}.\")\n```",
+ "ttft_ms": 59739,
+ "type": "result",
+ "duration_ms": 68919,
+ "uuid": "e68c3a40-c367-4297-9276-6c150ac76910",
+ "ttft_stream_ms": 413,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
