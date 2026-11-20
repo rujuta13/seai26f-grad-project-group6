@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 32535,
+ "stop_reason": "end_turn",
+ "session_id": "07d79f00-4fba-4a5b-babf-e9e6b6832414",
+ "total_cost_usd": 0.0154598,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10888,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7630,
+  "output_tokens_details": {
+   "thinking_tokens": 5426
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10888,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7630,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10888,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10888
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9382,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009467,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7630,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10888,
+   "webSearchRequests": 0,
+   "costUSD": 0.0059927999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step7.py: choose a good flag set while benchmarking at most `budget` builds.\n\nblind_csv holds the flags of every candidate build, with '?' in every goal\ncell. label(i) benchmarks row i and returns its goals as a dict. It is called\nat most `budget` times. The search has two phases:\n\n  1. Explore: benchmark builds from every flag family (step1.families),\n     round-robin, so each region of the flag space is sampled.\n  2. Exploit: repeatedly benchmark the unmeasured build with the best predicted\n     score. The prediction is the mean normalised score of its K nearest\n     measured builds (as in step2), plus a bonus for being far from anything\n     measured.\n\nThe answer is the measured build with the highest normalised goal sum. Such a\nbuild is never dominated by another measured build, so it agrees with the\nPareto-front ranking of step1.best. Standard library only.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load, _columns, families\n\nEXPLORE_SHARE = 0.5   # fraction of the budget spent on exploration\nK_NEIGHBOURS = 3      # measured neighbours used to predict an unmeasured build\nEXPLORE_WEIGHT = 0.5  # weight of the distance bonus in the exploit phase\nSEED = 1\n\n\ndef _as_goal(v):\n    \"\"\"A finite float, or None if the cell is missing or not numeric.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _sqd(a, b):\n    return sum((x - y) ** 2 for x, y in zip(a, b))\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best build found, benchmarking at most `budget` builds.\n\n    If `goal` names one goal column (with or without its +/- suffix), only that\n    goal is optimised.\n    \"\"\"\n    cols, rows = _load(blind_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if goal is not None:\n        goals = [(c, s) for c, s in goals if c == goal or c[:-1] == goal]\n        if not goals:\n            raise ValueError(f\"{goal!r} is not a goal column of {blind_csv}\")\n    if not goals:\n        raise ValueError(f\"{blind_csv} has no goal columns\")\n\n    n = len(rows)\n    if n == 0:\n        raise ValueError(f\"{blind_csv} has no rows\")\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n    budget = min(budget, n)\n\n    # Scale every numeric input to [0, 1] so no column dominates the distance.\n    lo = {c: min(r[c] for r in rows) for c in inputs}\n    hi = {c: max(r[c] for r in rows) for c in inputs}\n    X = []\n    for r in rows:\n        x = []\n        for c in inputs:\n            span = hi[c] - lo[c]\n            x.append((r[c] - lo[c]) / span if span > 0 else 0.0)\n        X.append(x)\n\n    fam = families(blind_csv)\n    rng = random.Random(SEED)\n\n    measured = {}  # row index -> oriented goal vector, or None if unusable\n    calls = 0\n\n    def measure(i):\n        nonlocal calls\n        if calls >= budget:\n            raise RuntimeError(\"benchmark budget exhausted\")\n        calls += 1\n        got = label(i)\n        if not isinstance(got, dict):\n            got = {}\n        vec = []\n        for c, sgn in goals:\n            v = _as_goal(got.get(c))\n            if v is None:\n                vec = None\n                break\n            vec.append(sgn * v)\n        measured[i] = vec\n\n    def normaliser():\n        \"\"\"Score function: sum over goals of the position between the worst and\n        best measured value (as in step1.best). None if nothing is usable.\"\"\"\n        usable = [v for v in measured.values() if v is not None]\n        if not usable:\n            return None\n        g = len(goals)\n        lo_g = [min(v[t] for v in usable) for t in range(g)]\n        hi_g = [max(v[t] for v in usable) for t in range(g)]\n\n        def score(v):\n            s = 0.0\n            for t in range(g):\n                span = hi_g[t] - lo_g[t]\n                s += (v[t] - lo_g[t]) / span if span > 0 else 1.0\n            return s\n\n        return score\n\n    # Phase 1: explore, round-robin over flag families.\n    n_explore = min(budget, max(1, round(budget * EXPLORE_SHARE)))\n    groups = {}\n    for i in range(n):\n        groups.setdefault(fam[i], []).append(i)\n    for members in groups.values():\n        rng.shuffle(members)\n\n    picks = []\n    while len(picks) < n_explore:\n        progressed = False\n        for f in sorted(groups):\n            if groups[f] and len(picks) < n_explore:\n                picks.append(groups[f].pop())\n                progressed = True\n        if not progressed:\n            break\n    for i in picks:\n        measure(i)\n\n    # Phase 2: exploit, benchmark the unmeasured build with the best prediction.\n    while calls < budget:\n        unmeasured = [i for i in range(n) if i not in measured]\n        if not unmeasured:\n            break\n        score = normaliser()\n        if score is None:\n            # Nothing usable measured yet: keep sampling at random.\n            measure(rng.choice(unmeasured))\n            continue\n\n        known = [(i, score(v)) for i, v in measured.items() if v is not None]\n        best_u, best_key = None, None\n        for u in unmeasured:\n            near = sorted((_sqd(X[u], X[i]), s) for i, s in known)[:K_NEIGHBOURS]\n            pred = sum(s for _, s in near) / len(near)\n            bonus = EXPLORE_WEIGHT * math.sqrt(near[0][0])\n            key = pred + bonus\n            if best_key is None or key > best_key:\n                best_u, best_key = u, key\n        measure(best_u)\n\n    # Answer: the measured build with the highest normalised goal sum.\n    score = normaliser()\n    usable = [(i, v) for i, v in measured.items() if v is not None]\n    if score is None or not usable:\n        return min(measured)\n    best_i, _ = max(usable, key=lambda iv: (score(iv[1]), -iv[0]))\n    return int(best_i)\n```",
+ "ttft_ms": 25245,
+ "type": "result",
+ "duration_ms": 31740,
+ "uuid": "497ebddf-daeb-4aa2-93da-47965eed782c",
+ "ttft_stream_ms": 566,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
