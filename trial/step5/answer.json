@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 27735,
+ "stop_reason": "end_turn",
+ "session_id": "7e7a9bf2-84c8-4518-80ef-bddb441edd7f",
+ "total_cost_usd": 0.0118496,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8122,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6168,
+  "output_tokens_details": {
+   "thinking_tokens": 4634
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8122,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6168,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8122,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8122
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7071,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007141,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6168,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8122,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047086,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step5.py: blame. Rank the input columns by how strongly they are tied to\nbad rows. A bad row is one whose overall goal score falls in the worst quarter.\n\nReading, column splitting, number parsing, quantiles and the signed goal\nvector come from step1, step2 and step4. Only the blame score is new here.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nfrom step1 import _columns, _read\nfrom step2 import _quantile\nfrom step4 import _objectives\n\nBAD_QUANTILE = 0.25     # rows at or below this overall score quantile are \"bad\"\nMAX_LEVELS = 8          # numeric inputs with more distinct values are binned\nBINS = 4                # quantile bins used for such numeric inputs\nSHRINK = 10.0           # pseudo-count: small groups get less weight\n\n\ndef _scores(obj: list[list[float]], m: int) -> list[float]:\n    \"\"\"Mean min-max-normalised goal score per row in [0, 1], higher is better.\n    Non-finite objectives count as the worst value, as in step1.best.\"\"\"\n    n = len(obj)\n    norm = [[0.0] * m for _ in range(n)]\n    for j in range(m):\n        col = [o[j] for o in obj]\n        fin = [x for x in col if math.isfinite(x)]\n        if not fin:\n            continue\n        lo, hi = min(fin), max(fin)\n        span = hi - lo\n        for i, x in enumerate(col):\n            if math.isfinite(x):\n                norm[i][j] = (x - lo) / span if span > 0 else 1.0\n    return [sum(v) / m for v in norm]\n\n\ndef _labels(rows: list[dict], c: str) -> list:\n    \"\"\"Group label per row for input column c. Numeric columns with few distinct\n    finite values keep their values; other numeric columns are binned by\n    quantile; everything else is grouped by its string form.\"\"\"\n    vals = [r.get(c) for r in rows]\n    nums = [v for v in vals if isinstance(v, float) and math.isfinite(v)]\n    if vals and len(nums) == len(vals):\n        if len(set(nums)) <= MAX_LEVELS:\n            return vals\n        cuts = [_quantile(nums, q / BINS) for q in range(1, BINS)]\n        return [(\"bin\", sum(1 for t in cuts if v > t)) for v in vals]\n    return [str(v) for v in vals]\n\n\ndef _column_blame(rows: list[dict], c: str, bad: list[bool], p0: float) -> float:\n    \"\"\"Largest shrunken excess of the bad-row rate over the overall rate, taken\n    over the groups of column c. Zero when no group is more bad than average.\"\"\"\n    labels = _labels(rows, c)\n    n_g: dict = {}\n    b_g: dict = {}\n    for lab, is_bad in zip(labels, bad):\n        n_g[lab] = n_g.get(lab, 0) + 1\n        if is_bad:\n            b_g[lab] = b_g.get(lab, 0) + 1\n    best = 0.0\n    for lab, ng in n_g.items():\n        if ng < 2:\n            continue\n        rate = b_g.get(lab, 0) / ng\n        score = (rate - p0) * ng / (ng + SHRINK)\n        if score > best:\n            best = score\n    return best\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Each row gets a mean normalised goal score (higher is better), and the rows\n    at or below the BAD_QUANTILE of that score are bad. An input column is blamed\n    in proportion to how much more often bad rows fall in its most troublesome\n    value or bin than the overall bad rate. Ties keep the file's column order.\n    Every input column is returned.\n    \"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    if not inputs:\n        return []\n    if n == 0 or not goals:\n        return list(inputs)\n\n    obj = [_objectives(r, gmax, gmin) for r in rows]\n    score = _scores(obj, len(goals))\n    cut = _quantile(score, BAD_QUANTILE)\n    bad = [s <= cut for s in score]\n    p0 = sum(bad) / n\n\n    blames = [_column_blame(rows, c, bad, p0) for c in inputs]\n    order = sorted(range(len(inputs)), key=lambda i: (-blames[i], i))\n    return [inputs[i] for i in order]\n```",
+ "ttft_ms": 22033,
+ "type": "result",
+ "duration_ms": 26805,
+ "uuid": "e9394771-c684-4963-9eb5-b87b419d7dbb",
+ "ttft_stream_ms": 487,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
