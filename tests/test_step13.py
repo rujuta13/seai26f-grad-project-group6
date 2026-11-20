@@ -35,3 +35,8 @@ def test_a_shortlist_picked_without_seeing_goals_is_really_better(players):
 def test_two_random_halves_of_the_players_are_noise(players):
     rows = random.Random(2).sample(players.rows, 200)
     assert all(g[2] for g in gap(players, rows[:100], rows[100:]))
+
+
+def test_say_handles_a_zero_median_and_tied_medians():
+    assert say((1, 0, False), "a") == "real: a median 1 vs 0"
+    assert say((0, 0, False), "a") == "real: a differ in spread, medians tie at 0"

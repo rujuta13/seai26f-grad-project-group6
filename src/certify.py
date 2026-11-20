@@ -14,6 +14,12 @@ def gap(t, a, b):
 
 
 def say(g, who):
-    """One line for one goal's gap: noise, or real and by how much."""
+    """One line for one goal's gap: noise, or real and by how much (or the two medians if one is 0)."""
     m1, m2, noise = g
-    return "noise" if noise else f"real: {who} is {abs(m1 - m2) / m2:.1%} {'lower' if m1 < m2 else 'higher'}"
+    if noise:
+        return "noise"
+    if m1 == m2:  # the groups differ in spread, not in the middle
+        return f"real: {who} differ in spread, medians tie at {m1:g}"
+    if m2 == 0:  # no percentage of zero, so give the two medians
+        return f"real: {who} median {m1:g} vs {m2:g}"
+    return f"real: {who} is {abs(m1 - m2) / m2:.1%} {'lower' if m1 < m2 else 'higher'}"
