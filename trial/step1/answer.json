@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21799,
+ "stop_reason": "end_turn",
+ "session_id": "f96d7b30-deb3-4b98-936c-96fd57f8b605",
+ "total_cost_usd": 0.00411428,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 201,
+  "cache_read_input_tokens": 838,
+  "output_tokens": 5249,
+  "output_tokens_details": {
+   "thinking_tokens": 3386
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 201,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5249,
+    "cache_read_input_tokens": 838,
+    "cache_creation_input_tokens": 201,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 201
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 1366,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.001441,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5249,
+   "cacheReadInputTokens": 838,
+   "cacheCreationInputTokens": 201,
+   "webSearchRequests": 0,
+   "costUSD": 0.00267328,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport csv\nimport random\n\nK = 5          # number of families reported\nSEED = 1       # fixed seed so results are reproducible\nMAX_ITER = 200\n\n\ndef _load(path):\n    \"\"\"Read a MOOT csv. Returns (rows, input_columns, goal_columns).\n    goal_columns is a list of (name, sign): +1 maximise, -1 minimise.\"\"\"\n    with open(path, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        rows = list(reader)\n        cols = reader.fieldnames or []\n    inputs, goals = [], []\n    for c in cols:\n        if c.endswith(\"+\"):\n            goals.append((c, 1))\n        elif c.endswith(\"-\"):\n            goals.append((c, -1))\n        elif c.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(c)\n    return rows, inputs, goals\n\n\ndef _encode(rows, inputs):\n    \"\"\"Turn input columns into one numeric vector per row.\n    Numeric columns are used as-is; text columns are one-hot encoded.\"\"\"\n    X = [[] for _ in rows]\n    for c in inputs:\n        raw = [r[c] for r in rows]\n        try:\n            nums = [float(v) for v in raw]\n            for i, v in enumerate(nums):\n                X[i].append(v)\n        except ValueError:\n            cats = sorted(set(raw))\n            for i, v in enumerate(raw):\n                X[i].extend(1.0 if v == cat else 0.0 for cat in cats)\n    return X\n\n\ndef _sq(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _kmeans(X, k, seed):\n    \"\"\"Plain k-means with k-means++ initialisation, standard library only.\"\"\"\n    n = len(X)\n    d = len(X[0])\n    rng = random.Random(seed)\n\n    # k-means++ seeding\n    centers = [list(X[rng.randrange(n)])]\n    while len(centers) < k:\n        dists = [min(_sq(x, c) for c in centers) for x in X]\n        total = sum(dists)\n        if total == 0:\n            centers.append(list(X[rng.randrange(n)]))\n            continue\n        r = rng.random() * total\n        acc = 0.0\n        chosen = n - 1\n        for i, dv in enumerate(dists):\n            acc += dv\n            if acc >= r:\n                chosen = i\n                break\n        centers.append(list(X[chosen]))\n\n    labels = [-1] * n\n    for _ in range(MAX_ITER):\n        changed = False\n        for i, x in enumerate(X):\n            best_c = min(range(k), key=lambda c: _sq(x, centers[c]))\n            if best_c != labels[i]:\n                labels[i] = best_c\n                changed = True\n        if not changed:\n            break\n        sums = [[0.0] * d for _ in range(k)]\n        counts = [0] * k\n        for i, x in enumerate(X):\n            c = labels[i]\n            counts[c] += 1\n            for j in range(d):\n                sums[c][j] += x[j]\n        for c in range(k):\n            if counts[c]:\n                centers[c] = [s / counts[c] for s in sums[c]]\n            else:\n                centers[c] = list(X[rng.randrange(n)])\n    return labels\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    rows, inputs, _ = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    X = _encode(rows, inputs)\n    if not X[0]:\n        return [0] * n\n    distinct = len({tuple(x) for x in X})\n    k = max(1, min(K, distinct))\n    return _kmeans(X, k, SEED)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows. Uses the Pareto front over the goals, ranked by\n    mean normalised goal score.\"\"\"\n    rows, _, goals = _load(train_csv)\n    n = len(rows)\n    m = int(0.05 * n)\n    if n == 0 or m == 0 or not goals:\n        return []\n\n    # Oriented values: higher is always better.\n    raw = [[float(r[c]) for c, _ in goals] for r in rows]\n    oriented = [[sign * v for v, (_, sign) in zip(row, goals)] for row in raw]\n\n    g = len(goals)\n    lo = [min(o[j] for o in oriented) for j in range(g)]\n    hi = [max(o[j] for o in oriented) for j in range(g)]\n\n    # Normalised scores in [0, 1]; a constant goal contributes 0 to everyone.\n    scores = []\n    for o in oriented:\n        s = []\n        for j in range(g):\n            span = hi[j] - lo[j]\n            s.append((o[j] - lo[j]) / span if span > 0 else 0.0)\n        scores.append(sum(s) / g)\n\n    # Pareto front: rows not dominated by any other row.\n    front = []\n    for i in range(n):\n        oi = oriented[i]\n        dominated = False\n        for j in range(n):\n            if j == i:\n                continue\n            oj = oriented[j]\n            if all(oj[k] >= oi[k] for k in range(g)) and any(oj[k] > oi[k] for k in range(g)):\n                dominated = True\n                break\n        if not dominated:\n            front.append(i)\n\n    front.sort(key=lambda i: (-scores[i], i))\n    return front[:m]\n```",
+ "ttft_ms": 15766,
+ "type": "result",
+ "duration_ms": 21013,
+ "uuid": "eaaa0193-b38e-4b42-98da-2e42bc959656",
+ "ttft_stream_ms": 508,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
