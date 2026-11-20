@@ -1,0 +1,4 @@
+# pinned so every machine runs the harness, and the LLM's code, the same way (Python 3.13)
+numpy==1.26.4
+scikit-learn==1.7.1
+pytest==9.0.2

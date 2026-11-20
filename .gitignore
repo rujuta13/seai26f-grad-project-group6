@@ -1,5 +1,6 @@
 # MOOT data is downloaded by `make data`, never committed (keeps it unmodified)
 data/*.csv
+data/splits/
 
 # course spec pages saved from GitHub
 *.md.html
@@ -8,3 +9,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 results/
+
+# LLM trial worktrees (each is its own branch runs/tT-rR)
+.runs/

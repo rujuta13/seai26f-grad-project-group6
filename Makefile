@@ -1,9 +1,12 @@
 PY ?= python3
 
-.PHONY: data test loc
+.PHONY: data splits test loc
 
 data:            ## download the three MOOT csvs (unmodified)
 	bash data/get.sh
+
+splits: data     ## the shared 1000-row, 80/20 train/test split (data/splits/)
+	$(PY) harness/data.py
 
 test: data       ## run every step's tests
 	$(PY) -m pytest -q tests
