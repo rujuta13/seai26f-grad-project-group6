@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 36356,
+ "stop_reason": "end_turn",
+ "session_id": "4c2c572a-ffbc-45b3-9a5e-ca7b0da3a6c8",
+ "total_cost_usd": 0.0116004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 6766,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8264,
+  "output_tokens_details": {
+   "thinking_tokens": 6649
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6766,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8264,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 6766,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 6766
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6035,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006115000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8264,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6766,
+   "webSearchRequests": 0,
+   "costUSD": 0.0054854,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 4: flow control for nightly benchmark results.\n\nstream(): keeps a new row when its normalised goal total reaches the 95th\npercentile of the training rows' totals. Normalisation follows step1.best:\neach goal is scaled to [0, 1] over the training range, minimised goals are\nnegated, and missing values count as worst.\n\ndrift(): compares a sliding window of recent goal values with the training\ngoal values using step3.same. It checks every _STRIDE rows and warns once\n_CONFIRM consecutive checks report a real difference, which limits false alarms.\n\"\"\"\n\nimport math\nfrom functools import lru_cache\n\nimport step3\nfrom step1 import _read, _classify\n\n_KEEP_QUANTILE = 0.95  # keep rows scoring at or above this training quantile\n_WINDOW = 40           # recent rows compared against training in drift()\n_STRIDE = 10           # run a drift check every _STRIDE rows\n_CONFIRM = 3           # consecutive significant checks before warning\n\n\ndef _is_num(v):\n    return isinstance(v, float) and not math.isnan(v)\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    pos = q * (len(sorted_vals) - 1)\n    lo = math.floor(pos)\n    hi = min(lo + 1, len(sorted_vals) - 1)\n    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)\n\n\ndef _score(row, ranges):\n    \"\"\"Sum of normalised goal values (higher is better). Missing counts as 0.\"\"\"\n    total = 0.0\n    for name, sign, lo, span in ranges:\n        v = row.get(name)\n        if not _is_num(v):\n            continue  # missing counts as worst\n        x = v * sign\n        total += (x - lo) / span if span > 0 else 1.0\n    return total\n\n\n@lru_cache(maxsize=4)\ndef _model(train_csv):\n    \"\"\"Parse train_csv once.\n\n    Returns (goal_names, ranges, train_rows, threshold):\n      goal_names: goal columns as they appear in the header.\n      ranges: (name, sign, lo, span) per goal, over the training data.\n      train_rows: the training rows.\n      threshold: keep cut-off on the normalised totals, or None if no goals/rows.\n    \"\"\"\n    header, rows = _read(train_csv)\n    _, goals_max, goals_min = _classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n\n    ranges = []\n    for name, sign in goals:\n        vals = [r[name] * sign for r in rows if _is_num(r.get(name))]\n        lo = min(vals) if vals else 0.0\n        hi = max(vals) if vals else 0.0\n        ranges.append((name, sign, lo, hi - lo))\n    ranges = tuple(ranges)\n    names = tuple(g for g, _ in goals)\n\n    if not goals or not rows:\n        threshold = None\n    else:\n        totals = sorted(_score(r, ranges) for r in rows)\n        threshold = _quantile(totals, _KEEP_QUANTILE)\n    return names, ranges, rows, threshold\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or drop (False) each incoming row, in order.\n\n    Each decision uses only the training data and the row itself: the row is\n    kept when its normalised goal total reaches the training threshold.\n    \"\"\"\n    _, ranges, _, threshold = _model(train_csv)\n    if threshold is None:\n        return [False] * len(rows)\n    return [_score(r, ranges) >= threshold for r in rows]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the new results have stopped\n    looking like the training results, or None if they never do.\n\n    At each periodic check, the most recent _WINDOW rows are tested per goal\n    against the training goal values with step3.same. A warning is raised once\n    _CONFIRM consecutive checks find a real difference.\n    \"\"\"\n    names, _, train_rows, _ = _model(train_csv)\n    if not names or not train_rows:\n        return None\n    ref = {g: [r[g] for r in train_rows if _is_num(r.get(g))] for g in names}\n\n    streak = 0\n    for i in range(_WINDOW - 1, len(rows)):\n        if (i + 1) % _STRIDE:\n            continue\n        window = rows[i + 1 - _WINDOW: i + 1]\n        differs = any(\n            not step3.same([r.get(g) for r in window], ref[g])\n            for g in names\n        )\n        streak = streak + 1 if differs else 0\n        if streak >= _CONFIRM:\n            return i\n    return None\n```",
+ "ttft_ms": 30373,
+ "type": "result",
+ "duration_ms": 35576,
+ "uuid": "f0b9140f-e299-453c-bee9-7aefe4c0f945",
+ "ttft_stream_ms": 458,
+ "time_to_request_ms": 31,
+ "queued_turn_count": 0
+}
