@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 67228,
+ "stop_reason": "end_turn",
+ "session_id": "dd1db46a-9446-4634-ba75-d037119a4ffd",
+ "total_cost_usd": 0.0177232,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8500,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16628,
+  "output_tokens_details": {
+   "thinking_tokens": 12912
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8500,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16628,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8500,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8500
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7634,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007709000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16628,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8500,
+   "webSearchRequests": 0,
+   "costUSD": 0.010014200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 6: justify the recommendation and each rating in plain words.\n\nexplain(train_csv) describes the recommended flag set (the top-ranked row from\nstep1.best) and the settings that are much more common among the top builds\nthan among all builds. why(train_csv, row) rates one build against the\ntraining builds and says why.\n\nEverything is plain arithmetic on the training CSV. Each claim is a count or\na share that can be checked by hand.\n\"\"\"\nimport math\n\nfrom step1 import _load, best\n\n_TOP_FRACTION = 0.05   # share of builds treated as \"top\", as in step1.best\n_MAX_LEVELS = 8        # numeric inputs with more distinct values are skipped\n_MIN_GAP = 0.20        # report a setting if it is this much more common among top builds\n_MAX_REASONS = 8\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _goal_spec(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal values with signs applied so higher is always better, or None if any is missing.\"\"\"\n    vec = []\n    for c, sg in goals:\n        f = _finite(row.get(c))\n        if f is None:\n            return None\n        vec.append(sg * f)\n    return vec\n\n\ndef _ranges(vecs):\n    g = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(g)]\n    hi = [max(v[j] for v in vecs) for j in range(g)]\n    return lo, hi\n\n\ndef _norm(vec, lo, hi):\n    \"\"\"Scale each goal to 0..1 over the training range (0 worst, 1 best), clamped.\"\"\"\n    out = []\n    for j, x in enumerate(vec):\n        span = hi[j] - lo[j]\n        t = 1.0 if span == 0 else (x - lo[j]) / span\n        out.append(min(1.0, max(0.0, t)))\n    return out\n\n\ndef _dominates(a, b):\n    \"\"\"True if a is at least as good as b on every goal and strictly better on one.\"\"\"\n    strict = False\n    for x, y in zip(a, b):\n        if x < y:\n            return False\n        if x > y:\n            strict = True\n    return strict\n\n\ndef _level(v):\n    \"\"\"Comparable key for a cell: finite float, non-empty string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _fmt(v):\n    return f\"{v:g}\" if isinstance(v, float) else str(v)\n\n\ndef _goal_label(c, sg):\n    direction = \"higher is better\" if sg > 0 else \"lower is better\"\n    return f\"{c[:-1]} ({direction})\"\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words, for what makes builds good.\n\n    Names the recommended build (the top-ranked row from step1.best, or the\n    highest mean goal score if step1.best returns nothing), states how it\n    does on each goal against the training builds, and lists the settings\n    that are at least _MIN_GAP more common among the top builds than among\n    all builds. These are associations in the data, not proof of cause.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"There are no training builds, so no recommendation can be made.\"\n    goals = _goal_spec(header)\n    if not goals:\n        return (\"The file has no goal columns ('+' or '-'), \"\n                \"so builds cannot be judged good or bad.\")\n\n    vecs = {}\n    for i, r in enumerate(rows):\n        v = _oriented(r, goals)\n        if v is not None:\n            vecs[i] = v\n    if not vecs:\n        return \"No build has numeric values for every goal, so nothing can be ranked.\"\n\n    lo, hi = _ranges(list(vecs.values()))\n    score = {i: sum(_norm(v, lo, hi)) / len(goals) for i, v in vecs.items()}\n\n    good = [i for i in best(train_csv) if i in vecs]\n    if not good:\n        k = max(1, int(_TOP_FRACTION * len(vecs)))\n        good = sorted(vecs, key=lambda i: (-score[i], i))[:k]\n    rec = good[0]\n    rec_row = rows[rec]\n\n    lines = [\n        f\"Recommended build: training row {rec}, the top-ranked of \"\n        f\"{len(vecs)} builds with complete goal values.\"\n    ]\n\n    on = []\n    for c in header:\n        if not _is_input(c):\n            continue\n        v = _level(rec_row.get(c))\n        if isinstance(v, float) and v != 0.0:\n            on.append(c if v == 1.0 else f\"{c}={_fmt(v)}\")\n        elif isinstance(v, str):\n            on.append(f\"{c}={v}\")\n    lines.append(\n        \"Inputs set in the recommended build: \"\n        + (\", \".join(on) if on else \"none\")\n        + \".\"\n    )\n\n    lines.append(\"Goal results of the recommended build:\")\n    for c, sg in goals:\n        x = _finite(rec_row.get(c))\n        if x is None:\n            continue\n        all_vals = [_finite(r.get(c)) for r in rows]\n        all_vals = [v for v in all_vals if v is not None]\n        worse = sum(1 for v in all_vals if sg * v < sg * x)\n        lines.append(\n            f\"- {_goal_label(c, sg)}: {_fmt(x)}, better than \"\n            f\"{worse / len(all_vals):.0%} of the {len(all_vals)} builds that report it.\"\n        )\n\n    base = list(vecs)\n    findings = []\n    for pos, c in enumerate(header):\n        if not _is_input(c):\n            continue\n        cell = {i: _level(rows[i].get(c)) for i in base}\n        present = [i for i in base if cell[i] is not None]\n        good_present = [i for i in good if cell[i] is not None]\n        if not present or not good_present:\n            continue\n        levels = {cell[i] for i in present}\n        if all(isinstance(v, float) for v in levels) and len(levels) > _MAX_LEVELS:\n            continue\n        rec_val = _level(rec_row.get(c))\n        for v in levels:\n            p_all = sum(1 for i in present if cell[i] == v) / len(present)\n            p_good = sum(1 for i in good_present if cell[i] == v) / len(good_present)\n            if p_good - p_all >= _MIN_GAP:\n                findings.append((\n                    -(p_good - p_all), pos, v, c, p_good, p_all,\n                    len(good_present), len(present), rec_val == v,\n                ))\n\n    findings.sort(key=lambda t: (t[0], t[1], _fmt(t[2])))\n    if findings:\n        lines.append(\n            \"Settings much more common among the top builds than among all builds:\"\n        )\n        for _, _, v, c, p_good, p_all, ng, na, has in findings[:_MAX_REASONS]:\n            status = \"has this setting\" if has else \"does not have this setting\"\n            lines.append(\n                f\"- {c} = {_fmt(v)}: in {p_good:.0%} of the {ng} top builds vs \"\n                f\"{p_all:.0%} of the {na} builds; the recommended build {status}.\"\n            )\n    else:\n        lines.append(\n            \"No single setting is much more common among the top builds \"\n            \"than among all builds.\"\n        )\n\n    if len(good) < 10:\n        lines.append(\n            f\"Only {len(good)} top build(s) were available, so these shares are rough.\"\n        )\n    lines.append(\n        \"These are associations in the training data, not proof that a setting \"\n        \"causes the difference; confirm the recommended settings with a controlled \"\n        \"build before relying on them.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this build (goals included) is good or bad.\n\n    The build's mean normalised goal score (each goal scaled over the training\n    builds, 0 worst to 1 best) is compared with the training builds' scores.\n    It is rated 'good' if at least half the training builds score no higher\n    than it, and 'bad' otherwise.\n    \"\"\"\n    header, rows = _load(train_csv)\n    goals = _goal_spec(header)\n    if not goals:\n        return \"This file has no goal columns, so the build cannot be rated.\"\n\n    train = []\n    for r in rows:\n        v = _oriented(r, goals)\n        if v is not None:\n            train.append(v)\n    if not train:\n        return (\"No training build has numeric values for every goal, \"\n                \"so this build cannot be rated.\")\n\n    rv = _oriented(row, goals)\n    if rv is None:\n        missing = [c for c, _ in goals if _finite(row.get(c)) is None]\n        return (\"This build cannot be rated because its goal values are missing for: \"\n                + \", \".join(missing) + \".\")\n\n    lo, hi = _ranges(train)\n    norm = _norm(rv, lo, hi)\n    score = sum(norm) / len(goals)\n    train_scores = [sum(_norm(v, lo, hi)) / len(goals) for v in train]\n    at_most = sum(1 for s in train_scores if s <= score) / len(train_scores)\n    verdict = \"good\" if at_most >= 0.5 else \"bad\"\n\n    beaten_by = sum(1 for v in train if _dominates(v, rv))\n    j_weak = min(range(len(goals)), key=lambda j: norm[j])\n    j_strong = max(range(len(goals)), key=lambda j: norm[j])\n\n    def _describe(j):\n        c = goals[j][0]\n        return f\"{c[:-1]} ({_fmt(_finite(row.get(c)))})\"\n\n    sentence1 = (\n        f\"This build is rated {verdict}: its goals are at least as good as \"\n        f\"{at_most:.0%} of the {len(train)} training builds \"\n        f\"(mean normalised goal score {score:.2f}, where 1 is best on every goal \"\n        f\"and 0 is worst).\"\n    )\n    if beaten_by == 0:\n        beat_text = \"no training build is at least as good on every goal and better on one\"\n    else:\n        beat_text = (f\"{beaten_by} training build(s) are at least as good on every goal \"\n                     f\"and better on one\")\n    sentence2 = (\n        f\"It is weakest on {_describe(j_weak)} and strongest on {_describe(j_strong)}, \"\n        f\"and {beat_text}.\"\n    )\n    return sentence1 + \" \" + sentence2\n```",
+ "ttft_ms": 56327,
+ "type": "result",
+ "duration_ms": 66358,
+ "uuid": "27f4d331-da16-405e-9701-26261eafe1a2",
+ "ttft_stream_ms": 383,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
