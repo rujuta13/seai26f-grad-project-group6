@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 51428,
+ "stop_reason": "end_turn",
+ "session_id": "f1fdb7d4-6290-422f-af3e-10ef970f62bd",
+ "total_cost_usd": 0.0248417,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 18125,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11697,
+  "output_tokens_details": {
+   "thinking_tokens": 9808
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18125,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11697,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 18125,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 18125
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 15258,
+   "outputTokens": 22,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.015368000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11697,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18125,
+   "webSearchRequests": 0,
+   "costUSD": 0.0094737,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step9.py: spot glitches and odd flag sets among benchmark results.\n\nStandard library only (Python 3.13). Reuses step2 (kNN goal estimates via\nguess() and cell parsing via _num) and step4 (training context, cell access\nvia _raw, and each row's distance to the training inputs via _row_distance).\n\nodd() returns one suspicion score per row, goals included. Higher means more\nlikely a glitch, a typo, or unlike anything in the training file. Each score\nadds:\n  - input novelty: distance from the row's inputs to the nearest training\n    row, relative to the typical leave-one-out distance in training;\n  - unseen input cells: blank, text or infinite cells whose value never\n    occurs in training;\n  - goal anomalies: blank, text or infinite goal cells; goal values outside\n    the training range; and goal values far from the kNN estimate of\n    step2.guess, given the row's inputs.\nEach row is scored on its own against the training file, so rows in the\nsame batch do not influence each other's scores.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport statistics\n\nfrom step2 import _num, guess\nfrom step4 import _context, _raw, _row_distance\n\n_UNSEEN_PENALTY = 1.0    # per input cell with a value never seen in training\n_MISSING_PENALTY = 3.0   # per goal cell that is blank, text or infinite\n_MAX_TERM = 20.0         # cap on any single damped term\n_MIN_SPAN_SHARE = 0.05   # goal tolerance is at least this share of the training range\n\n\ndef _damp(x: float) -> float:\n    \"\"\"log(1 + x), capped at _MAX_TERM. NaN counts as the cap.\"\"\"\n    if math.isnan(x):\n        return _MAX_TERM\n    if x <= 0.0:\n        return 0.0\n    return min(math.log1p(x), _MAX_TERM)\n\n\ndef _finite(raw) -> float | None:\n    \"\"\"Numeric value of a cell, or None if blank, text, NaN or infinite.\"\"\"\n    v = _num(raw)\n    if v is None or not math.isfinite(v):\n        return None\n    return v\n\n\ndef _scale_in(ctx: dict) -> float:\n    \"\"\"Typical leave-one-out training distance, used to scale input novelty.\"\"\"\n    ref = [d for d in ctx[\"ref\"] if math.isfinite(d)]\n    pos = [d for d in ref if d > 0.0]\n    if pos:\n        return statistics.median(pos)\n    return 1.0\n\n\ndef _unseen_inputs(row, ctx: dict) -> int:\n    \"\"\"Input cells that are blank, text or infinite and never seen in training.\"\"\"\n    tables = ctx[\"tables\"]\n    count = 0\n    for name, j in zip(ctx[\"input_names\"], ctx[\"inputs\"]):\n        raw = _raw(row, name, j)\n        if _finite(raw) is not None:\n            continue\n        text = \"\" if raw is None else str(raw)\n        table = tables.get(j, {})\n        if text not in table and text.strip() not in table:\n            count += 1\n    return count\n\n\ndef _goal_term(row, ctx: dict,\n               est: dict[str, tuple[float, float, float]]) -> float:\n    \"\"\"Sum of goal anomaly terms for one row.\"\"\"\n    total = 0.0\n    for k, (name, j) in enumerate(zip(ctx[\"goal_names\"], ctx[\"goal_idx\"])):\n        v = _finite(_raw(row, name, j))\n        if v is None:\n            total += _MISSING_PENALTY\n            continue\n\n        glo = ctx[\"glo\"][k]\n        ghi = ctx[\"ghi\"][k]\n        span = 0.0\n        if glo is not None and ghi is not None:\n            span = ghi - glo\n            if not math.isfinite(span) or span < 0.0:\n                span = 0.0\n\n        excess = 0.0\n        if span > 0.0 and glo is not None and ghi is not None:\n            below = max(0.0, glo - v)\n            above = max(0.0, v - ghi)\n            excess = (below + above) / span\n\n        e, lo, hi = est.get(name, (math.nan, math.nan, math.nan))\n        if math.isnan(e):\n            dev = 0.0\n        else:\n            base = max(hi - lo, _MIN_SPAN_SHARE * span,\n                       1e-9 * max(1.0, abs(e)))\n            dev = abs(v - e) / base\n\n        total += _damp(dev) + _damp(excess)\n    return total\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in rows (goals included).\n\n    Higher means more likely a glitch, a typo, or unlike anything in\n    train_csv. Scores are finite and non-negative. If train_csv has no\n    usable rows, every row gets the maximum score.\n    \"\"\"\n    key = os.fspath(train_csv)\n    ctx = _context(key)\n    rows = list(rows)\n    if not rows:\n        return []\n    if not ctx[\"Z\"]:\n        return [_MAX_TERM] * len(rows)\n\n    scale = _scale_in(ctx)\n    scores: list[float] = []\n    for row in rows:\n        inputs_map = {\n            name: _raw(row, name, j)\n            for name, j in zip(ctx[\"input_names\"], ctx[\"inputs\"])\n        }\n        input_term = _damp(_row_distance(row, ctx) / scale)\n        unseen = _unseen_inputs(row, ctx)\n        est = guess(key, inputs_map)\n        score = (input_term\n                 + _UNSEEN_PENALTY * unseen\n                 + _goal_term(row, ctx, est))\n        scores.append(float(score))\n    return scores\n```",
+ "ttft_ms": 44620,
+ "type": "result",
+ "duration_ms": 49906,
+ "uuid": "09eaea3c-faa3-4230-a7f9-8ae2cae82289",
+ "ttft_stream_ms": 427,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
