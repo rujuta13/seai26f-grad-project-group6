@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 61705,
+ "stop_reason": "end_turn",
+ "session_id": "aa7c6e25-8d40-419d-b443-cd57cdd79ee1",
+ "total_cost_usd": 0.023680800000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14963,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15292,
+  "output_tokens_details": {
+   "thinking_tokens": 12112
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14963,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15292,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14963,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14963
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12952,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.013042,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15292,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14963,
+   "webSearchRequests": 0,
+   "costUSD": 0.0106388,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 8: fix a slow build with as few flag changes as possible.\n\nfix(train_csv, row, frozen) returns a copy of a bad build's input flags with\nthe fewest values changed that make it \"good\", using the rule from step6.why:\neach goal is scaled over the training builds (0 worst, 1 best), the mean of\nthose scaled values is the build's score, and the build is good if at least\nhalf of the training builds score no higher.\n\nA candidate's goal values are unknown, so they are estimated from its nearest\ntraining builds, as in step2.guess. Changes are searched by size: all single\nflag changes, then all pairs, and so on up to _K_MAX, so the first good result\nuses the fewest changes. If no small change set works within the evaluation\nbudget, a greedy search takes over. Frozen columns, ignored 'X' columns and\ngoal columns are never changed.\n\nIf no good build is found, fix() returns the highest-scoring build it tried\n(or the original row if nothing scored higher), which may still be bad.\n\"\"\"\nimport itertools\nimport math\n\nfrom step1 import _load\n\n_K_MAX = 6          # largest change set tried exhaustively\n_MAX_EVALS = 1500   # cap on candidate evaluations (each scans the training data)\n_MAX_OPTIONS = 8    # values tried per numeric column\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _level(v):\n    \"\"\"Comparable key for a cell: finite float, non-empty string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _median(vals):\n    \"\"\"Median of a non-empty sorted list (matches step2's 0.5 quantile).\"\"\"\n    m = len(vals)\n    mid = m // 2\n    if m % 2:\n        return vals[mid]\n    return (vals[mid - 1] + vals[mid]) / 2.0\n\n\ndef _apply(base, changes):\n    \"\"\"Copy of base with the (column, value) changes applied.\"\"\"\n    out = dict(base)\n    for c, v in changes:\n        out[c] = v\n    return out\n\n\nclass _Model:\n    \"\"\"Training data prepared once, so many candidate rows can be scored.\"\"\"\n\n    def __init__(self, train_csv):\n        header, rows = _load(train_csv)\n        self.rows = rows\n        self.n = len(rows)\n        self.goals = []\n        for c in header:\n            if c.endswith(\"+\"):\n                self.goals.append((c, 1.0))\n            elif c.endswith(\"-\"):\n                self.goals.append((c, -1.0))\n        self.inputs = [c for c in header if _is_input(c)]\n        self.goal_vals = {\n            c: [_finite(r.get(c)) for r in rows] for c, _ in self.goals\n        }\n\n        complete = []\n        for i in range(self.n):\n            v = self._oriented_row(i)\n            if v is not None:\n                complete.append(v)\n        self.scorable = bool(complete) and bool(self.goals)\n        if self.scorable:\n            g = len(self.goals)\n            self.lo = [min(v[j] for v in complete) for j in range(g)]\n            self.hi = [max(v[j] for v in complete) for j in range(g)]\n            self.train_scores = [self.score_vec(v) for v in complete]\n\n        self.options = {c: self._options(c) for c in self.inputs}\n\n    def _oriented_row(self, i):\n        \"\"\"Goal values of training row i with signs applied, or None if missing.\"\"\"\n        vec = []\n        for c, sg in self.goals:\n            f = self.goal_vals[c][i]\n            if f is None:\n                return None\n            vec.append(sg * f)\n        return vec\n\n    def _options(self, c):\n        \"\"\"Values to try for input column c, drawn from the training data.\"\"\"\n        levels = set()\n        for r in self.rows:\n            lv = _level(r.get(c))\n            if lv is not None:\n                levels.add(lv)\n        vals = sorted(levels, key=lambda v: (isinstance(v, str), v))\n        if len(vals) > _MAX_OPTIONS and all(isinstance(v, float) for v in vals):\n            m = len(vals)\n            idx = sorted({\n                round(k * (m - 1) / (_MAX_OPTIONS - 1))\n                for k in range(_MAX_OPTIONS)\n            })\n            vals = [vals[i] for i in idx]\n        return vals\n\n    def score_vec(self, vec):\n        \"\"\"Mean of the clamped 0..1 normalised goals (higher is better).\"\"\"\n        total = 0.0\n        for j, x in enumerate(vec):\n            span = self.hi[j] - self.lo[j]\n            t = 1.0 if span == 0 else (x - self.lo[j]) / span\n            total += min(1.0, max(0.0, t))\n        return total / len(vec)\n\n    def _estimate(self, row):\n        \"\"\"Oriented goal estimate for a candidate row, from its nearest training builds.\"\"\"\n        cols = [c for c in self.inputs if c in row]\n        dists = []\n        for r in self.rows:\n            d = 0.0\n            for c in cols:\n                a = row[c]\n                b = r.get(c)\n                if isinstance(a, float) and isinstance(b, float):\n                    d += abs(a - b)\n                elif a != b:\n                    d += 1.0\n            dists.append(d)\n        order = sorted(range(self.n), key=lambda i: (dists[i], i))\n        k = min(self.n, max(10, int(math.sqrt(self.n))))\n        near = order[:k]\n        vec = []\n        for c, sg in self.goals:\n            gv = self.goal_vals[c]\n            vals = sorted(gv[i] for i in near if gv[i] is not None)\n            if len(vals) < 3:\n                vals = sorted(v for v in gv if v is not None)\n            if not vals:\n                return None\n            vec.append(sg * _median(vals))\n        return vec\n\n    def evaluate(self, row):\n        \"\"\"(score, good) for a candidate row, or None if it cannot be estimated.\"\"\"\n        vec = self._estimate(row)\n        if vec is None:\n            return None\n        s = self.score_vec(vec)\n        at_most = sum(1 for t in self.train_scores if t <= s) / len(self.train_scores)\n        return s, at_most >= 0.5\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row` with as few values changed as possible so it becomes good.\n\n    `row` is a bad build's input columns (goals removed). Columns named in\n    `frozen` are never changed. Returns a new dict with the same keys as `row`.\n    The original row is returned if it is already good or no change helps.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    base = dict(row)\n    model = _Model(train_csv)\n    if not model.scorable:\n        return base\n    frozen = set(frozen)\n\n    base_res = model.evaluate(base)\n    if base_res is not None and base_res[1]:\n        return base\n\n    start = base_res[0] if base_res is not None else -math.inf\n    best_score = start\n    best_row = base\n    evals = 0\n\n    def consider(cand, score):\n        nonlocal best_score, best_row\n        if score > best_score:\n            best_score, best_row = score, cand\n\n    cols = [c for c in model.inputs if c in base and c not in frozen]\n    moves = []\n    for c in cols:\n        cur = _level(base.get(c))\n        for v in model.options[c]:\n            if v != cur:\n                moves.append((c, v))\n    if not moves:\n        return base\n\n    # Exhaustive search by number of changed flags: the first size with a\n    # good build gives the fewest changes; ties go to the higher score.\n    for k in range(1, min(_K_MAX, len(cols)) + 1):\n        found = []\n        for combo in itertools.combinations(moves, k):\n            if len({c for c, _ in combo}) < k:\n                continue\n            if evals >= _MAX_EVALS:\n                break\n            cand = _apply(base, combo)\n            res = model.evaluate(cand)\n            evals += 1\n            if res is None:\n                continue\n            consider(cand, res[0])\n            if res[1]:\n                found.append((res[0], cand))\n        if found:\n            return max(found, key=lambda t: t[0])[1]\n        if evals >= _MAX_EVALS:\n            break\n\n    # Greedy fallback: keep taking the single change that helps most.\n    changes = []\n    used = set()\n    cur = start\n    while evals < _MAX_EVALS:\n        step = None\n        for c, v in moves:\n            if c in used:\n                continue\n            if evals >= _MAX_EVALS:\n                break\n            cand = _apply(base, changes + [(c, v)])\n            res = model.evaluate(cand)\n            evals += 1\n            if res is None:\n                continue\n            if step is None or res[0] > step[0]:\n                step = (res[0], res[1], (c, v), cand)\n        if step is None or step[0] <= cur:\n            break\n        cur, good, mv, cand = step\n        changes.append(mv)\n        used.add(mv[0])\n        consider(cand, cur)\n        if good:\n            return cand\n\n    return best_row\n```",
+ "ttft_ms": 51481,
+ "type": "result",
+ "duration_ms": 60559,
+ "uuid": "c1db5974-5476-44a8-991a-f9f9f11e445b",
+ "ttft_stream_ms": 405,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
