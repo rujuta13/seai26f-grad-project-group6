@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 45564,
+ "stop_reason": "end_turn",
+ "session_id": "5154f855-c4ac-47aa-bbe4-898b59b757ee",
+ "total_cost_usd": 0.0230504,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17301,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10160,
+  "output_tokens_details": {
+   "thinking_tokens": 8198
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17301,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10160,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17301,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17301
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14440,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.01451,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10160,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17301,
+   "webSearchRequests": 0,
+   "costUSD": 0.0085404,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step9.py: odd. Flag benchmark results that look like glitches, typos, or\nflag sets unlike anything seen before.\n\nEach row gets a suspicion score made of two parts that are added together:\n  1. Input part: how far its flag set lies from the nearest training flag set,\n     as a multiple of the typical nearest-neighbour distance (the same limit\n     step4.drift uses). A flag set with no close training neighbour is unusual.\n  2. Goal part: how far each goal value lies from what training builds with\n     similar flags measured, in robust z-score units. Comparing against\n     training builds with the exact same flags catches glitches, since the\n     same flags should give about the same result. A missing or non-numeric\n     goal counts as a glitch.\n\nReading, column splitting, number parsing, missing-value filling, input\nencoding, the reference limit, the noise floor and quantiles come from steps\n1, 2 and 4. Only the scoring is new here.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport random\nfrom collections import defaultdict\n\nfrom step1 import _SEED, _columns, _dist2, _num, _read\nfrom step2 import NOISE_FLOOR, _fill, _quantile\nfrom step4 import DRIFT_QUANTILE, REFERENCE_ROWS, _encode, _fit\n\nZ_THRESH = 3.5          # robust z-score that counts as one unit of suspicion\nCAP = 10.0              # each part of the score is capped so one cell cannot dominate\nMIN_GOAL_VALUES = 4     # fewer usable training values for a goal: it cannot be judged\nIQR_TO_SIGMA = 1.349    # IQR of a normal distribution is about 1.349 sigma\n\n\ndef _key(vals: list) -> tuple:\n    \"\"\"Hashable key for a row's input cells. Missing or non-finite cells share one key.\"\"\"\n    out = []\n    for v in vals:\n        if isinstance(v, float) and math.isfinite(v):\n            out.append((\"f\", v))\n        elif isinstance(v, str):\n            out.append((\"s\", v))\n        else:\n            out.append((\"n\", None))\n    return tuple(out)\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in rows (goals included). Higher means more\n    likely a glitch, a typo, or a flag set unlike anything in train_csv.\n\n    The score is finite and non-negative. Each part is capped at CAP.\n    With fewer than two training rows there is nothing to compare against, so\n    every score is 0.0.\n    \"\"\"\n    header, train = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    if not rows:\n        return []\n    if len(train) < 2:\n        return [0.0 for _ in rows]\n\n    # Input part: encode the training inputs and set a typical neighbour distance.\n    spec = _fit(train, inputs)\n    enc_train = [_encode(r, inputs, spec) for r in train]\n    if len(train) <= REFERENCE_ROWS:\n        ref_idx = list(range(len(train)))\n    else:\n        ref_idx = random.Random(_SEED).sample(range(len(train)), REFERENCE_ROWS)\n    ref = [enc_train[i] for i in ref_idx]\n    loo = [\n        min(_dist2(x, y) for j, y in enumerate(ref) if j != i)\n        for i, x in enumerate(ref)\n    ]\n    limit = max(_quantile(loo, DRIFT_QUANTILE), 1e-9)\n\n    # Training rows grouped by their exact input flags, for the duplicate check.\n    dups: dict[tuple, list[int]] = defaultdict(list)\n    for i, r in enumerate(train):\n        dups[_key([r.get(c) for c in inputs])].append(i)\n\n    # Robust centre and scale per goal, from usable training values only.\n    gstats: dict[str, tuple[float, float]] = {}\n    for g in goals:\n        vals = [x for x in (_num(r.get(g)) for r in train) if x is not None]\n        if len(vals) < MIN_GOAL_VALUES:\n            continue\n        med = _quantile(vals, 0.5)\n        iqr = _quantile(vals, 0.75) - _quantile(vals, 0.25)\n        if iqr > 0:\n            scale = iqr / IQR_TO_SIGMA\n        else:\n            scale = sum(abs(x - med) for x in vals) / len(vals)\n        gstats[g] = (med, scale)\n\n    scores: list[float] = []\n    for row in rows:\n        filled = _fill(row, train, inputs)\n        x = _encode(filled, inputs, spec)\n        d = min(_dist2(x, y) for y in enc_train)\n        input_part = min(CAP, d / limit)\n\n        dup_idx = dups.get(_key([filled.get(c) for c in inputs]), [])\n        goal_part = 0.0\n        for g, (med, scale) in gstats.items():\n            v = _num(row.get(g))\n            if v is None:\n                # A missing or non-numeric measurement is itself a glitch.\n                goal_part = max(goal_part, CAP)\n                continue\n            sd = max(scale, NOISE_FLOOR * abs(med), 1e-12)\n            z = abs(v - med) / sd\n            dvals = [\n                dv for dv in (_num(train[i].get(g)) for i in dup_idx)\n                if dv is not None\n            ]\n            if dvals:\n                # Same flags measured before: a far-off value is suspicious.\n                dmed = _quantile(dvals, 0.5)\n                z = max(z, abs(v - dmed) / sd)\n            goal_part = max(goal_part, min(CAP, z / Z_THRESH))\n\n        scores.append(float(input_part + goal_part))\n    return scores\n```",
+ "ttft_ms": 38284,
+ "type": "result",
+ "duration_ms": 44618,
+ "uuid": "d416a7ea-efbc-412d-b89a-f1cae26cc9c4",
+ "ttft_stream_ms": 491,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
