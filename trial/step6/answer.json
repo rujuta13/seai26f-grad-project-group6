@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 81960,
+ "stop_reason": "end_turn",
+ "session_id": "c6cbbd32-84ae-4d70-9fcb-aed3adbfba80",
+ "total_cost_usd": 0.0188326,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 7882,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 20556,
+  "output_tokens_details": {
+   "thinking_tokens": 17585
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7882,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 20556,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 7882,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 7882
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6898,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006978,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 20556,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7882,
+   "webSearchRequests": 0,
+   "costUSD": 0.011854600000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step6.py: justify the recommended flag set and rate single builds.\n\nexplain: plain-language reasons for what makes builds good. Each claim can be\nrecomputed from the training csv. The recommended build is on the Pareto front.\nFlag settings are compared by their share among front builds and among all\nbuilds. A setting is reported as shifting a goal only when step3.same finds\nthe goal difference real.\n\nwhy: one or two sentences rating a single build. A build is good when no\ntraining build is at least as good on every goal and better on one. Its goal\nvalues are then compared with the 10th-90th percentile range of the nearest\nflag sets from step2.\n\nStandard library only.\n\"\"\"\nfrom collections import Counter\nimport statistics\n\nfrom step1 import _load, _columns, _dominates, best\nfrom step2 import guess\nfrom step3 import same\nfrom step5 import CATEGORY_LIMIT\n\nMIN_SHARE_GAP = 0.10   # report a setting only if its share differs by at least this\nMAX_REASONS = 4        # number of flag settings checked and reported\n\n\ndef _goal_vectors(rows, goals):\n    \"\"\"Oriented goal vector per row (higher is better), or None if unusable.\"\"\"\n    out = []\n    for r in rows:\n        try:\n            out.append([sgn * float(r[c]) for c, sgn in goals])\n        except (KeyError, TypeError, ValueError):\n            out.append(None)\n    return out\n\n\ndef _normalised_score(vectors):\n    \"\"\"Return score(v): the sum over goals of v's position between the worst\n    and best value seen in vectors (as in step1.best).\"\"\"\n    g = len(vectors[0])\n    lo = [min(v[t] for v in vectors) for t in range(g)]\n    hi = [max(v[t] for v in vectors) for t in range(g)]\n\n    def score(v):\n        s = 0.0\n        for t in range(g):\n            span = hi[t] - lo[t]\n            s += (v[t] - lo[t]) / span if span > 0 else 1.0\n        return s\n\n    return score\n\n\ndef _predicted(c, p):\n    est, lo, hi = p\n    return f\"{c} median {est:g} (10th-90th percentile {lo:g} to {hi:g})\"\n\n\ndef explain(train_csv) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    n = len(rows)\n    if n == 0 or not goals:\n        return (\"There is no recommended flag set: the training file has no rows \"\n                \"or no goal columns.\")\n\n    V = _goal_vectors(rows, goals)\n    usable = [i for i in range(n) if V[i] is not None]\n    front = [i for i in best(train_csv) if V[i] is not None]\n    if not front or not usable:\n        return (\"There is no recommended flag set: too few usable training builds \"\n                \"to form a Pareto front.\")\n\n    score = _normalised_score([V[i] for i in usable])\n    rec = max(front, key=lambda i: (score(V[i]), -i))\n    nf = len(front)\n    nu = len(usable)\n\n    lines = [\n        f\"Recommended build: training row {rec} (counting from 0). It is one of \"\n        f\"{nf} builds on the Pareto front: no training build is at least as good \"\n        \"on every goal and better on at least one.\",\n        \"Its settings: \" + \", \".join(f\"{c}={rows[rec][c]:g}\" for c in inputs) + \".\",\n        \"Goals, recommended build against all builds (medians):\",\n    ]\n    for c, sgn in goals:\n        raw_all = [float(rows[i][c]) for i in usable]\n        raw_front = [float(rows[i][c]) for i in front]\n        direction = \"higher\" if sgn > 0 else \"lower\"\n        lines.append(\n            f\"- {c}: recommended {float(rows[rec][c]):g}; front median \"\n            f\"{statistics.median(raw_front):g}; all-build median \"\n            f\"{statistics.median(raw_all):g}; {direction} is better.\"\n        )\n\n    # For each input with few distinct values, find the setting whose share\n    # among front builds differs most from its share among all builds.\n    cands = []\n    for c in inputs:\n        count_all = Counter(rows[i][c] for i in usable)\n        if not count_all or len(count_all) > CATEGORY_LIMIT:\n            continue  # continuous input: no shares to compare\n        count_front = Counter(rows[i][c] for i in front)\n        gap, v, sf, sa = max(\n            ((abs(count_front.get(v, 0) / nf - cnt / nu),\n              v, count_front.get(v, 0) / nf, cnt / nu)\n             for v, cnt in count_all.items()),\n            key=lambda t: t[0],\n        )\n        cands.append((gap, c, v, sf, sa))\n    cands.sort(key=lambda t: -t[0])\n\n    lines.append(\"Flag settings that set the front apart \"\n                 \"(share among front builds vs among all builds):\")\n    shown = 0\n    for gap, c, v, sf, sa in cands:\n        if gap < MIN_SHARE_GAP or shown == MAX_REASONS:\n            break\n        shown += 1\n        inside = [i for i in usable if rows[i][c] == v]\n        outside = [i for i in usable if rows[i][c] != v]\n        checks = []\n        for g, _ in goals:\n            xs = [float(rows[i][g]) for i in inside]\n            ys = [float(rows[i][g]) for i in outside]\n            real = bool(xs and ys) and not same(xs, ys)\n            checks.append(f\"{g} {'differs' if real else 'shows no real difference'}\")\n        lines.append(\n            f\"- {c}={v:g}: {sf:.0%} of front builds vs {sa:.0%} of all builds. \"\n            f\"Builds with it vs without it: {'; '.join(checks)}.\"\n        )\n    if shown == 0:\n        lines.append(f\"- No single setting differs by {MIN_SHARE_GAP:.0%} or more \"\n                     \"between front builds and all builds.\")\n\n    lines.append(\n        \"These are associations in the training data: they show where good builds \"\n        \"sit, not that a flag causes the change. Confirm with a controlled rebuild \"\n        \"before relying on them.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals:\n        return \"This training file has no goal columns, so the build cannot be rated.\"\n\n    flags = {c: row[c] for c in inputs if c in row}\n    pred = guess(train_csv, flags)\n    got = {c: row[c] for c, _ in goals if isinstance(row.get(c), float)}\n\n    if len(got) < len(goals):\n        missing = [c for c, _ in goals if c not in got]\n        return (\"This build cannot be rated: it has no usable value for \"\n                f\"{', '.join(missing)}. The nearest flag sets predict \"\n                + \"; \".join(_predicted(c, pred[c]) for c, _ in goals) + \".\")\n\n    V = [sgn * got[c] for c, sgn in goals]\n    train_vecs = [v for v in _goal_vectors(rows, goals) if v is not None]\n    if not train_vecs:\n        return (\"This build cannot be rated: the training file has no usable \"\n                \"builds to compare it with.\")\n    n = len(train_vecs)\n    dominators = sum(1 for t in train_vecs if _dominates(t, V))\n    if dominators == 0:\n        verdict = (f\"This build is good: none of the {n} training builds is at least \"\n                   \"as good on every goal and better on at least one, so it is on \"\n                   \"the Pareto front\")\n    else:\n        verdict = (f\"This build is bad: {dominators} of the {n} training builds are at \"\n                   \"least as good on every goal and better on at least one, so it is \"\n                   \"beaten\")\n\n    parts = []\n    for c, sgn in goals:\n        est, lo, hi = pred[c]\n        o = sgn * got[c]\n        olo, ohi = sorted((sgn * lo, sgn * hi))\n        if o > ohi:\n            rel = \"is better than\"\n        elif o < olo:\n            rel = \"is worse than\"\n        else:\n            rel = \"is within\"\n        direction = \"lower\" if sgn < 0 else \"higher\"\n        parts.append(\n            f\"{c} = {got[c]:g} {rel} the 10th-90th percentile range {lo:g} to {hi:g} \"\n            f\"(median {est:g}; {direction} is better)\"\n        )\n    return f\"{verdict}. Against the nearest flag sets, \" + \"; \".join(parts) + \".\"\n```",
+ "ttft_ms": 73251,
+ "type": "result",
+ "duration_ms": 81178,
+ "uuid": "629cab07-671f-4e38-8ae7-bdfc6874c7fa",
+ "ttft_stream_ms": 509,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
