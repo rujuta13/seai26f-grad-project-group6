@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 64288,
+ "stop_reason": "end_turn",
+ "session_id": "bf5605b7-0dce-42c0-a8e4-36560a903e6c",
+ "total_cost_usd": 0.0276859,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19281,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15461,
+  "output_tokens_details": {
+   "thinking_tokens": 12099
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19281,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15461,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19281,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19281
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16019,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016099,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15461,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19281,
+   "webSearchRequests": 0,
+   "costUSD": 0.0115869,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step10.py: race. Race our tuner (step7) against a random search and a\nstdlib-only local search on test_csv, and race our guesser (step2) against a\nridge regression written in pure Python.\n\nThe standard library ships no hyperparameter tuner and no machine-learning\nmodel, so the rivals below are stand-ins built from stdlib pieces. They are\nlabelled as stand-ins in the keys and comments. Only the standard library is used.\n\nScore scales: the tuner keys score the chosen build's true goals on a [0, 1]\nscale (higher is better). The guesser keys score mean R^2 over the goals\n(higher is better, can be negative). Compare within each group, not across them.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport random\n\nfrom step1 import _SEED, _columns, _dist2, _features, _num, _read\nfrom step2 import _fill, guess\nfrom step4 import _encode, _fit, _objectives\nfrom step5 import _scores\nfrom step7 import _leader, _signed, choose\n\nBUDGET = 30         # label calls allowed to each tuner\nLOCAL_POOL = 5      # local search picks among this many nearest unmeasured builds\nRIDGE = 1e-3        # ridge penalty for the linear rival\n\n\ndef _goal_values(rows: list[dict], i: int, goals: list[str]) -> dict:\n    \"\"\"Goal cells of row i, as the label function must return them.\"\"\"\n    return {g: rows[i].get(g) for g in goals}\n\n\ndef _random_search(rows: list[dict], goals: list[str], sign: list[float],\n                   budget: int) -> int:\n    \"\"\"Measure a random sample of builds and return the leader.\"\"\"\n    rng = random.Random(_SEED)\n    obs = {}\n    for i in rng.sample(range(len(rows)), min(budget, len(rows))):\n        obs[i] = _signed(_goal_values(rows, i, goals), goals, sign)\n    return _leader(obs, len(goals))\n\n\ndef _local_search(rows: list[dict], feats: list[list[float]], goals: list[str],\n                  sign: list[float], budget: int) -> int:\n    \"\"\"Stdlib stand-in for a tuner: a stochastic local search. Each step measures\n    a random one of the LOCAL_POOL unmeasured builds nearest to the current leader.\"\"\"\n    rng = random.Random(_SEED + 1)\n    n = len(rows)\n    m = len(goals)\n    limit = min(budget, n)\n    obs = {}\n\n    def measure(i: int) -> None:\n        obs[i] = _signed(_goal_values(rows, i, goals), goals, sign)\n\n    measure(rng.randrange(n))\n    while len(obs) < limit:\n        rest = [i for i in range(n) if i not in obs]\n        if not rest:\n            break\n        best = _leader(obs, m)\n        near = sorted(rest, key=lambda i: (_dist2(feats[i], feats[best]), i))\n        measure(rng.choice(near[:LOCAL_POOL]))\n    return _leader(obs, m)\n\n\ndef _r2(pairs: list[tuple[float, float]]) -> float | None:\n    \"\"\"Coefficient of determination for (truth, prediction) pairs, or None if\n    the truth has no spread to explain.\"\"\"\n    if len(pairs) < 2:\n        return None\n    ts = [t for t, _ in pairs]\n    mean_t = sum(ts) / len(ts)\n    ss_tot = sum((t - mean_t) ** 2 for t in ts)\n    if ss_tot <= 0.0:\n        return None\n    ss_res = sum((t - p) ** 2 for t, p in pairs)\n    return 1.0 - ss_res / ss_tot\n\n\ndef _model_score(truth: dict[str, list], preds: dict[str, list[float]],\n                 fallback: dict[str, float]) -> float:\n    \"\"\"Mean R^2 over goals. Non-finite predictions fall back to the training mean.\"\"\"\n    vals = []\n    for g, ts in truth.items():\n        ps = preds.get(g)\n        if ps is None:\n            continue\n        pairs = []\n        for t, p in zip(ts, ps):\n            if t is None:\n                continue\n            if not math.isfinite(p):\n                p = fallback.get(g, 0.0)\n            pairs.append((t, p))\n        r = _r2(pairs)\n        if r is not None:\n            vals.append(r)\n    return sum(vals) / len(vals) if vals else 0.0\n\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for c in range(n):\n        p = max(range(c, n), key=lambda r: abs(M[r][c]))\n        M[c], M[p] = M[p], M[c]\n        pivot = M[c][c]\n        if abs(pivot) < 1e-12:\n            continue\n        for r in range(n):\n            if r != c and M[r][c] != 0.0:\n                f = M[r][c] / pivot\n                for k in range(c, n + 1):\n                    M[r][k] -= f * M[c][k]\n    return [M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0 for i in range(n)]\n\n\ndef _ridge(X: list[list[float]], y: list[float], lam: float) -> list[float]:\n    \"\"\"Ridge regression weights via the regularised normal equations.\"\"\"\n    d = len(X[0])\n    A = [[0.0] * d for _ in range(d)]\n    b = [0.0] * d\n    for x, t in zip(X, y):\n        for i in range(d):\n            b[i] += x[i] * t\n            xi = x[i]\n            row = A[i]\n            for j in range(d):\n                row[j] += xi * x[j]\n    for i in range(d):\n        A[i][i] += lam\n    return _solve(A, b)\n\n\ndef _linear_preds(train: list[dict], inputs: list[str], test: list[dict],\n                  goals: list[str]) -> dict[str, list[float]]:\n    \"\"\"Stdlib stand-in for an off-the-shelf model: one ridge regression per goal\n    on encoded inputs (bias term first). Goals with fewer than two training\n    values are left out.\"\"\"\n    spec = _fit(train, inputs)\n    X_train = [[1.0] + _encode(r, inputs, spec) for r in train]\n    X_test = [[1.0] + _encode(_fill(r, train, inputs), inputs, spec) for r in test]\n    out: dict[str, list[float]] = {}\n    for g in goals:\n        xs, ys = [], []\n        for x, r in zip(X_train, train):\n            v = _num(r.get(g))\n            if v is not None:\n                xs.append(x)\n                ys.append(v)\n        if len(ys) < 2:\n            continue\n        w = _ridge(xs, ys, RIDGE)\n        out[g] = [sum(wi * xi for wi, xi in zip(w, x)) for x in X_test]\n    return out\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race the methods on test_csv.\n\n    Tuner keys (score in [0, 1], higher is better; the mean normalised goal\n    score of the build each method picks, using its true test goals):\n      \"ours\"           step7.choose with BUDGET label calls\n      \"random_search\"  random sample of BUDGET builds, same leader rule\n      \"local_search\"   stdlib stand-in for a tuner (the stdlib has none)\n\n    Guesser keys (mean R^2 over goals, higher is better, can be negative):\n      \"ours_guesser\"   step2.guess estimates, one call per test row\n      \"linear_model\"   stdlib stand-in for an off-the-shelf model (ridge regression)\n    \"\"\"\n    header, test = _read(str(test_csv))\n    _, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    sign = [1.0] * len(gmax) + [-1.0] * len(gmin)\n    names = [\"ours\", \"random_search\", \"local_search\", \"ours_guesser\", \"linear_model\"]\n    n = len(test)\n    if n == 0 or not goals:\n        return {k: 0.0 for k in names}\n\n    train_header, train = _read(str(train_csv))\n    inputs, _, _ = _columns(train_header)\n\n    # Tuner race: each method returns an index into test; score it on true goals.\n    obj = [_objectives(r, gmax, gmin) for r in test]\n    quality = _scores(obj, len(goals))\n    budget = min(BUDGET, n)\n\n    def label(i: int) -> dict:\n        return _goal_values(test, i, goals)\n\n    picks = {\n        \"ours\": choose(test_csv, label, budget=budget),\n        \"random_search\": _random_search(test, goals, sign, budget),\n        \"local_search\": _local_search(test, _features(test, gmax and _columns(header)[0]),\n                                      goals, sign, budget),\n    }\n    out: dict[str, float] = {k: float(quality[i]) for k, i in picks.items()}\n\n    # Guesser race: predict each test row's goals and score by R^2.\n    truth = {g: [_num(r.get(g)) for r in test] for g in goals}\n    train_mean = {}\n    for g in goals:\n        vals = [v for v in (_num(r.get(g)) for r in train) if v is not None]\n        train_mean[g] = sum(vals) / len(vals) if vals else 0.0\n\n    guess_preds: dict[str, list[float]] = {g: [] for g in goals}\n    for row in test:\n        est = guess(train_csv, row)\n        for g in goals:\n            guess_preds[g].append(est[g][0] if g in est else math.nan)\n\n    out[\"ours_guesser\"] = float(_model_score(truth, guess_preds, train_mean))\n    linear = _linear_preds(train, inputs, test, goals)\n    out[\"linear_model\"] = float(_model_score(truth, linear, train_mean))\n\n    return out\n```",
+ "ttft_ms": 52942,
+ "type": "result",
+ "duration_ms": 63236,
+ "uuid": "245c198c-ac42-499f-a51d-bd573980ea96",
+ "ttft_stream_ms": 474,
+ "time_to_request_ms": 54,
+ "queued_turn_count": 0
+}
