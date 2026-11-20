@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 33755,
+ "stop_reason": "end_turn",
+ "session_id": "49970adb-1969-4e1c-aea2-7725f68ae807",
+ "total_cost_usd": 0.0084905,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 3819,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7967,
+  "output_tokens_details": {
+   "thinking_tokens": 6529
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3819,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7967,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3819,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 3819
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 3673,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037430000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7967,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3819,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047475,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step2.py: guess how a flag set will perform before it is benchmarked.\n\nThe guess is a k-nearest-neighbour estimate over the training rows. Reading,\ncolumn splitting, feature scaling, distances and number parsing come from step1.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nfrom collections import Counter\n\nfrom step1 import _columns, _dist2, _features, _num, _read\n\nK_NEIGHBOURS = 7        # training rows that vote on each guess\nNOISE_FLOOR = 0.05      # benchmark noise assumed even when neighbours agree\n\n\ndef _quantile(vals: list[float], q: float) -> float:\n    \"\"\"Linear-interpolated quantile of a non-empty list of floats.\"\"\"\n    s = sorted(vals)\n    pos = q * (len(s) - 1)\n    lo = math.floor(pos)\n    hi = min(lo + 1, len(s) - 1)\n    return s[lo] + (s[hi] - s[lo]) * (pos - lo)\n\n\ndef _fill(row: dict, rows: list[dict], inputs: list[str]) -> dict:\n    \"\"\"Copy the input cells of row. Missing or unusable cells are replaced by\n    the training median (numeric columns) or the most common training value\n    (other columns).\"\"\"\n    filled = {}\n    for c in inputs:\n        numeric = all(isinstance(r.get(c), float) for r in rows)\n        v = row.get(c)\n        if numeric:\n            if _num(v) is not None:\n                filled[c] = v\n            else:\n                vals = [x for x in (_num(r.get(c)) for r in rows) if x is not None]\n                filled[c] = _quantile(vals, 0.5) if vals else 0.0\n        else:\n            if isinstance(v, str) and v != \"\":\n                filled[c] = v\n            else:\n                common = Counter(\n                    r.get(c) for r in rows\n                    if isinstance(r.get(c), str) and r.get(c) != \"\"\n                )\n                filled[c] = common.most_common(1)[0][0] if common else \"\"\n    return filled\n\n\ndef guess(train_csv, row: dict) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a flag set described by row (goal columns removed).\n\n    Returns {goal: (estimate, low, high)}. The estimate is the mean goal value\n    of the nearest training rows (among rows with a usable value for that goal).\n    low..high is roughly the 10th-90th percentile of those neighbours' values,\n    widened by a benchmark-noise floor and by how far the flag set lies from\n    the training rows (features are scaled to [0, 1]). Far-away flag sets get\n    wider intervals. If nothing usable is known, the estimate is NaN and the\n    interval is unbounded.\n    \"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    unknown = (math.nan, -math.inf, math.inf)\n    if n == 0 or not goals:\n        return {g: unknown for g in goals}\n\n    feats = _features(rows + [_fill(row, rows, inputs)], inputs)\n    query, train = feats[-1], feats[:-1]\n    d2 = [_dist2(f, query) for f in train]\n\n    out: dict[str, tuple[float, float, float]] = {}\n    for g in goals:\n        cand = [i for i in range(n) if _num(rows[i].get(g)) is not None]\n        if not cand:\n            out[g] = unknown\n            continue\n        cand.sort(key=lambda i: (d2[i], i))\n        near = cand[:K_NEIGHBOURS]\n        vals = [rows[i][g] for i in near]\n\n        est = sum(vals) / len(vals)\n        q10 = _quantile(vals, 0.1)\n        q90 = _quantile(vals, 0.9)\n        far = min(1.0, math.sqrt(sum(d2[i] for i in near) / len(near)))\n\n        base = max((q90 - q10) / 2, NOISE_FLOOR * abs(est))\n        pad = base + 0.5 * far * abs(est)\n        low = min(q10 - pad, est)\n        high = max(q90 + pad, est)\n        out[g] = (est, low, high)\n    return out\n```",
+ "ttft_ms": 28782,
+ "type": "result",
+ "duration_ms": 32945,
+ "uuid": "6a757a5b-ed65-4c9e-9867-76b524b3e35c",
+ "ttft_stream_ms": 521,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
