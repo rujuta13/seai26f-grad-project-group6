@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21497,
+ "stop_reason": "end_turn",
+ "session_id": "b187f1ec-c06d-4060-aee8-cc3d118d8a88",
+ "total_cost_usd": 0.0130907,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9840,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4857,
+  "output_tokens_details": {
+   "thinking_tokens": 3427
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9840,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4857,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9840,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9840
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8614,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008694,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4857,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9840,
+   "webSearchRequests": 0,
+   "costUSD": 0.0043967,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step5.py: blame the input columns for bad rows.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers, and\nthe goal normalisation). Steps 2 to 4 are not needed.\n\nA row's badness is 1 minus its mean normalised goal score (step1 scaling,\nwhere 1 is best), so 0 is best on all goals and 1 is worst. An input column\nis blamed in proportion to how much of the variation in badness its values\nexplain (correlation ratio, eta squared, adjusted for the number of levels).\nNumeric inputs with many distinct values are grouped into quantile bins, and\nthe adjustment stops a column from scoring well just because it has many\nlevels. Ties keep header order.\n\"\"\"\nfrom __future__ import annotations\n\nimport bisect\nimport math\nimport os\n\nfrom step1 import _classify, _goal_scores, _read, _to_float\n\n_MAX_LEVELS = 10  # numeric columns with more distinct values are binned\n_BINS = 5         # quantile bins used for those columns\n\n\ndef _is_num(v: float | None) -> bool:\n    return v is not None and not math.isnan(v)\n\n\ndef _keys(rows: list[list[str]], j: int) -> list[tuple[str, object]]:\n    \"\"\"Group key per row for input column j.\n\n    Numeric columns with many distinct values are split into quantile bins.\n    Other cells are grouped by their numeric value or their text.\n    \"\"\"\n    nums = [_to_float(r[j]) for r in rows]\n    cells = [r[j].strip() for r in rows]\n    valid = [v for v in nums if _is_num(v)]\n    distinct = len(set(valid))\n    if len(valid) == len(rows) and distinct > _MAX_LEVELS:\n        ordered = sorted(valid)\n        n = len(ordered)\n        cuts = sorted({\n            ordered[min(n - 1, (b * n) // _BINS)] for b in range(1, _BINS)\n        })\n        return [(\"bin\", bisect.bisect_right(cuts, v)) for v in valid]\n    return [\n        (\"v\", v) if _is_num(v) else (\"s\", c)\n        for v, c in zip(nums, cells)\n    ]\n\n\ndef _adjusted_eta_squared(keys: list, badness: list[float]) -> float:\n    \"\"\"Share of badness variance explained by the groups, adjusted for levels.\n\n    Returns 0 when badness does not vary, when there is only one group, or\n    when the groups leave no residual degrees of freedom.\n    \"\"\"\n    n = len(badness)\n    mean = sum(badness) / n\n    total = sum((b - mean) * (b - mean) for b in badness)\n    if total <= 0.0:\n        return 0.0\n\n    groups: dict[object, list[float]] = {}\n    for k, b in zip(keys, badness):\n        s = groups.setdefault(k, [0.0, 0])\n        s[0] += b\n        s[1] += 1\n    g = len(groups)\n    if g <= 1 or n - g <= 0:\n        return 0.0\n\n    between = 0.0\n    for total_b, cnt in groups.values():\n        d = total_b / cnt - mean\n        between += cnt * d * d\n    eta = between / total\n    adjusted = 1.0 - (1.0 - eta) * (n - 1) / (n - g)\n    return max(0.0, adjusted)\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    A column ranks higher the more its values separate the bad rows (high\n    badness) from the good ones. Columns with no explanatory power keep\n    their header order at the end.\n    \"\"\"\n    header, rows = _read(os.fspath(train_csv))\n    inputs, goals = _classify(header)\n    names = [header[j] for j in inputs]\n    if not rows or not inputs or not goals:\n        return names\n\n    S = _goal_scores(rows, goals)\n    bad = [1.0 - sum(s) / len(s) for s in S]\n\n    scored: list[tuple[float, int]] = []\n    for pos, j in enumerate(inputs):\n        keys = _keys(rows, j)\n        scored.append((-_adjusted_eta_squared(keys, bad), pos))\n    scored.sort()\n    return [names[pos] for _, pos in scored]\n```",
+ "ttft_ms": 16069,
+ "type": "result",
+ "duration_ms": 20686,
+ "uuid": "4309cdda-53b2-47ea-8e5f-6a1e7371deba",
+ "ttft_stream_ms": 594,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
