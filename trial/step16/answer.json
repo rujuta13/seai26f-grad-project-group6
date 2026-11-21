@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 48354,
+ "stop_reason": "end_turn",
+ "session_id": "7d93ba04-127e-4e41-bc43-a3507d1b5458",
+ "total_cost_usd": 0.035411,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29064,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10640,
+  "output_tokens_details": {
+   "thinking_tokens": 7869
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29064,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10640,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29064,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29064
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24208,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024278,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10640,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29064,
+   "webSearchRequests": 0,
+   "costUSD": 0.011133,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step16.py: justify the shortlist to a manager, and rate one player.\n\nStandard library only (Python 3.13). Reuses step1 (csv helpers and goal\nclassification), step2 (cell parsing and the training model), step4 (training\ncontext and row scoring), step5 (input blame) and step11 (the scalable\nshortlist, best()).\n\nexplain() gives reasons a skeptical expert can check against the file.\nwhy() gives a verdict with the goal scores, then the input values where the\nplayer differs most from the typical shortlisted player, so the second\nsentence can be checked on video.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport statistics\n\nfrom step1 import _classify, _read\nfrom step2 import _model, _num\nfrom step4 import _context, _row_scores, _score\nfrom step5 import blame\nfrom step11 import best\n\n_TOP_PROFILE = 5   # input columns listed in explain()\n_TOP_GAPS = 2      # input columns named in why()\n_MIN_GAP = 0.10    # differences below 10% of the training range are ignored\n\n\ndef _column(rows: list[list[str]], j: int) -> list[float | None]:\n    return [_num(r[j]) for r in rows]\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons the shortlist is good, with checks to repeat.\"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    if not rows or not goals or not inputs:\n        return (\"Nothing to explain: the file needs player rows, goal columns \"\n                \"and input columns.\")\n    picked = best(key)\n    if not picked:\n        return \"Nothing to explain: too few players to pick a shortlist.\"\n\n    good = [rows[i] for i in picked]\n    lines: list[str] = []\n\n    outcomes = \", \".join(\n        f\"{header[j]} ({'higher' if sign > 0 else 'lower'} is better)\"\n        for j, sign in goals\n    )\n    lines.append(f\"1. We judge players on these outcomes: {outcomes}.\")\n    lines.append(\n        f\"2. The shortlist is the {len(picked)} of {len(rows)} players that no \"\n        \"other player matches or beats on every outcome at once, ranked by \"\n        \"overall average. To check: take any player left out and find a \"\n        \"shortlisted player at least as good on every outcome.\"\n    )\n\n    for j, _ in goals:\n        gm_vals = [v for v in _column(good, j) if v is not None]\n        am_vals = [v for v in _column(rows, j) if v is not None]\n        if gm_vals and am_vals:\n            lines.append(\n                f\"3. {header[j]}: shortlisted players have a median of \"\n                f\"{statistics.median(gm_vals):.4g}, against \"\n                f\"{statistics.median(am_vals):.4g} for all players.\"\n            )\n\n    profile: list[tuple[float, int, str, float, float]] = []\n    for pos, j in enumerate(inputs):\n        all_vals = [v for v in _column(rows, j) if v is not None]\n        good_vals = [v for v in _column(good, j) if v is not None]\n        if len(all_vals) < 2 or not good_vals:\n            continue\n        span = max(all_vals) - min(all_vals)\n        if span <= 0:\n            continue\n        g = statistics.median(good_vals)\n        a = statistics.median(all_vals)\n        gap = (g - a) / span\n        if abs(gap) >= _MIN_GAP:\n            profile.append((abs(gap), pos, header[j], g, a))\n    profile.sort(key=lambda t: (-t[0], t[1]))\n\n    lines.append(\n        \"4. Input values that differ most between shortlisted players and all \"\n        \"players (checkable on video or in the attribute screen):\"\n    )\n    if profile:\n        for _, _, name, g, a in profile[:_TOP_PROFILE]:\n            direction = \"higher\" if g > a else \"lower\"\n            lines.append(\n                f\"   {name}: shortlisted players are {direction} \"\n                f\"(median {g:.4g} against {a:.4g} for all players).\"\n            )\n    else:\n        lines.append(\"   No input differs by a meaningful amount.\")\n\n    top = blame(key)[:_TOP_PROFILE]\n    lines.append(\n        \"5. Input columns most associated with weaker outcomes (association, \"\n        \"not proof of cause), strongest first: \" + \", \".join(top) + \".\"\n    )\n    lines.append(\n        \"6. Caveat: these patterns come from one file of players. Check them \"\n        \"on a separate file and on video before a signing decision.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef _input_gaps(header: list[str], rows: list[list[str]],\n                good_rows: list[list[str]], inputs: list[int],\n                row: dict) -> list[tuple[str, float, float]]:\n    \"\"\"Inputs where this row differs most from the typical good player.\"\"\"\n    found: list[tuple[float, int, str, float, float]] = []\n    for pos, j in enumerate(inputs):\n        name = header[j]\n        v = _num(row.get(name))\n        if v is None:\n            continue\n        all_vals = [x for x in _column(rows, j) if x is not None]\n        good_vals = [x for x in _column(good_rows, j) if x is not None]\n        if len(all_vals) < 2 or not good_vals:\n            continue\n        span = max(all_vals) - min(all_vals)\n        if span <= 0:\n            continue\n        g = statistics.median(good_vals)\n        gap = (v - g) / span\n        if abs(gap) >= _MIN_GAP:\n            found.append((abs(gap), pos, name, v, g))\n    found.sort(key=lambda t: (-t[0], t[1]))\n    return [(name, v, g) for _, _, name, v, g in found[:_TOP_GAPS]]\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"Two sentences: the verdict with goal scores, then the inputs that\n    differ most from a typical good player (checkable on video).\n\n    `row` is a dict {column name: value}; goal columns may be included.\n    \"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    if not rows or not goals:\n        return \"Cannot judge: the training file has no players or no goal columns.\"\n\n    ctx = _context(key)\n    goal_vals = _model(key)[\"goal_vals\"]\n    train = [\n        _score([col[i] for col in goal_vals], ctx) for i in range(len(rows))\n    ]\n    threshold = statistics.median([sum(t) / len(t) for t in train])\n\n    s = _row_scores(row, ctx)\n    m = sum(s) / len(s)\n    verdict = \"GOOD\" if m >= threshold else \"BAD\"\n    names = ctx[\"goal_names\"]\n    strongest_name, strongest = max(zip(names, s), key=lambda p: p[1])\n    weakest_name, weakest = min(zip(names, s), key=lambda p: p[1])\n\n    missing = [\n        name for name in names\n        if row.get(name) is None or str(row.get(name)).strip() == \"\"\n    ]\n    first = (\n        f\"{verdict}: across all outcomes this player scores {m:.2f} against a \"\n        f\"typical training player's {threshold:.2f} (1 is best), strongest on \"\n        f\"{strongest_name} ({strongest:.2f}) and weakest on {weakest_name} \"\n        f\"({weakest:.2f})\"\n    )\n    if missing:\n        first += f\"; missing values for {', '.join(missing)} count as worst\"\n    first += \".\"\n\n    good_idx = best(key)\n    if not good_idx:\n        second = \"Too few players to compare inputs with the shortlisted players.\"\n    else:\n        good_rows = [rows[i] for i in good_idx]\n        gaps = _input_gaps(header, rows, good_rows, inputs, row)\n        if not gaps:\n            second = (\"No input differs meaningfully from the typical \"\n                      \"shortlisted player.\")\n        else:\n            parts = [\n                f\"{name} is {v:g} where shortlisted players typically have {g:g}\"\n                for name, v, g in gaps\n            ]\n            second = \"Largest input differences: \" + \"; \".join(parts) + \".\"\n    return first + \" \" + second\n```",
+ "ttft_ms": 38092,
+ "type": "result",
+ "duration_ms": 46545,
+ "uuid": "170f7039-8416-4d7e-b0cb-3e9e8e563b58",
+ "ttft_stream_ms": 1355,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
