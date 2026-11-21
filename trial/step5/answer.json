@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 13072,
+ "duration_api_ms": 13061,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _goal_matrix, _input_matrix, _load\n\n\ndef _badness(G):\n    \"\"\"Per-row badness in [0, 1]: mean normalised rank across goals (1 = worst).\"\"\"\n    n = G.shape[0]\n    ranks = G.argsort(axis=0).argsort(axis=0).astype(float)\n    return ranks.mean(axis=1) / max(n - 1, 1)\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Each row gets a badness score (mean normalised rank over all goals, where\n    larger is worse). A random forest is fitted from the input columns to that\n    score, and inputs are ordered by their impurity-based importance. Ties are\n    broken by header order.\n    \"\"\"\n    header, rows = _load(train_csv)\n    inputs = [c for c in header if _column_kind(c) == \"input\"]\n    n = len(rows)\n\n    if n == 0 or not inputs:\n        return list(inputs)\n\n    G = _goal_matrix(header, rows)\n    if G.shape[1] == 0:\n        return list(inputs)\n\n    X = _input_matrix(header, rows)\n    if X.shape[1] == 0:\n        return []\n\n    score = _badness(G)\n    if n < 2 or float(score.std()) == 0.0:\n        return list(inputs)\n\n    model = RandomForestRegressor(\n        n_estimators=300,\n        min_samples_leaf=2,\n        random_state=0,\n        n_jobs=1,\n    ).fit(X, score)\n    importance = np.asarray(model.feature_importances_, dtype=float)\n\n    order = sorted(range(len(inputs)), key=lambda j: (-importance[j], j))\n    return [inputs[j] for j in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "6e7a4b3f-55bf-4297-b499-fca43a5658bf",
+ "total_cost_usd": 0.001881275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 6175,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2218,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6175,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2218,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6175,
+   "webSearchRequests": 0,
+   "costUSD": 0.001881275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "46da72c5-8ea7-4d97-8b45-f07d8e0c5bdc"
+}
