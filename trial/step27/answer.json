@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11149,
+ "stop_reason": "end_turn",
+ "session_id": "e012b934-796b-4617-a146-891021b589de",
+ "total_cost_usd": 0.0486614,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 46241,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2350,
+  "output_tokens_details": {
+   "thinking_tokens": 854
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 46241,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2350,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 46241,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 46241
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 38173,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.038238,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2350,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 46241,
+   "webSearchRequests": 0,
+   "costUSD": 0.0104234,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step27.py: choose. Find the best customers to label while labelling at most BUDGET of them.\n\"step27.py: choose. Find the best customers to label while labelling at most BUDGET of them.\"\nimport math\nimport random\nimport ezr\n\nSTART = 4      # initial random labels before the search starts\n\ndef _pick_goals(tbl, goal):\n  \"The goal columns to optimise: all of them, or only the one named GOAL.\"\n  if not tbl.y: raise ValueError(\"no goal columns (names ending in + or -)\")\n  if goal is None: return list(tbl.y)\n  want = str(goal).lower()\n  for c in tbl.y:\n    if want in (c.txt.lower(), c.txt[:-1].lower()): return [c]\n  raise ValueError(f\"no goal named {goal!r}; goals are {[c.txt for c in tbl.y]}\")\n\ndef _value(d, c):\n  \"The label's value for goal column C, by full name or without its suffix; '?' if absent.\"\n  for key in (c.txt, c.txt[:-1]):\n    if key in d:\n      v = d[key]\n      return ezr.atom(v) if isinstance(v, str) else v\n  return \"?\"\n\ndef _score(lab, row, ats):\n  \"How far ROW's goals (columns ATS) are from ideal, 0 is best; stats come from LAB.\"\n  cols = [lab.cols[at] for at in ats]\n  return ezr.dist((abs(ezr.norm(c, row[c.at]) - c.goal) for c in cols),\n                  len(cols))\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row found, labelling at most BUDGET rows.\n  BLIND_CSV has every goal cell set to '?'. LABEL(i) gives row i's goals as a dict.\n  GOAL, if given, names the one goal to optimise; otherwise all goals are optimised.\"\"\"\n  tbl  = ezr.Tbl(ezr.csv(blind_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: raise ValueError(\"no rows to choose from\")\n  if budget < 1: raise ValueError(\"budget must be at least 1\")\n  goals = _pick_goals(tbl, goal)\n  ats   = [c.at for c in goals]\n  rng   = random.Random(ezr.the.Seed)\n  used  = 0\n\n  def ask(i):\n    \"Label row I, counting against the budget.\"\n    nonlocal used\n    if used >= budget: raise RuntimeError(f\"budget of {budget} labels exceeded\")\n    used += 1\n    d   = label(i)\n    row = list(rows[i])\n    for c in tbl.y: row[c.at] = _value(d, c)\n    for c in goals:\n      if row[c.at] == \"?\": raise ValueError(f\"label({i}) gave no value for {c.txt!r}\")\n    return row\n\n  order = rng.sample(range(n), n)\n  start = min(START, budget, n)\n  ids   = order[:start]          # rows labelled so far, in order\n  todo  = order[start:]          # rows not yet labelled\n  done  = [ask(i) for i in ids]  # their full rows, goals filled in\n\n  while todo and used < budget:\n    lab    = ezr.Tbl([tbl.names] + done)\n    ranked = sorted(range(len(done)), key=lambda k: _score(lab, done[k], ats))\n    cut    = max(1, int(math.sqrt(len(done))))     # the best stay few\n    best   = [done[k] for k in ranked[:cut]]\n    rest   = [done[k] for k in ranked[cut:]]\n    cb     = ezr.mids(ezr.clone(tbl, best))\n    if rest:\n      cr = ezr.mids(ezr.clone(tbl, rest))\n      # near the best centroid, far from the rest centroid\n      todo.sort(key=lambda i: ezr.xdist(tbl, rows[i], cr)\n                              - ezr.xdist(tbl, rows[i], cb))\n    else:\n      todo.sort(key=lambda i: -ezr.xdist(tbl, rows[i], cb))\n    i = todo.pop()\n    ids.append(i)\n    done.append(ask(i))\n\n  lab    = ezr.Tbl([tbl.names] + done)\n  scores = [_score(lab, r, ats) for r in done]\n  return ids[min(range(len(done)), key=lambda k: scores[k])]\n```",
+ "ttft_ms": 5784,
+ "type": "result",
+ "duration_ms": 9839,
+ "uuid": "bb6a6e6f-852a-421c-a5e4-0bb6b75aaf36",
+ "ttft_stream_ms": 1586,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
