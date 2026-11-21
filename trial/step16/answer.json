@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 84771,
+ "stop_reason": "end_turn",
+ "session_id": "77d25301-8c97-4816-ae13-51565078d160",
+ "total_cost_usd": 0.0408825,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29649,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 20357,
+  "output_tokens_details": {
+   "thinking_tokens": 16883
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29649,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 20357,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29649,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29649
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24704,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024774,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 20357,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29649,
+   "webSearchRequests": 0,
+   "costUSD": 0.0161085,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step16.py\n#!/usr/bin/env python3 -B\n\"Plain reasons a skeptical expert can check, for what makes a build good, via ezr.\"\nimport math\nimport ezr\nimport step12\n\nSKIP = {\"num\", \"Rank\"}   # row id, and a rank derived from OVR: not reasons\n\ndef _cell(v):\n  \"V as one cell: '?' if blank, unknown, None, or not finite; otherwise its atom.\"\n  if v is None: return \"?\"\n  if isinstance(v, str): v = ezr.atom(v.strip() or \"?\")\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\ndef _num(v) -> bool:\n  \"True for a usable number: an int or float, but not a bool.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _table(train_csv: str) -> tuple:\n  \"\"\"TRAIN_CSV as (ezr table, header names, column kinds). Goals are numeric\n  columns ending in + or -; numeric inputs are 'num'; text inputs with few\n  distinct values are 'sym'; identifiers, SKIP columns and empty columns are\n  ignored (kind None). Text in a numeric column becomes unknown. The table\n  is None if the file is empty.\"\"\"\n  src   = ezr.csv(train_csv)\n  first = next(src, None)\n  if first is None: return None, [], []\n  head  = [str(v).strip() or f\"col{at}\" for at, v in enumerate(first)]\n  width = len(head)\n  rows  = []\n  for r in src:\n    r = [_cell(v) for v in r]\n    rows.append((r + [\"?\"] * width)[:width])\n  n = len(rows)\n\n  kinds = []\n  for at, name in enumerate(head):\n    vals = [r[at] for r in rows if r[at] != \"?\"]\n    if name in SKIP or not vals:\n      kinds.append(None)\n    elif name[-1] in \"+-\":\n      kinds.append(\"goal\" if any(_num(v) for v in vals) else None)\n    elif all(_num(v) for v in vals):\n      kinds.append(\"num\")\n    elif len({str(v) for v in vals}) > max(1, n // 2):\n      kinds.append(None)                       # an identifier: no signal\n    else:\n      kinds.append(\"sym\")\n\n  # ezr names chosen so ezr reads each kind correctly; original names kept in head\n  names = [{\"goal\": f\"G{at}{head[at][-1]}\",\n            \"num\":  f\"N{at}\",\n            \"sym\":  f\"s{at}\"}.get(kind, f\"Z{at}X\")\n           for at, kind in enumerate(kinds)]\n  data = []\n  for r in rows:\n    out = []\n    for at, kind in enumerate(kinds):\n      v = r[at]\n      if kind == \"sym\":\n        v = \"?\" if v == \"?\" else str(v)\n      elif kind in (\"num\", \"goal\") and not _num(v):\n        v = \"?\"\n      out.append(v)\n    data.append(out)\n  return ezr.Tbl([names] + data), head, kinds\n\ndef _goals(tbl) -> list:\n  \"The goal columns: names ending in + or -.\"\n  return [c for c in tbl.y if c.txt[-1] in \"+-\"]\n\ndef _align(head: list, kinds: list, row: dict) -> list:\n  \"Turn a {name: value} dict into a list aligned with the table; unusable cells are '?'.\"\n  out = []\n  for at, name in enumerate(head):\n    kind = kinds[at]\n    v    = _cell(row.get(name, \"?\"))\n    if kind is None: v = \"?\"                   # ignored column: nothing to read\n    elif kind == \"sym\": v = \"?\" if v == \"?\" else str(v)\n    elif not _num(v): v = \"?\"\n    out.append(v)\n  return out\n\ndef _gydist(goals, vals):\n  \"Distance of VALS' goals from the ideal, or None if a goal cell is unknown.\"\n  if any(vals[c.at] == \"?\" for c in goals): return None\n  return ezr.dist((abs(ezr.norm(c, vals[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _labelled(tbl, goals) -> tuple[list, list]:\n  \"Rows with every goal known, and their goal distances.\"\n  rows, ys = [], []\n  for r in tbl.rows:\n    y = _gydist(goals, r)\n    if y is not None:\n      rows.append(r)\n      ys.append(y)\n  return rows, ys\n\ndef _sides(col, rows, v, go) -> tuple[list, list]:\n  \"Row indices on the yes side of a split of COL at V, and on the no side; unknown cells are on neither.\"\n  at  = col.at\n  yes = [i for i, r in enumerate(rows) if go(r)]\n  if type(col) is ezr.Sym:\n    no = [i for i, r in enumerate(rows) if r[at] != \"?\" and r[at] != v]\n  else:\n    no = [i for i, r in enumerate(rows) if r[at] != \"?\" and r[at] > v]\n  return yes, no\n\ndef explain(train_csv) -> str:\n  \"\"\"Single input conditions that good rows share, with the rates to check them.\n  Good means the best quarter of training rows by goal distance. A condition is\n  only reported if it covers at least 5% of rows and beats the overall rate.\"\"\"\n  tbl, head, kinds = _table(train_csv)\n  if tbl is None:\n    return \"Nothing to explain: the training file is empty.\"\n  goals = _goals(tbl)\n  if not goals or not tbl.x:\n    return \"Nothing to explain: the table needs goal columns and input columns.\"\n  rows, ys = _labelled(tbl, goals)\n  n = len(rows)\n  if n == 0:\n    return \"Nothing to explain: no training row has every goal cell known.\"\n  k     = max(1, n // 4)                       # good = the best quarter\n  order = sorted(range(n), key=lambda i: ys[i])\n  cut   = ys[order[k - 1]]\n  good  = {i for i in range(n) if ys[i] <= cut}\n  base  = len(good) / n\n  need  = max(max(1, ezr.the.Leaf), n // 20)   # enough rows to be worth a look\n  found = []\n  for col in tbl.x:\n    name = head[col.at]\n    best = None\n    for v, go in ezr.candidates(col, rows):\n      yes, no = _sides(col, rows, v, go)\n      if type(col) is ezr.Sym:\n        texts = (f\"{name} = {ezr.say(v)}\", f\"{name} != {ezr.say(v)}\")\n      else:\n        texts = (f\"{name} <= {ezr.say(v)}\", f\"{name} > {ezr.say(v)}\")\n      for side, text in zip((yes, no), texts):\n        if len(side) < need: continue\n        hits = sum(1 for i in side if i in good)\n        rate = hits / len(side)\n        lift = rate - base\n        if best is None or lift > best[0]:\n          best = (lift, text, rate, len(side))\n    if best and best[0] > 0: found.append(best)\n  found.sort(key=lambda p: -p[0])\n\n  goal_names = \", \".join(head[g.at] for g in goals)\n  lines = [\n    f\"Goals, scored by distance from the ideal (lower is better): {goal_names}.\",\n    f\"Good means the best quarter of the {n} training rows with every goal known: \"\n    f\"goal distance {cut:.2f} or less, against an overall rate of {base:.0%}.\",\n  ]\n  if not found:\n    lines.append(\"No single input condition makes good rows more likely \"\n                 \"than the overall rate, so no single flag explains them.\")\n  else:\n    lines.append(\"Each line is one input condition. Good rows meet it at the \"\n                 \"rate shown, against the overall rate. Check any line by \"\n                 \"filtering the training CSV yourself:\")\n    for _, text, rate, cnt in found[:5]:\n      lines.append(f\"  {text}: good in {rate:.0%} of {cnt} rows \"\n                   f\"(overall {base:.0%}).\")\n    lines.append(\"These are associations in the training data, not proof of cause.\")\n  return \"\\n\".join(lines)\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences: is ROW good, judged by its goals (including estimated ones) against the training cutoff.\"\n  tbl, head, kinds = _table(train_csv)\n  if tbl is None:\n    return \"This build cannot be rated: the training file is empty.\"\n  goals = _goals(tbl)\n  if not goals:\n    return \"This build cannot be rated: the table has no goal columns.\"\n  _, ys = _labelled(tbl, goals)\n  if not ys:\n    return \"This build cannot be rated: no training row has every goal known.\"\n  ys  = sorted(ys)\n  cut = ys[max(1, len(ys) // 4) - 1]\n  vals = _align(head, kinds, row)\n  missing = [c for c in goals if vals[c.at] == \"?\"]\n  estimated = []\n  if missing:\n    goal_names = {head[c.at] for c in goals}\n    clean = {k: v for k, v in row.items() if k not in goal_names}\n    est = step12.guess(train_csv, clean)\n    for c in missing:\n      name = head[c.at]\n      if name in est:\n        e, lo, hi = est[name]\n        vals[c.at] = float(e)\n        estimated.append((name, e, lo, hi))\n  if any(vals[c.at] == \"?\" for c in goals):\n    return \"This build cannot be rated: some of its goal values are unknown.\"\n  d    = _gydist(goals, vals)\n  good = d <= cut\n  s1 = (f\"This build is {'good' if good else 'bad'}: its goals sit {d:.2f} \"\n        f\"from the ideal, {'inside' if good else 'outside'} the best-quarter \"\n        f\"cutoff of {cut:.2f} over {len(ys)} training rows.\")\n  if not estimated: return s1\n  notes = \"; \".join(\n    f\"{name} was not given, so it is estimated at {e:.2f} (most similar builds \"\n    f\"fall between {lo:.2f} and {hi:.2f})\"\n    for name, e, lo, hi in estimated)\n  return f\"{s1} {notes}, so the rating is only as good as that estimate.\"\n```",
+ "ttft_ms": 74018,
+ "type": "result",
+ "duration_ms": 83589,
+ "uuid": "b1c3f4c2-79dc-4f02-81cb-b7c3cf986522",
+ "ttft_stream_ms": 1217,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
