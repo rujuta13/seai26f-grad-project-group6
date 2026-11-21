@@ -1,0 +1,13 @@
+{
+ "domain": "players",
+ "step": 15,
+ "skill": "blame",
+ "ok": false,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "error": "SyntaxError: invalid syntax (step15.py, line 2)",
+  "trace": "_for(domain, tmp))\n                         ~~~~^^^^^^^^^^^^^\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/harness/score.py\", line 44, in load\n    spec.loader.exec_module(m)\n    ~~~~~~~~~~~~~~~~~~~~~~~^^^\n  File \"<frozen importlib._bootstrap_external>\", line 1022, in exec_module\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/.runs/t5-r4/trial/step15.py\", line 2\n    \"Step 15: blame. Which input columns are most to blame for bad rows? Judged by all numeric goals, or by the goals named in FOCUS (e.g. FOCUS = (\"Penalties\",) for weak-from-the-spot, FOCUS = (\"Strength\",) for physical strength).\"\n                                                                                                                                                     ^^^^^^^^^\nSyntaxError: invalid syntax\n"
+ }
+}
