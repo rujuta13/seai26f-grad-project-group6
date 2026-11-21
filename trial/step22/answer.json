@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 24782,
+ "stop_reason": "end_turn",
+ "session_id": "a0a79f6b-9d03-41f9-b611-8823278902d6",
+ "total_cost_usd": 0.0436004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 39306,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5828,
+  "output_tokens_details": {
+   "thinking_tokens": 4188
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39306,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5828,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 39306,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 39306
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 32755,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.032825,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5828,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39306,
+   "webSearchRequests": 0,
+   "costUSD": 0.010775400000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step22.py\nimport math\nimport ezr\n\nLO, HI = 0.10, 0.90   # the band we are fairly sure of: the middle 80% of neighbours\nMIN_K  = 5            # fewest neighbours that count as evidence\n\n_cache: dict[str, ezr.TBL] = {}   # load each training file once\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Load TRAIN_CSV, and remember it for later calls.\"\n  if train_csv not in _cache:\n    _cache[train_csv] = ezr.Tbl(ezr.csv(train_csv))\n  return _cache[train_csv]\n\ndef _is_num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _cell(v):\n  \"A raw cell as an ezr atom; None, blank and '?' become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return \"?\" if s in (\"\", \"?\") else ezr.atom(s)\n  return v\n\ndef _align(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"\"\"Align ROW to TBL's columns. ROW is a dict by column name (with or\n  without its + or - sign), or a list over every column or over the\n  non-goal columns. Missing is '?'; a number column holding text is '?'.\"\"\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name, row.get(name.rstrip(\"+-\"))))\n             for at, name in enumerate(tbl.names)]\n  elif len(row) == len(tbl.names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(tbl.names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs: q[at] = _cell(v)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _is_num(q[c.at]): q[c.at] = \"?\"\n  return q\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The value at fraction P of the sorted, non-empty list XS, interpolated between ranks.\"\n  pos = p * (len(xs) - 1)\n  lo  = math.floor(pos)\n  hi  = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (pos - lo)\n\ndef _values(rows: ezr.ROWS, at: int) -> list[float]:\n  \"The sorted numeric values in column AT of ROWS.\"\n  return sorted(float(r[at]) for r in rows if _is_num(r[at]))\n\ndef guess(train_csv: str, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Per goal: (estimate, low, high) for ROW, whose goal columns are absent.\n  The estimate is the mean goal value of the training rows nearest to ROW\n  over the input columns. For a 0/1 goal such as RESPONSE it is the share of\n  neighbours that responded, i.e. a probability. Low..high is the middle 80%\n  of those neighbours' values. A wide band means low confidence; a narrow one\n  means the neighbours agree.\"\"\"\n  tbl   = _load(train_csv)\n  names = tbl.names\n  goals = [c for c in tbl.y if type(c) is ezr.Num]\n  if not goals: return {}\n  q = _align(tbl, row)\n  for c in goals: q[c.at] = \"?\"        # goals are never inputs\n  if not tbl.rows:\n    return {names[c.at]: (0.0, 0.0, 0.0) for c in goals}\n  if any(q[c.at] != \"?\" for c in tbl.x):\n    pool = sorted(tbl.rows, key=lambda r: ezr.xdist(tbl, q, r))\n  else:                                # no input known: every row is a neighbour\n    pool = list(tbl.rows)\n  k    = min(len(pool), max(MIN_K, int(math.sqrt(len(tbl.rows)))))\n  near = pool[:k]\n  out  = {}\n  for c in goals:\n    vals = _values(near, c.at)\n    if len(vals) < MIN_K:              # too few neighbours know this goal\n      vals = _values(tbl.rows, c.at)\n    if not vals:                       # nothing known anywhere for this goal\n      out[names[c.at]] = (0.0, 0.0, 0.0)\n      continue\n    est = sum(vals) / len(vals)\n    lo  = min(_quantile(vals, LO), est)\n    hi  = max(_quantile(vals, HI), est)\n    out[names[c.at]] = (est, lo, hi)\n  return out\n```",
+ "ttft_ms": 19016,
+ "type": "result",
+ "duration_ms": 23431,
+ "uuid": "1143295c-dda7-4348-897a-944f3ce9bda8",
+ "ttft_stream_ms": 1592,
+ "time_to_request_ms": 87,
+ "queued_turn_count": 0
+}
