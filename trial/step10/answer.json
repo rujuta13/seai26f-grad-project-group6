@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 88828,
+ "stop_reason": "end_turn",
+ "session_id": "c1a09349-a878-48c7-bd95-55152922c6ac",
+ "total_cost_usd": 0.0308901,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19357,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 21435,
+  "output_tokens_details": {
+   "thinking_tokens": 18431
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19357,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 21435,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19357,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19357
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16221,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016301,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 21435,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19357,
+   "webSearchRequests": 0,
+   "costUSD": 0.0145891,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\n#!/usr/bin/env python3 -B\n\"\"\"Race our tuner (step7) and guesser (step2) against rivals on test rows, via ezr.\n\nThe standard library ships no tuner or regressor, so the rivals are built from\nit. 'random_search' labels BUDGET rows at random. 'hillclimb' is a greedy local\nsearch: it labels the unlabelled row nearest the current best. 'guess_linear' is\nordinary least squares on one-hot inputs. Every score is lower-is-better. Tuner\nscores are the goal distance of the build picked (0 is ideal). Guesser scores are\nthe mean absolute error on each goal, in training standard deviations, averaged\nover goals and test rows. Labels come only from test_csv.\"\"\"\nimport os, random, tempfile\nfrom collections.abc import Callable\nimport ezr\nimport step2\nimport step7\n\nBUDGET = 30     # labels each tuner may take, as in step7\nLAMBDA = 1e-6   # ridge term, so the normal equations stay solvable\n\ndef _goals(tbl) -> list:\n  \"The goal columns: names ending in + or -.\"\n  return [c for c in tbl.y if c.txt[-1] in \"+-\"]\n\ndef _gydist(goals, row) -> float:\n  \"Distance of ROW's goals from the ideal, as ezr measures it.\"\n  return ezr.dist((abs(ezr.norm(c, row[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _best_labelled(goals, known: dict) -> int:\n  \"Index of the row in KNOWN (index -> {goal: value}) nearest the ideal, judged by its labels alone.\"\n  cols = {c.at: ezr.Num(c.txt, c.at) for c in goals}\n  for cells in known.values():\n    for c in goals: ezr.add(cols[c.at], cells[c.txt])\n  def d(i: int) -> float:\n    cells = known[i]\n    if any(cells[c.txt] == \"?\" for c in goals): return float(\"inf\")\n    return ezr.dist((abs(ezr.norm(cols[c.at], cells[c.txt]) - cols[c.at].goal)\n                     for c in goals), len(goals))\n  return min(known, key=lambda i: (d(i), i))\n\ndef _blind(tbl, goals, path: str) -> None:\n  \"Write TBL to PATH with every goal cell '?', so the tuner must label to see them.\"\n  hidden = {c.at for c in goals}\n  with open(path, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(str(n) for n in tbl.names) + \"\\n\")\n    for row in tbl.rows:\n      f.write(\",\".join(\"?\" if i in hidden else str(v)\n                       for i, v in enumerate(row)) + \"\\n\")\n\ndef _hillclimb(full, goals, label, budget: int, rng) -> int:\n  \"Greedy local search: from a random row, keep labelling the unlabelled row nearest the best so far.\"\n  rows  = full.rows\n  first = rng.randrange(len(rows))\n  known = {first: label(first)}\n  while len(known) < budget:\n    best = rows[_best_labelled(goals, known)]\n    nxt  = min((i for i in range(len(rows)) if i not in known),\n               key=lambda i: ezr.xdist(full, rows[i], best))\n    known[nxt] = label(nxt)\n  return _best_labelled(goals, known)\n\ndef _race_tuners(full, goals, rng) -> dict[str, float]:\n  \"Goal distance of the build each tuner picks, labelling at most BUDGET rows.\"\n  n      = len(full.rows)\n  budget = min(BUDGET, n)\n  def label(i: int) -> dict:\n    return {c.txt: full.rows[i][c.at] for c in goals}\n  with tempfile.TemporaryDirectory() as d:\n    path = os.path.join(d, \"blind.csv\")\n    _blind(full, goals, path)\n    ours = step7.choose(path, label, budget=budget)\n  picks = {\n    \"ours\":          ours,\n    \"random_search\": _best_labelled(goals, {i: label(i) for i in\n                                            rng.sample(range(n), budget)}),\n    \"hillclimb\":     _hillclimb(full, goals, label, budget, rng),\n  }\n  return {k: _gydist(goals, full.rows[i]) for k, i in picks.items()}\n\ndef _solve(A: list, b: list) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [row + [b[i]] for i, row in enumerate(A)]\n  for k in range(n):\n    p = max(range(k, n), key=lambda r: abs(M[r][k]))\n    M[k], M[p] = M[p], M[k]\n    pv = M[k][k]\n    if abs(pv) < 1e-12: continue\n    M[k] = [v / pv for v in M[k]]\n    for r in range(n):\n      if r != k and M[r][k] != 0:\n        f = M[r][k]\n        M[r] = [a - f * v for a, v in zip(M[r], M[k])]\n  return [M[i][n] for i in range(n)]\n\ndef _linear(train) -> Callable[[list], dict[str, float]]:\n  \"Ordinary least squares, one model per goal; symbols one-hot; ridge-stabilised.\"\n  xs     = list(train.x)\n  levels = {c.at: sorted(c.has, key=str) for c in xs if type(c) is ezr.Sym}\n  def feats(row: list) -> list[float]:\n    out = [1.0]                                   # intercept\n    for c in xs:\n      v = row[c.at]\n      if type(c) is ezr.Sym:\n        out += [1.0 if v == lv else 0.0 for lv in levels[c.at]]\n      else:\n        try:    out.append(float(v))\n        except (TypeError, ValueError): out.append(float(c.mu))  # unknown: mean\n    return out\n  models = {}\n  for g in _goals(train):\n    pairs = [(feats(r), float(r[g.at])) for r in train.rows if r[g.at] != \"?\"]\n    if not pairs:\n      models[g.txt] = None\n      continue\n    m = len(pairs[0][0])\n    A = [[LAMBDA if i == j else 0.0 for j in range(m)] for i in range(m)]\n    b = [0.0] * m\n    for x, y in pairs:\n      for i in range(m):\n        b[i] += x[i] * y\n        for j in range(m): A[i][j] += x[i] * x[j]\n    models[g.txt] = _solve(A, b)\n  def predict(row: list) -> dict[str, float]:\n    x = feats(row)\n    return {name: (sum(w * v for w, v in zip(wt, x)) if wt else 0.0)\n            for name, wt in models.items()}\n  return predict\n\ndef _race_guessers(train_csv, full) -> dict[str, float]:\n  \"Mean scaled error of each guesser on each goal of every test row.\"\n  train = ezr.Tbl(ezr.csv(train_csv))\n  tg    = _goals(train)\n  scale = {c.txt: (c.sd or 1.0) for c in tg}\n  linear = _linear(train)\n  at     = {name: i for i, name in enumerate(full.names)}\n  errs   = {\"guess_ours\": [], \"guess_linear\": []}\n  for row in full.rows:\n    inputs = {c.txt: row[c.at] for c in full.x}     # goal cells withheld\n    est    = step2.guess(train_csv, inputs)\n    lin    = linear(row)\n    for g in tg:\n      true = row[at[g.txt]]\n      if true == \"?\": continue\n      errs[\"guess_ours\"].append(abs(est[g.txt][0] - true) / scale[g.txt])\n      errs[\"guess_linear\"].append(abs(lin[g.txt] - true) / scale[g.txt])\n  return {k: (sum(v) / len(v) if v else float(\"inf\")) for k, v in errs.items()}\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Scores for each method on TEST_CSV; lower is better. Tuners: 'ours' (step7),\n  'random_search', 'hillclimb' (goal distance of the build picked). Guessers:\n  'guess_ours' (step2) and 'guess_linear' (scaled error, trained on TRAIN_CSV).\"\"\"\n  full  = ezr.Tbl(ezr.csv(test_csv))\n  goals = _goals(full)\n  if not goals: raise ValueError(\"the test table has no goal columns\")\n  if not full.rows: raise ValueError(\"the test table has no rows\")\n  rng = random.Random(ezr.the.Seed)\n  out = _race_tuners(full, goals, rng)\n  out.update(_race_guessers(train_csv, full))\n  return out\n```",
+ "ttft_ms": 79787,
+ "type": "result",
+ "duration_ms": 87818,
+ "uuid": "36e7efea-375f-4a72-b0ba-1eb1c1d76f02",
+ "ttft_stream_ms": 1118,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
