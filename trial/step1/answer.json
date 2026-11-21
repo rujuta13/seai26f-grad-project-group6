@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 32066,
+ "stop_reason": "end_turn",
+ "session_id": "75e94040-13e9-4267-9588-ad2cadc959a0",
+ "total_cost_usd": 0.005553799999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 1038,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7810,
+  "output_tokens_details": {
+   "thinking_tokens": 5888
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 1038,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7810,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1038,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 1038
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 1366,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.001441,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7810,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 1038,
+   "webSearchRequests": 0,
+   "costUSD": 0.0041128,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 1: flag-combination families and best rows for MOOT-format data.\"\"\"\n\nimport csv\nimport random\n\n\ndef _num(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return value\n\n\ndef _load(path):\n    with open(path, newline=\"\") as fh:\n        reader = csv.DictReader(fh)\n        columns = list(reader.fieldnames or [])\n        rows = [{k: _num(v) for k, v in row.items()} for row in reader]\n    return columns, rows\n\n\ndef _split_columns(columns):\n    maximise, minimise, inputs = [], [], []\n    for c in columns:\n        if c.endswith(\"X\"):\n            continue\n        if c.endswith(\"+\"):\n            maximise.append(c)\n        elif c.endswith(\"-\"):\n            minimise.append(c)\n        else:\n            inputs.append(c)\n    return maximise, minimise, inputs\n\n\ndef _encode_inputs(rows, inputs):\n    vecs = [[0.0] * len(inputs) for _ in rows]\n    for j, c in enumerate(inputs):\n        numeric = all(isinstance(r.get(c), float) for r in rows)\n        codes = {}\n        for i, r in enumerate(rows):\n            v = r.get(c)\n            if numeric:\n                vecs[i][j] = v\n            else:\n                key = str(v)\n                if key not in codes:\n                    codes[key] = len(codes)\n                vecs[i][j] = float(codes[key])\n    return vecs\n\n\ndef _sqdist(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _kmeans_once(X, k, rng, iters=100):\n    n = len(X)\n    dim = len(X[0])\n    centers = [list(X[rng.randrange(n)])]\n    d2 = [_sqdist(x, centers[0]) for x in X]\n    while len(centers) < k:\n        total = sum(d2)\n        if total <= 0:\n            idx = rng.randrange(n)\n        else:\n            target = rng.uniform(0, total)\n            acc, idx = 0.0, n - 1\n            for i, w in enumerate(d2):\n                acc += w\n                if acc >= target:\n                    idx = i\n                    break\n        centers.append(list(X[idx]))\n        d2 = [min(d2[i], _sqdist(X[i], centers[-1])) for i in range(n)]\n\n    labels = None\n    for _ in range(iters):\n        new = []\n        for x in X:\n            dists = [_sqdist(x, c) for c in centers]\n            new.append(dists.index(min(dists)))\n        if new == labels:\n            break\n        labels = new\n        for c in range(k):\n            members = [X[i] for i in range(n) if labels[i] == c]\n            if members:\n                centers[c] = [\n                    sum(m[j] for m in members) / len(members) for j in range(dim)\n                ]\n\n    sse = sum(_sqdist(X[i], centers[labels[i]]) for i in range(n))\n    return labels, sse\n\n\ndef families(train_csv):\n    \"\"\"Return one family (cluster) label per data row of train_csv, in file order.\n\n    Families are k-means clusters over the input (flag) columns only.\n    \"\"\"\n    columns, rows = _load(train_csv)\n    _, _, inputs = _split_columns(columns)\n    n = len(rows)\n    if n == 0:\n        return []\n\n    X = _encode_inputs(rows, inputs)\n    k = min(5, n)\n    rng = random.Random(0)\n\n    best_labels, best_sse = None, None\n    for _ in range(5):\n        labels, sse = _kmeans_once(X, k, rng)\n        if best_sse is None or sse < best_sse:\n            best_labels, best_sse = labels, sse\n\n    remap = {}\n    out = []\n    for lab in best_labels:\n        if lab not in remap:\n            remap[lab] = len(remap)\n        out.append(remap[lab])\n    return out\n\n\ndef _dominates(a, b):\n    \"\"\"True if a Pareto-dominates b (all dimensions minimised).\"\"\"\n    return all(x <= y for x, y in zip(a, b)) and any(x < y for x, y in zip(a, b))\n\n\ndef best(train_csv):\n    \"\"\"Return sorted row indices of the unusually good rows.\n\n    Good means non-dominated on all goals together ('+' goals maximised,\n    '-' goals minimised). At most 5% of rows are returned; if the Pareto\n    front is larger, the rows with the best normalised goal sum are kept.\n    \"\"\"\n    columns, rows = _load(train_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    n = len(rows)\n    cap = (n * 5) // 100\n    if n == 0 or cap == 0 or not (maximise or minimise):\n        return []\n\n    # Everything becomes a minimisation problem.\n    G = []\n    for r in rows:\n        G.append([-float(r[c]) for c in maximise] + [float(r[c]) for c in minimise])\n    m = len(G[0])\n\n    lo = [min(g[j] for g in G) for j in range(m)]\n    hi = [max(g[j] for g in G) for j in range(m)]\n    N = []\n    for g in G:\n        N.append([\n            (g[j] - lo[j]) / (hi[j] - lo[j]) if hi[j] > lo[j] else 0.0\n            for j in range(m)\n        ])\n\n    front = []\n    for i in range(n):\n        dominated = False\n        for j in range(n):\n            if j != i and _dominates(N[j], N[i]):\n                dominated = True\n                break\n        if not dominated:\n            front.append(i)\n\n    if len(front) > cap:\n        front.sort(key=lambda i: (sum(N[i]), i))\n        front = front[:cap]\n\n    return sorted(front)\n```",
+ "ttft_ms": 25934,
+ "type": "result",
+ "duration_ms": 31297,
+ "uuid": "e72b16cd-e842-4ee5-8a33-28bb139e65b1",
+ "ttft_stream_ms": 1121,
+ "time_to_request_ms": 31,
+ "queued_turn_count": 0
+}
