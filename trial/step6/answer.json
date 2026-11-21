@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 86291,
+ "stop_reason": "end_turn",
+ "session_id": "298e0d94-7cc7-471b-b525-c6076791f5c0",
+ "total_cost_usd": 0.019372300000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8378,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 20673,
+  "output_tokens_details": {
+   "thinking_tokens": 17682
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8378,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 20673,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8378,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8378
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7285,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00736,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 20673,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8378,
+   "webSearchRequests": 0,
+   "costUSD": 0.0120123,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step6.py - client question 7: justify.\n\nexplain(train_csv) gives plain-words reasons, a skeptical senior engineer can\ncheck, for what makes builds good. why(train_csv, row) says in one or two\nsentences why a single build is rated good or bad.\n\nReused from earlier steps:\n  step1: _load (MOOT csv loading), _dominates (goal dominance), best (the\n         non-dominated builds, used as the \"good\" group)\n  step5: BAD_FRACTION (share of builds called bad), _percentiles (goal\n         percentiles), _effect (standardised bad-minus-good difference)\n\"\"\"\nimport bisect\nimport functools\nfrom types import SimpleNamespace\n\nfrom step1 import _dominates, _load, best\nfrom step5 import BAD_FRACTION, _effect, _percentiles\n\n\ndef _pct_of(value, sorted_vals):\n    \"\"\"Percentile of a new value on the same scale as step5._percentiles:\n    the mean rank of its ties among the training values, divided by n - 1.\"\"\"\n    n = len(sorted_vals)\n    if n == 1:\n        return 1.0\n    lo = bisect.bisect_left(sorted_vals, value)\n    hi = bisect.bisect_right(sorted_vals, value)\n    if lo < hi:\n        rank = (lo + hi - 1) / 2\n    else:\n        rank = min(max(lo - 0.5, 0.0), n - 1.0)\n    return rank / (n - 1)\n\n\n@functools.lru_cache(maxsize=None)\ndef _model(train_csv):\n    \"\"\"Everything explain and why need, computed once per training file.\"\"\"\n    input_cols, goal_cols, X, Y = _load(train_csv)\n    n, d, m = len(X), len(input_cols), len(goal_cols)\n    if n == 0:\n        raise ValueError(\"training file has no data rows\")\n    if m == 0:\n        raise ValueError(\"training file has no goal columns\")\n\n    # score = mean goal percentile (1 = best), as in step5.blame's badness\n    goal_sorted = [sorted(Y[i][g] for i in range(n)) for g in range(m)]\n    pct_cols = [_percentiles([Y[i][g] for i in range(n)]) for g in range(m)]\n    score = [sum(col[i] for col in pct_cols) / m for i in range(n)]\n\n    # bad = worst BAD_FRACTION by score, same tie-break as step5.blame\n    k = max(1, int(BAD_FRACTION * n))\n    order = sorted(range(n), key=lambda i: (score[i], i))\n    cut = score[order[k - 1]]\n    bad_idx = sorted(order[:k])\n    bad_set = set(bad_idx)\n\n    # good = non-dominated builds (step1.best); fall back to the rest\n    good_idx = best(train_csv)\n    if not good_idx:\n        good_idx = [i for i in range(n) if i not in bad_set] or list(range(n))\n\n    eff, bad_mean, good_mean = [], [], []\n    for t in range(d):\n        bv = [X[i][t] for i in bad_idx]\n        gv = [X[i][t] for i in good_idx]\n        bad_mean.append(sum(bv) / len(bv))\n        good_mean.append(sum(gv) / len(gv))\n        eff.append(_effect(bv, gv))\n    ranked = sorted(range(d), key=lambda t: (-eff[t], t))\n\n    return SimpleNamespace(\n        input_cols=input_cols, goal_cols=goal_cols, X=X, Y=Y,\n        goal_sorted=goal_sorted, score=score, cut=cut,\n        good_idx=good_idx, eff=eff, bad_mean=bad_mean,\n        good_mean=good_mean, ranked=ranked,\n    )\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons for what makes builds good, checkable by a skeptic.\"\"\"\n    M = _model(train_csv)\n    n = len(M.X)\n    d = len(M.input_cols)\n    names = [name for name, _ in M.goal_cols]\n\n    # recommended: the best-scoring non-dominated build\n    rec = min(M.good_idx, key=lambda i: (-M.score[i], i))\n    goals = \", \".join(f\"{name} = {sign * M.Y[rec][g]:g}\"\n                      for g, (name, sign) in enumerate(M.goal_cols))\n    on = [f\"{c}={M.X[rec][t]:g}\"\n          for t, c in enumerate(M.input_cols) if M.X[rec][t] != 0]\n\n    up = [t for t in M.ranked if M.eff[t] > 0][:5]\n    down = [t for t in sorted(range(d), key=lambda t: (M.eff[t], t))\n            if M.eff[t] < 0][:5]\n\n    def line(t):\n        return (f\"  {M.input_cols[t]}: bad-build mean {M.bad_mean[t]:.2f}, \"\n                f\"good-build mean {M.good_mean[t]:.2f}, effect {M.eff[t]:+.2f}\")\n\n    lines = [\n        f\"Basis: {n} training builds, {d} input settings, goals: {', '.join(names)}.\",\n        (\"How a build is judged: each goal is turned into a percentile among the \"\n         \"training builds, higher is better (minimised goals are inverted), and a \"\n         \"build's score is its mean percentile. \"\n         f\"The worst {100 * BAD_FRACTION:.0f}% by score are called bad.\"),\n        (\"A good build is non-dominated: no other training build is at least as good \"\n         \"on every goal and strictly better on at least one.\"),\n        \"\",\n        \"Recommended set: the non-dominated build with the highest score.\",\n        f\"  score: {100 * M.score[rec]:.0f} of 100\",\n        f\"  goals (original units): {goals}\",\n        f\"  settings on ({len(on)} of {d}): {', '.join(on) if on else 'none'}\",\n        \"\",\n        (\"What separates bad builds from good ones: standardised difference, \"\n         \"bad minus good (positive = more common in bad builds).\"),\n        \"More common in bad builds:\",\n    ]\n    lines += [line(t) for t in up] or [\"  none\"]\n    lines.append(\"More common in good builds:\")\n    lines += [line(t) for t in down] or [\"  none\"]\n    lines += [\n        \"\",\n        (\"Caveats: these are associations found in this one training set, not proof \"\n         \"that a setting causes the change in any goal. Settings interact, so one \"\n         \"setting's effect depends on the others, and percentiles hide how large the \"\n         \"gaps are in original units. Before relying on the recommendation, re-run it \"\n         \"on fresh builds and use step3.same to check that goal differences exceed \"\n         \"run-to-run noise.\"),\n    ]\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this build (goals included) is good or bad.\"\"\"\n    M = _model(train_csv)\n    names = [name for name, _ in M.goal_cols]\n    vec = [sign * float(row[name]) for name, sign in M.goal_cols]\n    pcts = [_pct_of(v, M.goal_sorted[g]) for g, v in enumerate(vec)]\n    score = sum(pcts) / len(pcts)\n    verdict = \"bad\" if score <= M.cut else \"good\"\n    lo = min(range(len(pcts)), key=lambda g: pcts[g])\n    hi = max(range(len(pcts)), key=lambda g: pcts[g])\n\n    s1 = (f\"Rated {verdict}: its mean goal percentile is {100 * score:.0f} \"\n          f\"(0 = worst, 100 = best), against a cut-off of {100 * M.cut:.0f} \"\n          f\"for the worst {100 * BAD_FRACTION:.0f}% of training builds; \"\n          f\"{names[lo]} is weakest at {100 * pcts[lo]:.0f} and \"\n          f\"{names[hi]} strongest at {100 * pcts[hi]:.0f}.\")\n\n    dominated = any(_dominates(y, vec) for y in M.Y)\n    if dominated:\n        s2 = (\"Some training build is at least as good on every goal and better on \"\n              \"one, so it is not on the non-dominated front.\")\n    else:\n        s2 = (\"No training build beats it on every goal together, so no training \"\n              \"build dominates it.\")\n\n    if verdict == \"bad\":\n        sus = []\n        for t in M.ranked:\n            if M.eff[t] <= 0 or len(sus) == 3:\n                break\n            c = M.input_cols[t]\n            if c in row and float(row[c]) > M.good_mean[t]:\n                sus.append(c)\n        if sus:\n            s2 += (\" Flags most tied to bad builds that it sets above the usual \"\n                   \"good-build level: \" + \", \".join(sus) + \".\")\n\n    return f\"{s1} {s2}\"\n```",
+ "ttft_ms": 77228,
+ "type": "result",
+ "duration_ms": 85400,
+ "uuid": "87205549-fb54-4fe8-82d1-041db282e4f7",
+ "ttft_stream_ms": 1251,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
