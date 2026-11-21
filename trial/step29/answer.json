@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 85534,
+ "stop_reason": "end_turn",
+ "session_id": "bd4814d3-ea2e-46be-89ac-f19f6531f1df",
+ "total_cost_usd": 0.0883023,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 76113,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 21191,
+  "output_tokens_details": {
+   "thinking_tokens": 16900
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 76113,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 21191,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 76113,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 76113
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 62419,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.062484000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 21191,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 76113,
+   "webSearchRequests": 0,
+   "costUSD": 0.025818300000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 29: spot. Suspicion scores for customer records that look wrong (impossible\nages, odd incomes, typos) or that behave unlike any other customer.\n\nodd(train_csv, rows) returns one non-negative score per row (higher = more\nsuspicious). Ordinary rows score near 0. The score adds up these checks:\n  - Unusable cells: a goal or numeric input cell that is missing or not a finite\n    number, and a text input value that never appears in train_csv.\n  - Impossible values: an AGE below 0 or above MAX_AGE, and a negative value in a\n    column that cannot be negative (INCOME, MNT spending, NUM counts, KIDHOME,\n    TEENHOME, RECENCY, CUSTOMER_DAYS). These rules come from the column names.\n  - Input range: a numeric input outside the training min..max, measured in\n    training spans, so an extra digit lands far outside.\n  - Robust outliers: a numeric input or goal far from the training median in MAD\n    units. Skipped for columns with few distinct training values (flags, small\n    counts), where the check would only flag legitimate rare values.\n  - Input novelty: distance to the nearest training customer in min-max scaled\n    input space, beyond the 95th percentile of training leave-one-out distances.\n  - Goal disagreement: a goal far from the goals of the nearest training customers\n    with similar inputs, in units of their spread.\n\nStandard library only. Ordinary rows score near 0, and a fixed seed keeps the\nsampled neighbour pool reproducible.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load\n\nSEED = 1              # fixed seed so the sampled neighbour pool is reproducible\nMAX_POOL = 1000       # training rows used for neighbour search (seeded sample if more)\nCALIB = 200           # pool rows used to calibrate input novelty\nNOVEL_Q = 0.95        # quantile of leave-one-out distances defining \"normal\"\nK_NEAR = 15           # nearest training customers used for the goal-disagreement check\nNUMERIC_FRAC = 0.9    # a column is numeric if this share of its training cells parse\nMAX_LEVELS = 25       # text columns with more levels are not used for unseen checks\nMIN_DISTINCT = 10     # robust checks need at least this many distinct training values\nZOUT_OK = 6.0         # robust z-score treated as normal\nRESID_OK = 3.0        # goal disagreement, in neighbour-spread units, treated as normal\nCAP = 10.0            # cap on any single continuous term\nMAX_AGE = 120.0       # oldest plausible customer age\nNONNEG = (\"INCOME\", \"MNT\", \"NUM\", \"KIDHOME\", \"TEENHOME\", \"RECENCY\", \"CUSTOMER_DAYS\")\nAGE = \"AGE\"\nW_MISSING = 10.0      # missing or non-numeric goal cell\nW_BAD_INPUT = 2.0     # missing or non-numeric numeric input cell\nW_UNSEEN = 2.0        # text input value never seen in training\nW_IMPOSSIBLE = 5.0    # value that cannot occur (negative amount, age outside 0..MAX_AGE)\nW_RANGE = 1.0         # weight per training span a numeric input lies beyond the range\nW_ROBUST = 1.0        # weight of a robust (MAD) outlier term\nW_NOVEL = 1.0         # weight of the input-novelty term\nW_DISAGREE = 1.0      # weight of the goal-disagreement term\nEPS = 1e-12\n\n\ndef _finite(v):\n    \"\"\"The cell as a finite float, or None if it is missing, non-numeric or non-finite.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v.strip()\n    return \"\" if v is None else str(v).strip()\n\n\ndef _base(name):\n    \"\"\"Column name without its goal sign (+ or -), in upper case.\"\"\"\n    return name.rstrip(\"+-\").strip().upper()\n\n\ndef _quantile(srt, q):\n    \"\"\"Linear-interpolated quantile of a non-empty ascending list.\"\"\"\n    pos = q * (len(srt) - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, len(srt) - 1)\n    return srt[lo] + (srt[hi] - srt[lo]) * (pos - lo)\n\n\ndef _wmedian(pairs):\n    \"\"\"Weighted median of (value, weight) pairs with positive weights.\"\"\"\n    pairs = sorted(pairs)\n    total = sum(w for _, w in pairs)\n    acc = 0.0\n    for v, w in pairs:\n        acc += w\n        if acc >= total / 2:\n            return v\n    return pairs[-1][0]\n\n\ndef _limits(name):\n    \"\"\"(lowest, highest) plausible value implied by a column name; None means no limit.\"\"\"\n    b = _base(name)\n    lo = 0.0 if b.startswith(NONNEG) else None\n    hi = MAX_AGE if b.startswith(AGE) else None\n    return lo, hi\n\n\ndef _numeric_present(raw):\n    \"\"\"Finite values of a column if the column is numeric (mostly parses), else None.\"\"\"\n    vals = [_finite(v) for v in raw]\n    present = [x for x in vals if x is not None]\n    if present and len(present) >= NUMERIC_FRAC * len(raw):\n        return present\n    return None\n\n\ndef _num_stats(present):\n    \"\"\"Training statistics for one numeric column.\"\"\"\n    srt = sorted(present)\n    med = _quantile(srt, 0.5)\n    mad = _quantile(sorted(abs(x - med) for x in srt), 0.5)\n    rsd = 1.4826 * mad\n    many = len(set(srt)) >= MIN_DISTINCT\n    return {\n        \"lo\": srt[0],\n        \"hi\": srt[-1],\n        \"med\": med,\n        \"rsd\": rsd,\n        \"many\": many,\n        \"robust\": many and rsd > 0,\n    }\n\n\ndef _plan(train_rows, inputs, goals):\n    \"\"\"Decide how each column is used, from training rows.\n\n    num  maps numeric input columns to their training statistics.\n    cat  maps text input columns (few levels) to their sorted training levels.\n    gnum maps numeric goal columns to their training statistics.\n    \"\"\"\n    num, cat, gnum = {}, {}, {}\n    for c in inputs:\n        raw = [r.get(c) for r in train_rows]\n        present = _numeric_present(raw)\n        if present is not None:\n            num[c] = _num_stats(present)\n        else:\n            levels = sorted({_text(v) for v in raw})\n            if len(levels) <= MAX_LEVELS:\n                cat[c] = levels\n    for c, _ in goals:\n        present = _numeric_present([r.get(c) for r in train_rows])\n        if present is not None:\n            gnum[c] = _num_stats(present)\n    return num, cat, gnum\n\n\ndef _cells(r, num, cat):\n    \"\"\"Encoded inputs of one row (the novelty space) and the penalty for its input cells.\n\n    Numeric values are scaled by the training min..max without clipping, so values\n    outside the training range stay far from the training customers. A missing\n    numeric cell takes the training median in the encoding.\n    \"\"\"\n    vec, pen = [], 0.0\n    for c, st in num.items():\n        x = _finite(r.get(c))\n        span = st[\"hi\"] - st[\"lo\"]\n        if x is None:\n            pen += W_BAD_INPUT\n            x = st[\"med\"]\n        else:\n            lo_ok, hi_ok = _limits(c)\n            if (lo_ok is not None and x < lo_ok) or (hi_ok is not None and x > hi_ok):\n                pen += W_IMPOSSIBLE\n            beyond = max(st[\"lo\"] - x, x - st[\"hi\"], 0.0)\n            if beyond > 0:\n                scale = span if span > 0 else max(abs(st[\"hi\"]), 1.0)\n                pen += W_RANGE * min(CAP, beyond / scale)\n            if st[\"robust\"]:\n                dev = abs(x - st[\"med\"]) / st[\"rsd\"]\n                pen += W_ROBUST * min(CAP, max(0.0, dev - ZOUT_OK))\n        vec.append((x - st[\"lo\"]) / span if span > 0 else 0.0)\n\n    for c, levels in cat.items():\n        s = _text(r.get(c))\n        if s in levels:\n            vec.extend(1.0 if s == lv else 0.0 for lv in levels)\n        else:\n            pen += W_UNSEEN\n            vec.extend(0.0 for _ in levels)\n    return vec, pen\n\n\ndef _nearest(x, pool, skip=-1):\n    \"\"\"Smallest Euclidean distance from x to a pool point, leaving out index skip.\"\"\"\n    return min((math.dist(x, y) for j, y in enumerate(pool) if j != skip),\n               default=math.inf)\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more\n    likely a glitch, a typo, or a customer unlike anything in train_csv.\"\"\"\n    train_rows, inputs, goals = _load(train_csv)\n    rows = list(rows)\n    m = len(rows)\n    scores = [0.0] * m\n    n = len(train_rows)\n    if m == 0 or n == 0:\n        return scores\n\n    num, cat, gnum = _plan(train_rows, inputs, goals)\n\n    # Neighbour pool: all training rows, or a seeded sample of MAX_POOL of them.\n    pool = list(range(n))\n    if n > MAX_POOL:\n        pool = sorted(random.Random(SEED).sample(pool, MAX_POOL))\n    P = len(pool)\n    Xp = [_cells(train_rows[k], num, cat)[0] for k in pool]\n    has_x = P > 0 and len(Xp[0]) > 0\n    Yp = {c: [_finite(train_rows[k].get(c)) for k in pool] for c in gnum}\n\n    # Input novelty calibration: leave-one-out nearest distances within the pool.\n    novel_on = has_x and P >= 2\n    nscale = 1.0\n    if novel_on:\n        step = max(1, P // CALIB)\n        loo = sorted(_nearest(Xp[k], Xp, skip=k) for k in range(0, P, step))\n        thresh = _quantile(loo, NOVEL_Q)\n        nscale = thresh if thresh > 0 else 1.0\n\n    for i, r in enumerate(rows):\n        vec, s = _cells(r, num, cat)\n\n        dist = None\n        if has_x:\n            dist = [math.dist(vec, x) for x in Xp]\n            if novel_on:\n                nd = min(dist)\n                s += W_NOVEL * min(CAP, max(0.0, nd / nscale - 1.0))\n\n        order = None\n        for c, _ in goals:\n            st = gnum.get(c)\n            if st is None:\n                continue  # goal is not numeric in training, nothing to compare\n            y = _finite(r.get(c))\n            if y is None:\n                s += W_MISSING\n                continue\n\n            lo_ok, _ = _limits(c)\n            if lo_ok is not None and y < lo_ok:\n                s += W_IMPOSSIBLE\n\n            # Goal outlier against the training median, in robust units.\n            if st[\"robust\"]:\n                dev = abs(y - st[\"med\"]) / st[\"rsd\"]\n                s += W_ROBUST * min(CAP, max(0.0, dev - ZOUT_OK))\n\n            # Goal disagreement with the goals of the nearest similar training customers.\n            if dist is not None and st[\"many\"]:\n                if order is None:\n                    order = sorted(range(P), key=dist.__getitem__)\n                yk_list = Yp[c]\n                nb = []\n                for k in order:\n                    yk = yk_list[k]\n                    if yk is not None:\n                        nb.append((dist[k], yk))\n                        if len(nb) == K_NEAR:\n                            break\n                if nb:\n                    est = _wmedian([(yk, 1.0 / (1.0 + d)) for d, yk in nb])\n                    ys = sorted(yk for _, yk in nb)\n                    iqr = _quantile(ys, 0.75) - _quantile(ys, 0.25)\n                    spread = max(iqr, 0.25 * st[\"rsd\"], 0.01 * abs(est), EPS)\n                    s += W_DISAGREE * min(CAP, max(0.0, abs(y - est) / spread - RESID_OK))\n\n        scores[i] = float(s)\n    return scores\n```",
+ "ttft_ms": 72402,
+ "type": "result",
+ "duration_ms": 83996,
+ "uuid": "a620bbc5-067f-4568-b9f9-fed74b94e442",
+ "ttft_stream_ms": 1635,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
