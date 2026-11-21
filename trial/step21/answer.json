@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6360,
+ "stop_reason": "end_turn",
+ "session_id": "2f8cd0ab-6d2b-4a5b-8ec3-3fd785bae4c5",
+ "total_cost_usd": 0.0357825,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 34379,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 985,
+  "output_tokens_details": {
+   "thinking_tokens": 678
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 34379,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 985,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 34379,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 34379
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 28329,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.028414000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 985,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 34379,
+   "webSearchRequests": 0,
+   "costUSD": 0.0073685,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step21.py: customer segments and the best-customer front.\n\nfamilies(train_csv): step1's k-means family labels, reused unchanged.\n\nbest(train_csv): the same rule as step1.best (the Pareto front of the goals,\ncapped at BEST_FRACTION of the rows, ranked by normalised goal sum). step11's\nfast front is used because step1.best compares every row with every other row,\nwhich is too slow for 2,200 customers. The result is the same as step1.best.\n\nStandard library only.\n\"\"\"\nimport step1 as _step1\nimport step11 as _step11\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    return _step1.families(train_csv)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows.\"\"\"\n    return _step11.best(train_csv)\n```",
+ "ttft_ms": 4151,
+ "type": "result",
+ "duration_ms": 4989,
+ "uuid": "94cd9280-165e-4689-8f49-7be637f6a65c",
+ "ttft_stream_ms": 1177,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
