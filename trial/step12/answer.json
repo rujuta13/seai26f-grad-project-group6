@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 13102,
+ "stop_reason": "end_turn",
+ "session_id": "a6106029-8350-4f36-a79d-fff631e0f9ce",
+ "total_cost_usd": 0.027216200000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25020,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2486,
+  "output_tokens_details": {
+   "thinking_tokens": 1999
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25020,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2486,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25020,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25020
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20884,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020969,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2486,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25020,
+   "webSearchRequests": 0,
+   "costUSD": 0.0062472000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 12: guess. Predict a player's goal values from his other numbers.\n\nThin wrapper around step2.guess. Each estimate is the median of the nearest\ntraining rows, and low..high is their 5th..95th percentile range. For a player\nunlike anything in training, step2 blends the range toward whole-training\nstatistics, so a wide range means low confidence. Goal columns in `row` are\nignored because only input columns affect the distance.\n\"\"\"\n\nimport math\n\nimport step2\n\n\ndef _bound(x, default):\n    \"\"\"Float x, or default if x is NaN.\"\"\"\n    x = float(x)\n    return default if math.isnan(x) else x\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a player `row` (goal columns already removed).\n\n    Returns {goal: (estimate, low, high)}, where low..high is the range the\n    true value is fairly sure to fall in. A goal with no usable training values\n    gets a NaN estimate and an infinite range.\n    \"\"\"\n    raw = step2.guess(train_csv, row)\n    result = {}\n    for goal, (est, low, high) in raw.items():\n        est = float(est)\n        if math.isnan(est):\n            result[goal] = (math.nan, -math.inf, math.inf)\n            continue\n        low = min(_bound(low, -math.inf), est)\n        high = max(_bound(high, math.inf), est)\n        result[goal] = (est, low, high)\n    return result\n```",
+ "ttft_ms": 10451,
+ "type": "result",
+ "duration_ms": 12112,
+ "uuid": "2a874e4d-0279-4f17-93b2-f1e452ae5636",
+ "ttft_stream_ms": 1296,
+ "time_to_request_ms": 45,
+ "queued_turn_count": 0
+}
