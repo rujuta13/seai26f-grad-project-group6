@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 52567,
+ "stop_reason": "end_turn",
+ "session_id": "b0a328c2-9d26-47d5-b1b1-aa6b4c6615af",
+ "total_cost_usd": 0.017641999999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10649,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12660,
+  "output_tokens_details": {
+   "thinking_tokens": 10640
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10649,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12660,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10649,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10649
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9092,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009182,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12660,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10649,
+   "webSearchRequests": 0,
+   "costUSD": 0.008459999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 7: pick the best flag set within a benchmarking budget.\n\nStandard library only. Loading, column splitting, input encoding, k-means,\ngoal normalisation, Pareto layers and the kNN predictor are reused from\nsteps 1 and 2. The goal cells of blind_csv are all '?' and are never read:\nevery goal value comes from the label callback.\n\nMethod, using at most `budget` calls to label:\n  1. Explore: k-means on the encoded inputs with about half the budget of\n     clusters. Benchmark the build nearest each cluster centre, so the first\n     measurements cover the flag space.\n  2. Exploit: benchmark, one at a time, the unmeasured build with the highest\n     predicted score. Predictions use the inverse-distance kNN of step 2 on\n     the measured builds, and scores are normalised with the bounds of the\n     measured builds, as in step 1.\n\nThe answer is the best measured build: Pareto front first, then highest mean\nnormalised goal score, then lowest index. With `goal` set, only that goal is\noptimised.\n\"\"\"\n\nimport math\nimport random\n\nfrom step1 import (\n    SEED,\n    _load,\n    _columns,\n    _input_matrix,\n    _kmeans,\n    _normalised_goals,\n    _pareto_layers,\n    _sqdist,\n)\nfrom step2 import _predict\n\n\ndef _select_goals(header, goal):\n    \"\"\"Input columns, and the goals to optimise (all goals, or just `goal`).\"\"\"\n    inputs, goals = _columns(header)\n    if goal is None:\n        return inputs, goals\n    chosen = [(name, sign) for name, sign in goals if name == goal]\n    if not chosen:\n        raise ValueError(f\"{goal!r} is not a goal column of the file\")\n    return inputs, chosen\n\n\ndef _explore(points, inputs, k, rng):\n    \"\"\"Up to k distinct row indices spread over the encoded input space.\"\"\"\n    n = len(points)\n    if not inputs:\n        return rng.sample(range(n), k)\n    dim = len(points[0])\n    labels = _kmeans(points, k, rng)\n    members = {}\n    for i, lab in enumerate(labels):\n        members.setdefault(lab, []).append(i)\n    picks = []\n    for lab in sorted(members):\n        idx = members[lab]\n        centre = [sum(points[i][j] for i in idx) / len(idx) for j in range(dim)]\n        picks.append(min(idx, key=lambda i: (_sqdist(points[i], centre), i)))\n    if len(picks) < k:\n        taken = set(picks)\n        rest = [i for i in range(n) if i not in taken]\n        picks += rng.sample(rest, k - len(picks))\n    return picks\n\n\ndef _bounds(targets, m):\n    \"\"\"Per goal, (lo, hi) of the signed measured values.\"\"\"\n    lo = [min(t[g] for t in targets) for g in range(m)]\n    hi = [max(t[g] for t in targets) for g in range(m)]\n    return lo, hi\n\n\ndef _mean_scaled(vals, lo, hi):\n    \"\"\"Mean of the goal values scaled to [0, 1] with bounds lo..hi.\n    A goal with no spread counts as 0, as in step 1.\"\"\"\n    parts = []\n    for v, a, b in zip(vals, lo, hi):\n        span = b - a\n        parts.append((v - a) / span if span > 0 else 0.0)\n    return sum(parts) / len(parts)\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Row index of the best build found, using at most `budget` label calls.\n\n    label(i) returns the goals of row i as a dict. If `goal` names one goal,\n    only that goal is optimised.\n    \"\"\"\n    if budget < 1:\n        raise ValueError(\"budget must allow at least one benchmark\")\n    header, rows = _load(blind_csv)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no rows\")\n    inputs, goals = _select_goals(header, goal)\n    if not goals:\n        raise ValueError(\"the file has no goal columns (names ending in + or -)\")\n    m = len(goals)\n    names = [name for name, _ in goals]\n\n    points = _input_matrix(rows, inputs)\n    rng = random.Random(SEED)\n    limit = min(budget, n)\n    measured = {}\n\n    def measure(i):\n        if i not in measured:\n            if len(measured) >= budget:\n                raise RuntimeError(\"benchmark budget exhausted\")\n            result = label(i)\n            measured[i] = {name: float(result[name]) for name in names}\n\n    def signed(i):\n        return [sign * measured[i][name] for name, sign in goals]\n\n    # Phase 1: spread the first measurements over the flag space.\n    n_explore = min(limit, max(1, budget // 2))\n    for i in _explore(points, inputs, n_explore, rng):\n        measure(i)\n\n    # Phase 2: benchmark the unmeasured build with the best predicted score.\n    while len(measured) < limit:\n        done = sorted(measured)\n        lab_points = [points[i] for i in done]\n        lab_targets = [signed(i) for i in done]\n        lo, hi = _bounds(lab_targets, m)\n        pick, pick_score = None, -math.inf\n        for i in range(n):\n            if i in measured:\n                continue\n            pred = _predict(points[i], lab_points, lab_targets)\n            s = _mean_scaled(pred, lo, hi)\n            if s > pick_score:\n                pick, pick_score = i, s\n        measure(pick)\n\n    # Answer: best measured build, Pareto front first, then mean score.\n    done = sorted(measured)\n    norm = _normalised_goals([measured[i] for i in done], goals)\n    layer_of = _pareto_layers(norm)\n    score = [sum(p) / len(p) for p in norm]\n    front = [k for k in range(len(done)) if layer_of[k] == 0]\n    best_k = min(front, key=lambda k: (-score[k], done[k]))\n    return done[best_k]\n```",
+ "ttft_ms": 46272,
+ "type": "result",
+ "duration_ms": 51716,
+ "uuid": "e21d3087-7406-4131-a179-13ca53fe1c0a",
+ "ttft_stream_ms": 1460,
+ "time_to_request_ms": 26,
+ "queued_turn_count": 0
+}
