@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 27911,
+ "stop_reason": "end_turn",
+ "session_id": "bef4becc-2610-4063-b2c2-532f40943359",
+ "total_cost_usd": 0.0119006,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8087,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6294,
+  "output_tokens_details": {
+   "thinking_tokens": 5623
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8087,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6294,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8087,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8087
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7061,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007136,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6294,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8087,
+   "webSearchRequests": 0,
+   "costUSD": 0.004764600000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step1.py\nimport random\nimport ezr\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  rows  = tbl.rows\n  n     = len(rows)\n  if n == 0: return []\n  k     = min(5, n)                        # a handful of families\n  rng   = random.Random(ezr.the.Seed)      # reproducible, no global state\n\n  # farthest-point seeding: spread the first centroids out\n  cents = [rows[rng.randrange(n)]]\n  while len(cents) < k:\n    cents.append(max(rows, key=lambda r: min(ezr.xdist(tbl, r, c)\n                                             for c in cents)))\n\n  # Lloyd's algorithm over the x columns (the flags)\n  labels = [-1] * n\n  for _ in range(20):\n    new = [min(range(k), key=lambda j, r=r: (ezr.xdist(tbl, r, cents[j]), j))\n           for r in rows]\n    if new == labels: break\n    labels = new\n    for j in range(k):\n      members = [r for r, l in zip(rows, labels) if l == j]\n      if members: cents[j] = ezr.mids(ezr.clone(tbl, members))\n  return labels\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5%.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  n     = len(tbl.rows)\n  cap   = int(0.05 * n)\n  score = ezr.wins(tbl)                    # 100 at the best row, 0 at an average one\n  ws    = [score(r) for r in tbl.rows]\n  ranked = sorted((i for i in range(n) if ws[i] > 0),\n                  key=lambda i: -ws[i])\n  return ranked[:cap]\n```",
+ "ttft_ms": 25384,
+ "type": "result",
+ "duration_ms": 27180,
+ "uuid": "d3c7a8a8-8a6f-40ce-ae9f-2d880d992075",
+ "ttft_stream_ms": 1091,
+ "time_to_request_ms": 48,
+ "queued_turn_count": 0
+}
