@@ -2,12 +2,15 @@
  "domain": "ssw",
  "step": 10,
  "skill": "race",
- "ok": false,
+ "ok": true,
  "score": null,
  "baseline": null,
  "better": null,
  "extra": {
-  "error": "ModuleNotFoundError: No module named 'ezr'",
-  "trace": "Traceback (most recent call last):\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/harness/score.py\", line 49, in score\n    out = c.SCORE[skill](load(code_dir, n), env_for(domain, tmp))\n                         ~~~~^^^^^^^^^^^^^\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/harness/score.py\", line 41, in load\n    spec.loader.exec_module(m)\n    ~~~~~~~~~~~~~~~~~~~~~~~^^^\n  File \"<frozen importlib._bootstrap_external>\", line 1026, in exec_module\nModuleNotFoundError: No module named 'ezr'\n"
+  "ours": 0.06944815739414201,
+  "random_search": 0.17671640692487228,
+  "local_search": 0.1035975452603057,
+  "guess_ours": 0.15033346160982736,
+  "linear_ridge": 0.11481512586852137
  }
 }
