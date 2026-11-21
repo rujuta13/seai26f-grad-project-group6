@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46373,
+ "stop_reason": "end_turn",
+ "session_id": "a4fccef6-f441-4400-91a9-684fadc6b4ae",
+ "total_cost_usd": 0.037708900000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30881,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11323,
+  "output_tokens_details": {
+   "thinking_tokens": 8682
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30881,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11323,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30881,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30881
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25801,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.025871,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11323,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30881,
+   "webSearchRequests": 0,
+   "costUSD": 0.011837899999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport step1\nimport step2\nimport step5\nimport step16\n\n_KEEP = 5          # most separating inputs reported by explain()\n_TOP = 8           # strongest inputs tested for significance by explain()\n_MIN_EFFECT = 0.2  # gaps below this are not worth a test\n_ALPHA = 0.05      # family-wise level, Bonferroni-corrected over tested inputs\n\n\ndef _mean(xs):\n    return sum(xs) / len(xs)\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for what makes\n    a group of customers worth the next campaign.\"\"\"\n    rows, inputs, goals = step1._load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return (\"There are no customers in the training file, so there is no group \"\n                \"to recommend and nothing to explain.\")\n    if not goals:\n        return (\"The file has no goal columns (names ending in + or -), so nothing \"\n                \"counts as good and there is no basis for recommending a group.\")\n\n    goal_names = \", \".join(name for name, _ in goals)\n\n    chosen = step1.best(train_csv)\n    if not chosen:\n        return (f\"No group is recommended: the group is capped at 5% of the customers, \"\n                f\"which rounds down to zero below 20 rows. This file has {n}.\")\n\n    scores = [step16._signed(r, goals) for r in rows]\n    undominated = [\n        i for i in range(n)\n        if not any(step1._dominates(scores[j], scores[i])\n                   for j in range(n) if j != i)\n    ]\n    chosen_set = set(chosen)\n    rest = [i for i in range(n) if i not in chosen_set]\n\n    lines = [\n        f\"The recommended group is {len(chosen)} of the {n} customers in the file. \"\n        f\"A customer is in it only if no other customer is at least as good on every \"\n        f\"goal ({goal_names}) and better on at least one. {len(undominated)} customers \"\n        f\"pass that test; the group is capped at 5%, so if more pass, the ones with the \"\n        f\"highest combined rank across goals are kept.\"\n    ]\n\n    for name, sign in goals:\n        fv = step16._nums(rows, chosen, name)\n        rv = step16._nums(rows, rest, name)\n        if fv and rv:\n            aim = \"higher is better\" if sign > 0 else \"lower is better\"\n            lines.append(\n                f\"On {name} ({aim}), the group averages {_mean(fv):.4g} \"\n                f\"(from {len(fv)} customers) and everyone else averages {_mean(rv):.4g} \"\n                f\"(from {len(rv)}).\"\n            )\n\n    tested = [c for c in inputs if not step16._is_identifier(rows, c)]\n    m = max(1, len(tested))\n\n    candidates = []\n    for c in tested:\n        kind, vals = step5._column_values(rows, c)\n        fv = [vals[i] for i in chosen]\n        rv = [vals[i] for i in rest]\n        if not fv or not rv:\n            continue\n        if kind == \"num\":\n            if len(fv) < 2 or len(rv) < 2:\n                continue\n            eff = step5._numeric_effect(fv, rv)\n        else:\n            eff = step5._categorical_effect(fv, rv)\n        if eff >= _MIN_EFFECT:\n            candidates.append((eff, c, kind, vals))\n    candidates.sort(key=lambda t: (-t[0], t[1]))\n\n    reported = []\n    for eff, c, kind, vals in candidates[:_TOP]:\n        if len(reported) >= _KEEP:\n            break\n        fv = [vals[i] for i in chosen]\n        rv = [vals[i] for i in rest]\n        if kind == \"num\":\n            p = step16._perm_p(fv, rv)\n            mf, mr = _mean(fv), _mean(rv)\n            way = \"higher\" if mf > mr else \"lower\"\n            desc = (f\"{c}: the group is {way} ({mf:.3g} against {mr:.3g} \"\n                    f\"for everyone else; standardised gap {eff:.2f})\")\n        else:\n            v = step16._top_category(fv, rv)\n            ind_f = [1.0 if x == v else 0.0 for x in fv]\n            ind_r = [1.0 if x == v else 0.0 for x in rv]\n            p = step16._perm_p(ind_f, ind_r)\n            pf = fv.count(v) / len(fv)\n            pr = rv.count(v) / len(rv)\n            desc = (f\"{c} = {v!r}: found in {pf:.0%} of the group against \"\n                    f\"{pr:.0%} of everyone else\")\n        adj = min(1.0, p * m)\n        if adj < _ALPHA:\n            reported.append(\n                f\"{desc}; permutation p = {p:.3g}, corrected for {m} inputs = {adj:.3g}.\"\n            )\n\n    if reported:\n        lines.append(\n            \"Customer attributes that set the group apart. These are the things to \"\n            \"target on, or check, before launch:\"\n        )\n        lines.extend(\"  - \" + s for s in reported)\n    else:\n        lines.append(\n            f\"No attribute sets the group apart once the {m} tested inputs are corrected \"\n            f\"for multiple testing, so the group cannot be described by any single \"\n            f\"attribute in this file.\"\n        )\n\n    lines.append(\n        f\"These are associations within the {n} customers in the training file, not \"\n        f\"measured effects of a campaign. The file records how customers behaved on \"\n        f\"{goal_names}; it does not show how they would respond to a new offer. Attributes \"\n        f\"that record earlier responses to offers may restate a goal rather than explain \"\n        f\"it, so do not count them as separate evidence. Before the full campaign, send \"\n        f\"the offer to this group, hold back a random control group of similar customers, \"\n        f\"and compare responses. That test, not this summary, should decide the campaign.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this customer (goals included) is good or low value.\"\"\"\n    rows, inputs, goals = step1._load(train_csv)\n    if not goals:\n        return (\"This file has no goal columns, so the customer cannot be rated good \"\n                \"or low value.\")\n    desc = step16._goal_text(row, goals)\n    n = len(rows)\n    if n == 0:\n        return (f\"There are no training customers to compare with, so this customer \"\n                f\"({desc}) cannot be rated.\")\n\n    s = step16._signed(row, goals)\n    beaters = [i for i, r in enumerate(rows)\n               if step1._dominates(step16._signed(r, goals), s)]\n    if not beaters:\n        return (f\"Good: none of the {n} training customers is at least as good on every \"\n                f\"goal and better on one ({desc}).\")\n\n    k = len(beaters)\n    kinds = step2._prep(rows, inputs)\n    parsed = [step2._parse(r, inputs, kinds) for r in rows]\n    q = step2._parse(row, inputs, kinds)\n    j = min(beaters, key=lambda i: (step2._dist(q, parsed[i], kinds), i))\n\n    first = (f\"Low value: {k} of {n} training customers are at least as good on every goal \"\n             f\"and better on at least one ({desc}); the most similar of them, customer row \"\n             f\"{j} ({step16._goal_text(rows[j], goals)}), is one of them.\")\n\n    gap = step16._input_gap(row, rows, beaters, inputs)\n    if gap is None:\n        return first\n    c, _z, v, mean = gap\n    way = \"higher\" if v > mean else \"lower\"\n    return (first + f\" Its clearest difference from those {k} is in {c}: this customer is \"\n            f\"{way} ({v:.3g} against an average of {mean:.3g}), which is a lead to check, \"\n            f\"not a proven cause.\")\n```",
+ "ttft_ms": 37998,
+ "type": "result",
+ "duration_ms": 45096,
+ "uuid": "85c8a6ad-12e2-48bf-8e7a-f9aa63495d20",
+ "ttft_stream_ms": 1231,
+ "time_to_request_ms": 97,
+ "queued_turn_count": 0
+}
