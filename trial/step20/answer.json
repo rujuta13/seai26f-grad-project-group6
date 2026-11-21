@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 39672,
+ "stop_reason": "end_turn",
+ "session_id": "3a640b1c-eeff-4c95-be6a-4e1ed1c424ed",
+ "total_cost_usd": 0.0333864,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28026,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9382,
+  "output_tokens_details": {
+   "thinking_tokens": 7189
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28026,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9382,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28026,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28026
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23020,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02309,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9382,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28026,
+   "webSearchRequests": 0,
+   "costUSD": 0.0102964,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step20.py: race, for the two client questions.\n\nQ1: \"Does our shortlist beat a simple 'top overall rating' list?\"\nQ2: \"Does our penalty guesser beat an off-the-shelf model?\"\n\nQ1: our shortlist is step7.choose over all goals together (here Penalties+ and\nStrength+). The simple list is the BUDGET test rows with the highest OVR,\nmeasured, with the best of them taken by the same leader rule as step7.\nRandom search from step10 is a further rival.\n\nQ2: our penalty guesser is step12.guess read at Penalties+ alone. The\noff-the-shelf stand-in is the ridge regression from step10. Both are scored\nby R^2 on Penalties+.\n\nScore scales: the shortlist keys score the chosen build's true goals on [0, 1]\n(higher is better). The guesser keys score R^2 on Penalties+ (higher is\nbetter, can be negative). Compare within each group, not across them.\n\nReading, column splitting, number parsing, goal vectors, normalisation, the\nleader rule, the tuner, the ridge rival, the R^2 scorer and the guesser all\ncome from steps 1, 4, 5, 7, 10 and 12. Only the OVR list and the wiring are\nnew here.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nfrom step1 import _columns, _num, _read\nfrom step4 import _objectives\nfrom step5 import _scores\nfrom step7 import _leader, _resolve_goal, _signed, choose\nfrom step10 import BUDGET, _goal_values, _linear_preds, _model_score, _random_search\nfrom step12 import guess as _guess\n\nOVR_COLUMN = \"OVR\"          # the simple list ranks players by this input column\nPENALTY = \"Penalties\"       # base name of the penalty goal (Penalties+)\n\n\ndef _ovr(row: dict) -> float:\n    \"\"\"OVR as a finite float, or -inf if it is missing or unusable.\"\"\"\n    v = _num(row.get(OVR_COLUMN))\n    return v if v is not None else -math.inf\n\n\ndef _top_overall(rows: list[dict], goals: list[str], sign: list[float],\n                 budget: int) -> int:\n    \"\"\"The simple list: measure the `budget` rows with the highest OVR (ties keep\n    file order) and return the leader among them by the step7 rule.\"\"\"\n    order = sorted(range(len(rows)), key=lambda i: (-_ovr(rows[i]), i))\n    obs = {}\n    for i in order[:budget]:\n        obs[i] = _signed(_goal_values(rows, i, goals), goals, sign)\n    return _leader(obs, len(goals))\n\n\ndef _shortlist(test_csv, test: list[dict], goals: list[str], budget: int) -> int:\n    \"\"\"Our shortlist: step7.choose over all goals together, labelled from test.\"\"\"\n    def label(i: int) -> dict:\n        return _goal_values(test, i, goals)\n\n    return choose(test_csv, label, budget=budget)\n\n\ndef _penalty_goal(goals: list[str]) -> str | None:\n    \"\"\"The Penalties goal column (e.g. 'Penalties+'), or None if absent.\"\"\"\n    try:\n        return _resolve_goal(PENALTY, goals)\n    except ValueError:\n        return None\n\n\ndef _penalty_race(train_csv, train: list[dict], inputs: list[str],\n                  test: list[dict], pen: str) -> dict[str, float]:\n    \"\"\"Guessers scored by R^2 on the Penalties goal alone.\"\"\"\n    truth = {pen: [_num(r.get(pen)) for r in test]}\n\n    train_vals = [v for v in (_num(r.get(pen)) for r in train) if v is not None]\n    fallback = {pen: sum(train_vals) / len(train_vals) if train_vals else 0.0}\n\n    # Our guesser: step12.guess, one call per test row.\n    preds = []\n    for row in test:\n        est = _guess(train_csv, row)\n        preds.append(float(est.get(pen, (math.nan, 0.0, 0.0))[0]))\n\n    # Off-the-shelf stand-in: ridge regression on encoded inputs.\n    linear = _linear_preds(train, inputs, test, [pen])\n\n    return {\n        \"ours_guesser\": float(_model_score(truth, {pen: preds}, fallback)),\n        \"linear_model\": float(_model_score(truth, linear, fallback)),\n    }\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race the methods on test_csv.\n\n    Shortlist keys (score in [0, 1], higher is better; the mean normalised goal\n    score of the build each method picks, using its true test goals):\n      \"ours\"                step7.choose with BUDGET label calls (our shortlist)\n      \"top_overall_rating\"  the BUDGET rows with the highest OVR, same leader rule\n      \"random_search\"       random sample of BUDGET builds, same leader rule\n\n    Guesser keys (R^2 on Penalties+, higher is better, can be negative):\n      \"ours_guesser\"        step12.guess estimates for Penalties+, one call per row\n      \"linear_model\"        stdlib stand-in for an off-the-shelf model (ridge)\n    \"\"\"\n    header, test = _read(str(test_csv))\n    _, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    names = [\"ours\", \"top_overall_rating\", \"random_search\",\n             \"ours_guesser\", \"linear_model\"]\n    n = len(test)\n    if n == 0 or not goals:\n        return {k: 0.0 for k in names}\n\n    train_header, train = _read(str(train_csv))\n    inputs, _, _ = _columns(train_header)\n\n    sign = [1.0 if g in gmax else -1.0 for g in goals]\n    obj = [_objectives(r, gmax, gmin) for r in test]\n    quality = _scores(obj, len(goals))\n    budget = min(BUDGET, n)\n\n    picks = {\n        \"ours\": _shortlist(test_csv, test, goals, budget),\n        \"top_overall_rating\": _top_overall(test, goals, sign, budget),\n        \"random_search\": _random_search(test, goals, sign, budget),\n    }\n    out: dict[str, float] = {k: float(quality[i]) for k, i in picks.items()}\n\n    pen = _penalty_goal(goals)\n    if pen is None:\n        out[\"ours_guesser\"] = 0.0\n        out[\"linear_model\"] = 0.0\n    else:\n        out.update(_penalty_race(train_csv, train, inputs, test, pen))\n\n    return out\n```",
+ "ttft_ms": 31957,
+ "type": "result",
+ "duration_ms": 38542,
+ "uuid": "7ce5b206-7a42-4970-ad76-f2c70d65788a",
+ "ttft_stream_ms": 1354,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
