@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5503,
+ "stop_reason": "end_turn",
+ "session_id": "33aa48d9-2e6e-4db0-8aec-70244274fb5c",
+ "total_cost_usd": 0.0244705,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22929,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 759,
+  "output_tokens_details": {
+   "thinking_tokens": 462
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22929,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 759,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22929,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22929
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19430,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019504999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 759,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22929,
+   "webSearchRequests": 0,
+   "costUSD": 0.0049655,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 14: flow control for scouting reports and season drift.\n\nstream() keeps each incoming report that is not Pareto-dominated on the goals\nby the training rows or by the reports that arrived before it. drift() returns\nthe index of the first incoming row at which new rows have stopped looking like\nthe training rows, or None if they never do. Both delegate to step4, which\nholds the implementations.\n\"\"\"\n\nimport step4\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Return one keep flag per incoming row, judged only against train_csv and earlier rows.\"\"\"\n    return [bool(k) for k in step4.stream(train_csv, rows)]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Return the index into rows of the first drift warning, or None if there is none.\"\"\"\n    idx = step4.drift(train_csv, rows)\n    return None if idx is None else int(idx)\n```",
+ "ttft_ms": 3324,
+ "type": "result",
+ "duration_ms": 4344,
+ "uuid": "27822ee6-43b5-4e01-94a2-f0fda5130d77",
+ "ttft_stream_ms": 1297,
+ "time_to_request_ms": 141,
+ "queued_turn_count": 0
+}
