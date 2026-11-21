@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 16330,
+ "stop_reason": "end_turn",
+ "session_id": "1ae015cc-965e-4a12-99ea-9d0919035d26",
+ "total_cost_usd": 0.014173400000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11726,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3432,
+  "output_tokens_details": {
+   "thinking_tokens": 2329
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11726,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3432,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11726,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11726
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10047,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010112000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3432,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11726,
+   "webSearchRequests": 0,
+   "costUSD": 0.004061400000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step5.py\n\"\"\"Step 5: blame.  Which input columns go with the bad rows?\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport ezr\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _mean(xs: list[float]) -> float:\n  \"Mean of XS, or 0 if empty.\"\n  return sum(xs) / len(xs) if xs else 0.0\n\n\ndef blame(train_csv: str) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n  A row is bad if its ydist is in the worst quarter, good if in the best\n  quarter.  Symbolic columns score the largest gap, over their values v,\n  between how often v appears in bad rows and in good rows.  Numeric\n  columns score the gap between their mean (normalised) in bad and good rows.\n  Ties keep file order.\"\"\"\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  if not rows or not tbl.x: return [c.txt for c in tbl.x]\n\n  ys   = [ezr.ydist(tbl, r) for r in rows]\n  hi   = _quantile(ys, 0.75)\n  lo   = _quantile(ys, 0.25)\n  bad  = [r for r, y in zip(rows, ys) if y >= hi]\n  good = [r for r, y in zip(rows, ys) if y <= lo]\n  if not bad or not good: return [c.txt for c in tbl.x]\n\n  def share(rs: ezr.ROWS, c, v) -> float:\n    \"Fraction of the known values of column C in RS that equal V.\"\n    vals = [r[c.at] for r in rs if r[c.at] != \"?\"]\n    return sum(1 for x in vals if x == v) / len(vals) if vals else 0.0\n\n  def score(c) -> float:\n    \"How strongly column C separates bad rows from good rows.\"\n    if isinstance(c, ezr.Num):\n      vb = [ezr.norm(c, r[c.at]) for r in bad  if r[c.at] != \"?\"]\n      vg = [ezr.norm(c, r[c.at]) for r in good if r[c.at] != \"?\"]\n      return abs(_mean(vb) - _mean(vg))\n    values = {r[c.at] for r in rows if r[c.at] != \"?\"}\n    if not values: return 0.0\n    return max(share(bad, c, v) - share(good, c, v) for v in values)\n\n  scored = [(score(c), i, c.txt) for i, c in enumerate(tbl.x)]\n  scored.sort(key=lambda t: (-t[0], t[1]))   # most blame first; ties by file order\n  return [name for _, _, name in scored]\n```",
+ "ttft_ms": 11660,
+ "type": "result",
+ "duration_ms": 14959,
+ "uuid": "c587d1c5-c481-4735-8b2a-428c2eb86f3e",
+ "ttft_stream_ms": 1114,
+ "time_to_request_ms": 36,
+ "queued_turn_count": 0
+}
