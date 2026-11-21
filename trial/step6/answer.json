@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46648,
+ "stop_reason": "end_turn",
+ "session_id": "5b99b682-802c-4c81-88cf-daa275d27b32",
+ "total_cost_usd": 0.0189118,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12383,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11540,
+  "output_tokens_details": {
+   "thinking_tokens": 9139
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12383,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11540,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12383,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12383
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10585,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010665000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11540,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12383,
+   "webSearchRequests": 0,
+   "costUSD": 0.0082468,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py: justify. Plain reasons a skeptic can check, and one-sentence verdicts.\n\"step6.py: justify. Plain reasons a skeptic can check, and one-sentence verdicts.\"\nimport functools\nimport math\nimport ezr\n\nGOOD_PCT = 25     # a row is \"good\" if its goal distance is in the best 25% of training\nMIN_SIDE = 5      # fewest rows on each side of a split we will report\nTOP      = 5      # how many input columns to explain\n\ndef _val(v):\n  \"Cells from dicts may still be strings: coerce them the way csv does.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _align(tbl, row):\n  \"ROW in TBL's column order, from a dict by column name or from a list.\"\n  if isinstance(row, dict):\n    return [_val(row.get(n, \"?\")) for n in tbl.names]\n  return [_val(v) for v in row]\n\ndef _ydist(tbl, row):\n  \"How far ROW's goals are from ideal; infinite if any goal is unknown.\"\n  if any(row[c.at] == \"?\" for c in tbl.y): return math.inf\n  return ezr.ydist(tbl, row)\n\n@functools.lru_cache(maxsize=8)\ndef _model(train_csv):\n  \"The table, its rated rows as (ydist, index) sorted best first, and the cut for good.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  rated = [(_ydist(tbl, r), i) for i, r in enumerate(tbl.rows)]\n  known = sorted(t for t in rated if t[0] < math.inf)\n  cap   = max(1, len(known) * GOOD_PCT // 100)\n  cut   = known[min(cap, len(known)) - 1][0] if known else -math.inf\n  return tbl, known, cut\n\ndef _rate(ids, good):\n  \"Share of IDS that are good.\"\n  return sum(i in good for i in ids) / len(ids)\n\ndef _effect(tbl, col, ids, good):\n  \"(strength, sentence) for the clearest split of COL among IDS, or None.\"\n  vals   = {i: tbl.rows[i][col.at] for i in ids}\n  cohort = [i for i in ids if vals[i] != \"?\"]\n  if type(col) is ezr.Sym:\n    best = None\n    for v in {vals[i] for i in cohort}:\n      inn  = [i for i in cohort if vals[i] == v]\n      outs = [i for i in cohort if vals[i] != v]\n      if len(inn) < MIN_SIDE or len(outs) < MIN_SIDE: continue\n      a, b = _rate(inn, good), _rate(outs, good)\n      cand = (abs(a - b),\n              f\"rows with {col.txt}={v} are good {a:.0%} of the time, \"\n              f\"other rows {b:.0%} (n={len(inn)} vs {len(outs)}).\")\n      if best is None or cand[0] > best[0]: best = cand\n    return best\n  xs = sorted(vals[i] for i in cohort)\n  if len(xs) < 2 * MIN_SIDE: return None\n  m  = xs[len(xs) // 2]\n  lo = [i for i in cohort if vals[i] <= m]\n  hi = [i for i in cohort if vals[i] > m]\n  if len(lo) < MIN_SIDE or len(hi) < MIN_SIDE: return None\n  a, b = _rate(hi, good), _rate(lo, good)\n  return (abs(a - b),\n          f\"rows with {col.txt} above {m:g} are good {a:.0%} of the time, \"\n          f\"rows at or below it {b:.0%} (n={len(hi)} vs {len(lo)}).\")\n\ndef explain(train_csv) -> str:\n  \"Reasons, in plain words a skeptical expert can check, for what makes rows good.\"\n  tbl, known, cut = _model(train_csv)\n  if not known:\n    return \"No training row has all its goals known, so nothing can be recommended or explained.\"\n  rows         = tbl.rows\n  good         = {i for y, i in known if y <= cut}\n  ids          = [i for _, i in known]\n  top_y, top_i = known[0]\n  goals = \", \".join(f\"{c.txt[:-1]} ({'minimise' if c.txt[-1] == '-' else 'maximise'})\"\n                    for c in tbl.y)\n  goal_vals = \", \".join(f\"{c.txt}={rows[top_i][c.at]}\" for c in tbl.y)\n  flags     = \", \".join(f\"{c.txt}={rows[top_i][c.at]}\" for c in tbl.x)\n  lines = [\n    f\"Recommended flag set: training row {top_i}, the closest to ideal \"\n    f\"(goal distance {ezr.say(top_y, 3)}, where 0 is ideal).\",\n    f\"  Goals: {goals}.\",\n    f\"  Its goal values: {goal_vals}.\",\n    f\"  Its flags: {flags}.\",\n    f\"Good means: goal distance in the best {GOOD_PCT}% of the {len(known)} rows \"\n    f\"with all goals known ({len(good)} rows; cut {ezr.say(cut, 3)}).\",\n    \"What makes rows good, strongest first (each figure is a share of rows, \"\n    \"so you can count them yourself):\",\n  ]\n  effects = [e for e in (_effect(tbl, c, ids, good) for c in tbl.x) if e]\n  effects.sort(key=lambda e: -e[0])\n  if not effects:\n    lines.append(\"  No input column splits the rows clearly enough to report.\")\n  for k, (_, text) in enumerate(effects[:TOP], 1):\n    lines.append(f\"  {k}. {text}\")\n  lines.append(\"These are associations in the training data, not proof of cause. \"\n               \"Check the top ones by building the flag set and measuring it.\")\n  return \"\\n\".join(lines)\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences on why this row (goals included) is good or bad.\"\n  tbl, known, cut = _model(train_csv)\n  if not known:\n    return \"Cannot judge: no training row has all its goals known.\"\n  r = _align(tbl, row)\n  y = _ydist(tbl, r)\n  if y == math.inf:\n    missing = \", \".join(c.txt for c in tbl.y if r[c.at] == \"?\")\n    return f\"Unrated: its goal {missing} is unknown, so it cannot be judged.\"\n  weak    = max(tbl.y, key=lambda c: abs(ezr.norm(c, r[c.at]) - c.goal))\n  verdict = \"good\" if y <= cut else \"bad\"\n  place   = \"within\" if y <= cut else \"outside\"\n  return (f\"It is {verdict}: its goal distance from ideal is {ezr.say(y, 3)}, \"\n          f\"{place} the best {GOOD_PCT}% of training rows (cut {ezr.say(cut, 3)}). \"\n          f\"Its weakest goal is {weak.txt}={r[weak.at]}, \"\n          f\"the furthest from its ideal.\")\n```",
+ "ttft_ms": 39600,
+ "type": "result",
+ "duration_ms": 45803,
+ "uuid": "b23e41c8-2b89-422d-a194-8bd025700fd5",
+ "ttft_stream_ms": 1249,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
