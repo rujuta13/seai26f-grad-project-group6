@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17053,
+ "stop_reason": "end_turn",
+ "session_id": "accfa6ca-6897-47b4-9745-db02be5bd86a",
+ "total_cost_usd": 0.013326900000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10826,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3565,
+  "output_tokens_details": {
+   "thinking_tokens": 2873
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10826,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3565,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10826,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10826
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9314,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009379,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3565,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10826,
+   "webSearchRequests": 0,
+   "costUSD": 0.003947900000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step5.py\nimport ezr\nimport step3\nimport step4\n\ndef blame(train_csv: str) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl, score = step4._scorer(train_csv)\n  ws    = [score(r) for r in tbl.rows]\n  bad   = [r for r, w in zip(tbl.rows, ws) if w < 0]   # worse than average\n  good  = [r for r, w in zip(tbl.rows, ws) if w > 0]   # better than average\n  names = [tbl.names[c.at] for c in tbl.x]\n  if not bad or not good: return names                 # nothing to contrast\n\n  blamed = []\n  for i, c in enumerate(tbl.x):\n    at = c.at\n    b  = [r[at] for r in bad  if r[at] != \"?\"]\n    g  = [r[at] for r in good if r[at] != \"?\"]\n    if not b or not g:\n      s = 0.0\n    elif type(c) is ezr.Sym:\n      # how differently the symbols are spread over bad vs good rows (0..1)\n      cb, cg = {}, {}\n      for v in b: cb[v] = cb.get(v, 0) + 1\n      for v in g: cg[v] = cg.get(v, 0) + 1\n      s = 0.5 * sum(abs(cb.get(v, 0)/len(b) - cg.get(v, 0)/len(g))\n                    for v in set(cb) | set(cg))\n    else:\n      # squashed numbers (0..1); a gap that step3 calls noise counts as zero\n      nb = [ezr.norm(c, v) for v in b]\n      ng = [ezr.norm(c, v) for v in g]\n      s  = 0.0 if step3.same(nb, ng) else \\\n           abs(sum(nb)/len(nb) - sum(ng)/len(ng))\n    blamed.append((s, i))\n\n  order = sorted(blamed, key=lambda t: (-t[0], t[1]))\n  return [names[i] for _, i in order]\n```",
+ "ttft_ms": 14127,
+ "type": "result",
+ "duration_ms": 16264,
+ "uuid": "2de0467d-3fdb-4245-9e8d-6cd0d5491d3a",
+ "ttft_stream_ms": 1018,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
