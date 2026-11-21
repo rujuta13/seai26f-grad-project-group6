@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46097,
+ "stop_reason": "end_turn",
+ "session_id": "a319bdd8-38bc-4495-8232-9b99e4edb2ad",
+ "total_cost_usd": 0.0420862,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 36310,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9810,
+  "output_tokens_details": {
+   "thinking_tokens": 8670
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 36310,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9810,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 36310,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 36310
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29844,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029918999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9810,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 36310,
+   "webSearchRequests": 0,
+   "costUSD": 0.0121672,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step25.py: which input flags are to blame for customers who never respond to\ncampaigns, and what customers who complain have in common?\n\nBlame is judged goal by goal, as in step15, so that each client question is\nanswered by its own goal (RESPONSE+ for non-response, COMPLAIN- for complaints).\nOn each goal, the bad rows are the worst values of that goal, taken whole by\nvalue level and capped at BEST_FRACTION of the rows. Step15's cut-off rule keeps\nevery row tied at the cut-off, which for a rare 0/1 goal such as COMPLAIN- would\nmark almost every customer as bad. Here a tied level is taken whole only while\nthe total stays within the cap, or when it is the worst level and so must be\ntaken alone. Each input is scored on each goal with step5's scoring rule, and\nits blame is the highest of those scores. Inputs are returned most to blame\nfirst, with ties kept in file order. Standard library only.\n\"\"\"\nimport math\n\nfrom step1 import _load, _columns, BEST_FRACTION\nfrom step5 import _score\n\n\ndef _bad_on(goal_rows, col, sgn):\n    \"\"\"Indices into goal_rows of the worst rows on one goal.\n\n    sgn is +1 for a maximise goal, -1 for a minimise goal. Rows are grouped by\n    their badness (higher means worse). Whole groups are taken from the worst\n    down while the total stays within the cap. The worst group is always taken,\n    even when it alone exceeds the cap, so a tied majority is not split.\n    \"\"\"\n    n = len(goal_rows)\n    cap = max(1, int(BEST_FRACTION * n))\n    levels = {}\n    for i, r in enumerate(goal_rows):\n        levels.setdefault(-sgn * r[col], []).append(i)\n\n    bad = set()\n    for b in sorted(levels, reverse=True):\n        members = levels[b]\n        if bad and len(bad) + len(members) > cap:\n            break\n        bad.update(members)\n        if len(bad) >= cap:\n            break\n    return bad\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    An input is blamed when its values are unusually concentrated among the\n    worst rows on some goal. Its score is the highest score over the goals.\n    Inputs with equal scores keep file order.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    goal_names = {c for c, _ in goals}\n    inputs = [c for c in cols\n              if not c.endswith(\"X\") and c not in goal_names]\n    if not inputs:\n        return []\n\n    goal_rows = [r for r in rows\n                 if all(isinstance(r[c], float) and math.isfinite(r[c])\n                        for c, _ in goals)]\n    if not goals or not goal_rows:\n        return list(inputs)\n\n    bad_sets = [_bad_on(goal_rows, c, sgn) for c, sgn in goals]\n    scores = {c: max(_score(c, goal_rows, bad) for bad in bad_sets)\n              for c in inputs}\n    order = sorted(range(len(inputs)),\n                   key=lambda k: (-scores[inputs[k]], k))\n    return [inputs[k] for k in order]\n```",
+ "ttft_ms": 41175,
+ "type": "result",
+ "duration_ms": 44954,
+ "uuid": "4a3a339f-71df-4fdf-b332-5b81a51b3801",
+ "ttft_stream_ms": 1538,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}

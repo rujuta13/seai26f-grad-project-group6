@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 25,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.0216923020498961,
+ "baseline": 0.03047795579998813,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "EDUCATION_PHD",
+   "ACCEPTEDCMP5",
+   "ACCEPTEDCMPOVERALL"
+  ]
+ }
+}
