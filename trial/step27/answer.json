@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11842,
+ "stop_reason": "end_turn",
+ "session_id": "c2f68a75-6b65-4899-883f-ec3821de7a77",
+ "total_cost_usd": 0.0243699,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22176,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2373,
+  "output_tokens_details": {
+   "thinking_tokens": 2070
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22176,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2373,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22176,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22176
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18683,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018748,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2373,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22176,
+   "webSearchRequests": 0,
+   "costUSD": 0.0056219,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step27.py\nimport step7\n\n# The client's two questions map onto step7's tuner:\n#   \"best customers, test-mailing only 50 people\"\n#       -> choose(blind_csv, label, budget=50)\n#   \"if I care most about store visits rather than web orders\"\n#       -> choose(blind_csv, label, budget=50, goal=\"NUMSTOREPURCHASES\")\n# GOAL names one goal, with or without its + or - suffix; the other goals are ignored.\n# LABEL(i) returns the goals of row i as a dict keyed by the full header names.\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"Index of the best row of BLIND_CSV, labelling at most BUDGET rows with LABEL. GOAL, if given, names the one goal to optimise.\"\n  return step7.choose(blind_csv, label, budget=budget, goal=goal)\n```",
+ "ttft_ms": 10070,
+ "type": "result",
+ "duration_ms": 10860,
+ "uuid": "f873c3a0-7243-4bc4-93f3-f3681d777170",
+ "ttft_stream_ms": 1205,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
