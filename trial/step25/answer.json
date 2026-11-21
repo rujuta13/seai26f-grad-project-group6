@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 30415,
+ "stop_reason": "end_turn",
+ "session_id": "a71fff2c-2586-4563-8500-707ad6b84fc3",
+ "total_cost_usd": 0.0338863,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29978,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6531,
+  "output_tokens_details": {
+   "thinking_tokens": 5169
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29978,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6531,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29978,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29978
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24555,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024625,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6531,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29978,
+   "webSearchRequests": 0,
+   "costUSD": 0.0092613,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step25.py - client question 25: blame, for campaign response and complaints.\n\nblame(train_csv) ranks the input columns (flags/passes) by how strongly they\nare tied to bad rows. The client asks two questions, each about one goal:\n  - \"Why do some customers never respond to campaigns?\" -> RESPONSE+\n    (bad = the customers who do not respond);\n  - \"What do the customers who complain have in common?\" -> COMPLAIN-\n    (bad = the customers who complain).\n\nThe two goals are ranked separately, then the two rankings are interleaved\n(first column of each, then second column of each, and so on, skipping\nrepeats). Each question therefore gets its top columns near the front.\n\nBad and good groups for one goal:\n- If the goal has two distinct values (such as a 0/1 flag), bad = rows at the\n  worst value and good = rows at the best value.\n- Otherwise bad = rows at or below the 25th percentile of the goal and good =\n  rows above it at or above the 75th percentile.\n- A goal with no contrast between bad and good rows contributes nothing.\n\nEffects use step5._effect: the standardised mean difference, bad minus good.\nA positive effect means the input is on, or higher, more often in bad rows.\n\nCaveat: the ACCEPTEDCMP* input columns record earlier campaign acceptances,\nwhich are closely related to RESPONSE+. They will rank high for the response\nquestion and say more about past behaviour than about the cause of\nnon-response. Read them with that in mind.\n\nIf neither goal is present, or neither has any contrast, the ranking falls\nback to step5.blame.\n\nReused from earlier steps:\n  step1: _load\n  step5: _effect, blame (fallback)\n\"\"\"\nfrom step1 import _load\nfrom step5 import _effect\nfrom step5 import blame as _blame_all\n\nFOCUS = (\"RESPONSE\", \"COMPLAIN\")\n\n\ndef _contrast(vals):\n    \"\"\"Return (bad, good) row index lists for one goal's maximisation-signed\n    values, or None if the goal gives no contrast.\"\"\"\n    n = len(vals)\n    distinct = sorted(set(vals))\n    if len(distinct) < 2:\n        return None\n    if len(distinct) == 2:\n        bad = [i for i in range(n) if vals[i] == distinct[0]]\n        good = [i for i in range(n) if vals[i] == distinct[-1]]\n    else:\n        srt = sorted(vals)\n        lo = srt[int(0.25 * (n - 1))]\n        hi = srt[int(0.75 * (n - 1))]\n        bad = [i for i in range(n) if vals[i] <= lo]\n        good = [i for i in range(n) if vals[i] >= hi and vals[i] > lo]\n    if not bad or not good:\n        return None\n    return bad, good\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    input_cols, goal_cols, X, Y = _load(train_csv)\n    n = len(X)\n    d = len(input_cols)\n    if n == 0 or d == 0 or not goal_cols:\n        return list(input_cols)\n\n    rankings = []\n    for g, (name, _) in enumerate(goal_cols):\n        if name.rstrip(\"+-\") not in FOCUS:\n            continue\n        vals = [Y[i][g] for i in range(n)]\n        contrast = _contrast(vals)\n        if contrast is None:\n            continue\n        bad_idx, good_idx = contrast\n        effects = [\n            _effect([X[i][t] for i in bad_idx], [X[i][t] for i in good_idx])\n            for t in range(d)\n        ]\n        rankings.append(sorted(range(d), key=lambda t: (-effects[t], t)))\n\n    if not rankings:\n        return _blame_all(train_csv)\n\n    merged = []\n    seen = set()\n    for pos in range(d):\n        for ranking in rankings:\n            t = ranking[pos]\n            if t not in seen:\n                seen.add(t)\n                merged.append(input_cols[t])\n    return merged\n```",
+ "ttft_ms": 24550,
+ "type": "result",
+ "duration_ms": 29209,
+ "uuid": "b252e457-3bfb-4d4a-a569-03969bc609dd",
+ "ttft_stream_ms": 1231,
+ "time_to_request_ms": 79,
+ "queued_turn_count": 0
+}

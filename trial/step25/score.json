@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 25,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.014525360354062008,
+ "baseline": 0.03047795579998813,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "EDUCATION_2N CYCLE",
+   "RECENCY",
+   "MARITAL_MARRIED"
+  ]
+ }
+}
