@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 37170,
+ "duration_api_ms": 37158,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport itertools\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the inputs of `row` with as few values changed as possible so that\n    the build is rated good (see step6.why: on average at most 25% of training\n    builds do better on each goal). Columns named in `frozen` never change.\n\n    Goal values for candidate rows are predicted with one random forest per goal\n    (as in step2). The search tries 0, 1, 2, ... changed inputs in turn and\n    stops at the first size that yields a good candidate. If no candidate within\n    MAX_CHANGES is good, the best-rated candidate found is returned.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    inputs, goal_max, goal_min = _split_columns(cols)\n    goals = goal_min + goal_max\n    frozen = set(frozen)\n\n    out = {c: row.get(c) for c in inputs}\n    n = len(rows)\n    if n == 0 or not goals or not inputs:\n        return out\n\n    # Training feature matrix and query vector (missing cells -> 0.0, as in step1/2).\n    X = np.array(\n        [[_to_float(r.get(c)) for c in inputs] for r in rows], dtype=float\n    ).reshape(n, len(inputs))\n    X = np.where(np.isnan(X), 0.0, X)\n\n    x0 = np.array([_to_float(row.get(c)) for c in inputs], dtype=float)\n    x0 = np.where(np.isnan(x0), 0.0, x0)\n\n    # Minimisation goal matrix: '+' goals negated, missing = +inf (worst).\n    G = np.empty((n, len(goals)), dtype=float)\n    signs = []\n    for j, g in enumerate(goals):\n        s = 1.0 if g.endswith(\"-\") else -1.0\n        signs.append(s)\n        v = np.array([_to_float(r.get(g)) for r in rows], dtype=float)\n        miss = ~np.isfinite(v)\n        v = s * v\n        v[miss] = np.inf\n        G[:, j] = v\n    sorted_cols = [np.sort(G[:, j]) for j in range(len(goals))]\n\n    # One predictor per goal.\n    models = []\n    for g in goals:\n        raw = np.array([_to_float(r.get(g)) for r in rows], dtype=float)\n        ok = np.isfinite(raw)\n        if ok.sum() >= 10:\n            m = RandomForestRegressor(\n                n_estimators=100, min_samples_leaf=2, random_state=0\n            )\n            m.fit(X[ok], raw[ok])\n            models.append(m)\n        else:\n            models.append(float(np.median(raw[ok])) if ok.any() else 0.0)\n\n    def predict_min(Xc):\n        P = np.empty((Xc.shape[0], len(goals)), dtype=float)\n        for j, m in enumerate(models):\n            if isinstance(m, float):\n                pred = np.full(Xc.shape[0], m)\n            else:\n                pred = m.predict(Xc)\n            P[:, j] = signs[j] * pred\n        return P\n\n    def rating(P):\n        \"\"\"Average fraction of training builds that beat each candidate (ties half).\"\"\"\n        fr = np.zeros(P.shape[0], dtype=float)\n        for j in range(len(goals)):\n            sc = sorted_cols[j]\n            lt = np.searchsorted(sc, P[:, j], side=\"left\")\n            le = np.searchsorted(sc, P[:, j], side=\"right\")\n            fr += (lt + 0.5 * (le - lt)) / n\n        return fr / len(goals)\n\n    GOOD = 0.25\n    MAX_CHANGES = 4\n    MAX_CANDIDATES = 20000\n\n    # Columns that may change, with their alternative values from training data.\n    eligible = []\n    for idx, c in enumerate(inputs):\n        if c in frozen:\n            continue\n        alts = sorted({float(v) for v in X[:, idx]} - {float(x0[idx])})\n        if alts:\n            eligible.append((idx, alts))\n\n    p0 = float(rating(predict_min(x0[None, :]))[0])\n    if p0 <= GOOD:\n        return out\n\n    best_p = p0\n    best_x = x0.copy()\n\n    found = None\n    for k in range(1, MAX_CHANGES + 1):\n        cands = []\n        for combo in itertools.combinations(eligible, k):\n            value_lists = [alts for _, alts in combo]\n            for vals in itertools.product(*value_lists):\n                x = x0.copy()\n                for (idx, _), v in zip(combo, vals):\n                    x[idx] = v\n                cands.append(x)\n                if len(cands) >= MAX_CANDIDATES:\n                    break\n            if len(cands) >= MAX_CANDIDATES:\n                break\n        if not cands:\n            break\n\n        C = np.array(cands, dtype=float)\n        p = rating(predict_min(C))\n        i = int(np.argmin(p))  # ties resolve to the first candidate found\n        if p[i] < best_p:\n            best_p = float(p[i])\n            best_x = C[i].copy()\n        if p[i] <= GOOD:\n            found = C[i].copy()\n            break\n\n    chosen = found if found is not None else best_x\n\n    result = {}\n    for idx, c in enumerate(inputs):\n        if chosen[idx] == x0[idx]:\n            result[c] = row.get(c)\n        else:\n            v = float(chosen[idx])\n            result[c] = int(v) if v.is_integer() else v\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "f5121963-234d-4324-82ea-021b53cc4078",
+ "total_cost_usd": 0.005082025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 13641,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6753,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13641,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6753,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13641,
+   "webSearchRequests": 0,
+   "costUSD": 0.005082025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "215898d7-4d40-4928-9a68-78b9db5756c9"
+}
