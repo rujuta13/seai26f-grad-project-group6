@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 12225,
+ "stop_reason": "end_turn",
+ "session_id": "6b56240f-c777-4945-b9f7-590e387ac3f1",
+ "total_cost_usd": 0.027187,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24859,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2462,
+  "output_tokens_details": {
+   "thinking_tokens": 1704
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24859,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2462,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24859,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24859
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20914,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020984,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2462,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24859,
+   "webSearchRequests": 0,
+   "costUSD": 0.006203,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 20: race our shortlist and penalty guesser against simple rivals.\n\nrace() runs step10's tuner and guesser comparison on test_csv. It also adds a\n\"top_ovr\" rival for the shortlist question: pick the test build with the highest\nOVR (ties go to the earlier row) and score it by regret, as step10 does. Every\nscore is lower-is-better, and \"ours\" is always present.\n\"\"\"\n\nimport math\n\nfrom step1 import _load, _split_columns\nfrom step10 import _normalised_scores\nfrom step10 import race as _race_step10\n\n\ndef _finite(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _top_ovr_regret(test_csv):\n    \"\"\"Regret of the test build with the highest OVR, or 1.0 if no build qualifies.\"\"\"\n    columns, test = _load(test_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    if \"OVR\" not in columns:\n        return 1.0\n\n    scores = _normalised_scores(test, maximise, minimise)\n    valid = [i for i, s in enumerate(scores) if s is not None]\n    if not valid:\n        return 1.0\n    best_score = min(scores[i] for i in valid)\n\n    candidates = [i for i in valid if _finite(test[i].get(\"OVR\")) is not None]\n    if not candidates:\n        return 1.0\n    pick = min(candidates, key=lambda i: (-_finite(test[i].get(\"OVR\")), i))\n    return float(scores[pick] - best_score)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Return {method: score} on test_csv, lower-is-better, including \"ours\".\n\n    Keys from step10: \"ours\" and the tuner rivals \"random_search\" and\n    \"local_search\" (regret), and \"guesser_ours_nmae\" and \"guesser_ridge_nmae\"\n    (error). Also \"top_ovr\": the regret of the highest-OVR build, the simple\n    top-rating shortlist.\n    \"\"\"\n    result = {k: float(v) for k, v in _race_step10(train_csv, test_csv).items()}\n    result[\"top_ovr\"] = float(_top_ovr_regret(test_csv))\n    return result\n```",
+ "ttft_ms": 8475,
+ "type": "result",
+ "duration_ms": 10834,
+ "uuid": "4c4bfee9-08db-4011-97b2-6713232052fd",
+ "ttft_stream_ms": 1649,
+ "time_to_request_ms": 75,
+ "queued_turn_count": 0
+}
