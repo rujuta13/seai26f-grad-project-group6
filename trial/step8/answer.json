@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 60840,
+ "duration_api_ms": 60828,
+ "num_turns": 1,
+ "result": "```python\nimport itertools\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _goal_matrix, _load\nfrom step2 import _build_encoders, _encode\n\n\n_N_TREES = 200\n_MAX_CANDIDATES = 20000   # cap on total candidate rows scored per call\n_CHUNK = 256              # rows per dominance-check block\n\n\ndef _frozen_set(frozen):\n    if frozen is None:\n        return set()\n    if isinstance(frozen, str):\n        return {frozen}\n    return set(frozen)\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return a copy of `row` (inputs only changed) that is predicted to be good,\n    changing as few input values as possible. Columns named in `frozen` are\n    never changed.\n\n    Goals are predicted for candidate inputs with random forests fitted on the\n    training builds. A candidate is good when no training build is at least as\n    good on every goal and strictly better on one (the same test as step4.stream).\n    Among good candidates with the fewest changes, the one with the best\n    predicted goals is returned. If no candidate is predicted good within the\n    search budget, the candidate with the fewest dominating training builds is\n    returned instead.\n    \"\"\"\n    header, rows = _load(train_csv)\n    frozen = _frozen_set(frozen)\n    out = dict(row)\n\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    inputs = [c for c in header if _column_kind(c) == \"input\"]\n    n = len(rows)\n    if n < 4 or not goals or not inputs:\n        return out\n\n    G = _goal_matrix(header, rows)  # (n, g), smaller is always better\n    values_by_col = {c: [r.get(c) for r in rows] for c in inputs}\n    encoders = _build_encoders(values_by_col)\n\n    X = np.zeros((n, len(inputs)), dtype=float)\n    for j, c in enumerate(inputs):\n        X[:, j] = [_encode(v, encoders[c]) for v in values_by_col[c]]\n    base = np.array(\n        [_encode(row.get(c), encoders[c]) for c in inputs], dtype=float\n    )\n\n    models = [\n        RandomForestRegressor(\n            n_estimators=_N_TREES,\n            min_samples_leaf=2,\n            random_state=0,\n            n_jobs=1,\n        ).fit(X, G[:, g])\n        for g in range(G.shape[1])\n    ]\n\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n\n    def evaluate(Xc):\n        P = np.column_stack([m.predict(Xc) for m in models])\n        counts = np.zeros(len(Xc), dtype=int)\n        for s in range(0, len(Xc), _CHUNK):\n            Pc = P[s:s + _CHUNK]\n            le = (G[None, :, :] <= Pc[:, None, :]).all(axis=2)\n            lt = (G[None, :, :] < Pc[:, None, :]).any(axis=2)\n            counts[s:s + _CHUNK] = (le & lt).sum(axis=1)\n        score = ((P - mu) / sd).sum(axis=1)\n        return counts, score\n\n    # Candidate values per input column: other values seen in training,\n    # keyed by their encoded value so each alternative appears once.\n    domains = {}\n    for c in inputs:\n        seen = {}\n        for v in values_by_col[c]:\n            seen.setdefault(str(v), v)\n        domains[c] = list(seen.values())\n\n    changeable = []  # (column index, [(encoded, raw), ...])\n    for j, c in enumerate(inputs):\n        if c in frozen:\n            continue\n        alts = {}\n        for v in domains[c]:\n            if str(v) == str(row.get(c)):\n                continue\n            enc = float(_encode(v, encoders[c]))\n            if enc == float(base[j]):\n                continue\n            alts.setdefault(enc, (enc, v))\n        if alts:\n            changeable.append((j, list(alts.values())))\n\n    good_rec = None   # (score, cols, raws)\n    any_rec = None    # ((count, k, score), cols, raws)\n    evaluated = 0\n    stop = False\n\n    for k in range(len(changeable) + 1):\n        level_good = None\n        for combo in itertools.combinations(changeable, k):\n            cols = [j for j, _ in combo]\n            combos = list(itertools.product(*[alts for _, alts in combo])) if k else [()]\n            m = len(combos)\n            if evaluated + m > _MAX_CANDIDATES:\n                stop = True\n                break\n            evaluated += m\n\n            Xc = np.tile(base, (m, 1))\n            if k:\n                Xc[:, cols] = np.array(\n                    [[enc for enc, _ in cmb] for cmb in combos], dtype=float\n                )\n            counts, score = evaluate(Xc)\n\n            for i in range(m):\n                raws = tuple(raw for _, raw in combos[i]) if k else ()\n                s = float(score[i])\n                if counts[i] == 0:\n                    cand = (s, cols, raws)\n                    if level_good is None or cand[0] < level_good[0]:\n                        level_good = cand\n                key = (int(counts[i]), k, s)\n                if any_rec is None or key < any_rec[0]:\n                    any_rec = (key, cols, raws)\n\n        if level_good is not None:\n            good_rec = level_good\n            break\n        if stop:\n            break\n\n    if good_rec is not None:\n        _, cols, raws = good_rec\n    elif any_rec is not None:\n        _, cols, raws = any_rec\n    else:\n        return out\n\n    for j, raw in zip(cols, raws):\n        out[inputs[j]] = raw\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4009a898-9cb7-41b4-8050-f9d330f1b1c5",
+ "total_cost_usd": 0.00605065,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 10662,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9435,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10662,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 9435,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10662,
+   "webSearchRequests": 0,
+   "costUSD": 0.00605065,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "7baab0b9-eff5-4a83-b598-b7b752829a7a"
+}
