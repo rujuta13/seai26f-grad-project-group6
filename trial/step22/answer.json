@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 12440,
+ "stop_reason": "end_turn",
+ "session_id": "104bf55b-22b1-4abd-8300-96866d9a5441",
+ "total_cost_usd": 0.0298168,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28033,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2426,
+  "output_tokens_details": {
+   "thinking_tokens": 1793
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28033,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2426,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28033,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28033
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22927,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2426,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28033,
+   "webSearchRequests": 0,
+   "costUSD": 0.0068198,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 22: guess. Two client questions, answered with calibrated ranges.\n\nStandard library only. The estimator, the calibrated band and the check that\nevery input column is present are reused from step12, which uses step2 and\nstep1. The only new work is clipping: each estimate and band is limited to the\nrange that goal takes in the training data. A purchase count therefore cannot\ngo below zero, and a campaign response (RESPONSE+) stays between 0 and 1.\n\nThe goal columns of the answer are NUMWEBPURCHASES+ (online purchases) and\nNUMSTOREPURCHASES+ (in-store purchases) for the first question, and RESPONSE+\n(answered the campaign) for the second. Every goal in the file is returned.\n\"\"\"\n\nfrom step2 import _model\nfrom step12 import guess as _guess\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a new customer.\n\n    `row` holds the input columns only (goal columns removed). Returns\n    {goal: (estimate, low, high)} for every goal column of train_csv, where\n    low..high is the range the true value should fall in. Estimate and range\n    are clipped to the minimum and maximum the goal takes in train_csv.\n    Raises ValueError if an input column of train_csv is absent from row.\n    \"\"\"\n    result = _guess(train_csv, row)\n    model = _model(train_csv)\n    targets = model[\"targets\"]\n    if not targets:\n        return result\n\n    out = {}\n    for g, (name, _) in enumerate(model[\"goals\"]):\n        lo = min(t[g] for t in targets)\n        hi = max(t[g] for t in targets)\n        est, low, high = result[name]\n        est = min(max(est, lo), hi)\n        low = min(max(low, lo), hi)\n        high = min(max(high, lo), hi)\n        out[name] = (est, low, high)\n    return out\n```",
+ "ttft_ms": 9429,
+ "type": "result",
+ "duration_ms": 11495,
+ "uuid": "71bec7ff-44a2-44e3-93fa-a5afa8cc53df",
+ "ttft_stream_ms": 1324,
+ "time_to_request_ms": 74,
+ "queued_turn_count": 0
+}
