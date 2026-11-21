@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 55926,
+ "stop_reason": "end_turn",
+ "session_id": "0e35f58d-7c89-4126-8a80-d51a9dfe2eb8",
+ "total_cost_usd": 0.0217777,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14315,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12997,
+  "output_tokens_details": {
+   "thinking_tokens": 9874
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14315,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12997,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14315,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14315
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12321,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012416,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12997,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14315,
+   "webSearchRequests": 0,
+   "costUSD": 0.0093617,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\n\nimport step1\nimport step2\nimport step7\n\n_SEED = 0            # fixed seed so the same inputs always give the same answer\n_BUDGET = 30         # labels allowed per tuner (same default as step7.choose)\n_RIDGE = 1.0         # ridge penalty for the off-the-shelf linear model\n# The standard library has no tuner, so random search is the tuning rival.\n# The standard library has no ML model either, so the off-the-shelf rival is\n# a ridge linear regression written here with only the standard library.\n_SPEED_HINTS = (\"cpu\", \"time\", \"speed\", \"build\", \"compile\")\n\n\ndef _signed(row, goals):\n    \"\"\"Goal values signed so higher is better; missing values count as worst.\"\"\"\n    out = []\n    for name, sign in goals:\n        v = step1._to_num(row.get(name, \"\"))\n        out.append(sign * v if v is not None else -math.inf)\n    return tuple(out)\n\n\ndef _quality(chosen, signed):\n    \"\"\"Mean over goals of the share of rows the chosen row matches or beats (0..1).\"\"\"\n    n = len(signed)\n    if n == 0:\n        return 0.0\n    g = len(signed[0])\n    if g == 0:\n        return 0.0\n    c = signed[chosen]\n    total = 0.0\n    for k in range(g):\n        total += sum(1 for t in signed if t[k] <= c[k]) / n\n    return total / g\n\n\ndef _target(goals):\n    \"\"\"The goal that stands for build speed: a CPU/time-like goal if present.\"\"\"\n    if not goals:\n        return None\n    for name, _sign in goals:\n        low = name.lower()\n        if any(h in low for h in _SPEED_HINTS):\n            return name\n    return goals[0][0]\n\n\ndef _median(xs):\n    s = sorted(xs)\n    m = len(s)\n    mid = m // 2\n    if m % 2:\n        return s[mid]\n    return 0.5 * (s[mid - 1] + s[mid])\n\n\ndef _finite_or_none(v):\n    x = step1._to_num(v)\n    if x is None or not math.isfinite(x):\n        return None\n    return x\n\n\ndef _fit_spec(trows, inputs):\n    \"\"\"Per input: standardised numeric, or one-hot over the training categories.\"\"\"\n    spec = []\n    for c in inputs:\n        nums = [_finite_or_none(r.get(c, \"\")) for r in trows]\n        if nums and all(x is not None for x in nums):\n            mean = sum(nums) / len(nums)\n            var = sum((x - mean) ** 2 for x in nums) / len(nums)\n            sd = math.sqrt(var) if var > 0 else 1.0\n            spec.append((\"num\", c, mean, sd))\n        else:\n            cats = sorted({str(r.get(c, \"\")) for r in trows})\n            spec.append((\"cat\", c, cats))\n    return spec\n\n\ndef _features(row, spec):\n    x = [1.0]  # intercept\n    for s in spec:\n        if s[0] == \"num\":\n            _, c, mean, sd = s\n            v = _finite_or_none(row.get(c, \"\"))\n            if v is None:\n                v = mean\n            x.append((v - mean) / sd)\n        else:\n            _, c, cats = s\n            v = str(row.get(c, \"\"))\n            x.extend(1.0 if v == k else 0.0 for k in cats)\n    return x\n\n\ndef _solve(A, b):\n    \"\"\"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    m = len(b)\n    M = [A[i][:] + [b[i]] for i in range(m)]\n    for col in range(m):\n        piv = max(range(col, m), key=lambda r: abs(M[r][col]))\n        if abs(M[piv][col]) < 1e-12:\n            continue\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        for r in range(m):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col] / p\n                for k in range(col, m + 1):\n                    M[r][k] -= f * M[col][k]\n    w = [0.0] * m\n    for i in range(m):\n        if abs(M[i][i]) > 1e-12:\n            w[i] = M[i][m] / M[i][i]\n    return w\n\n\ndef _fit(X, y):\n    \"\"\"Ridge regression via the normal equations; intercept is not penalised.\"\"\"\n    d = len(X[0])\n    A = [[0.0] * d for _ in range(d)]\n    b = [0.0] * d\n    for xi, yi in zip(X, y):\n        for p in range(d):\n            b[p] += xi[p] * yi\n            row = A[p]\n            for q in range(d):\n                row[q] += xi[p] * xi[q]\n    for p in range(1, d):\n        A[p][p] += _RIDGE\n    return _solve(A, b)\n\n\ndef _skill(mae, base):\n    \"\"\"1 - model error / error of predicting the training median (higher is better).\"\"\"\n    if base <= 1e-12:\n        return 0.0\n    return 1.0 - mae / base\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our tuner and guesser against standard rivals on test_csv.\n\n    Keys (higher is better on all):\n      \"ours\"            step7 tuner: share of test rows the chosen row matches or\n                        beats, averaged over goals (0..1).\n      \"random_search\"   random rows labelled with the same budget, picked by the\n                        same rule (same scale as \"ours\").\n      \"ours_guesser\"    step2 guesser predicting the build-speed goal on test rows:\n                        skill vs. predicting the training median (1 = perfect,\n                        0 = no better than the median).\n      \"stdlib_model\"    ridge linear regression on the same goal, same skill scale.\n    \"\"\"\n    zero = {\"ours\": 0.0, \"random_search\": 0.0,\n            \"ours_guesser\": 0.0, \"stdlib_model\": 0.0}\n\n    test_rows, _test_inputs, test_goals = step1._load(test_csv)\n    n = len(test_rows)\n    if n == 0 or not test_goals:\n        return zero\n\n    signed = [_signed(r, test_goals) for r in test_rows]\n    budget = _BUDGET\n\n    # ours: step7 tuner, labels come from the test file's true goal values\n    def label(i):\n        return test_rows[i]\n\n    ours_idx = step7.choose(test_csv, label, budget=budget)\n    ours = _quality(ours_idx, signed)\n\n    # random search: same budget, same final selection rule as step7\n    rng = random.Random(_SEED)\n    picks = rng.sample(range(n), min(budget, n))\n    cache = {i: signed[i] for i in picks}\n    rand_idx = step7._pick(cache, test_goals)\n    random_search = _quality(rand_idx, signed)\n\n    # predictors: build-speed goal, scored on test rows with a known value\n    trows, inputs, train_goals = step1._load(train_csv)\n    target = _target(train_goals)\n    if target is None or not trows:\n        return {\"ours\": ours, \"random_search\": random_search,\n                \"ours_guesser\": 0.0, \"stdlib_model\": 0.0}\n\n    truth = [_finite_or_none(r.get(target, \"\")) for r in test_rows]\n    eval_idx = [i for i, v in enumerate(truth) if v is not None]\n    train_vals = [v for v in (_finite_or_none(r.get(target, \"\")) for r in trows)\n                  if v is not None]\n    if not eval_idx or not train_vals:\n        return {\"ours\": ours, \"random_search\": random_search,\n                \"ours_guesser\": 0.0, \"stdlib_model\": 0.0}\n\n    med = _median(train_vals)\n    base_mae = sum(abs(truth[i] - med) for i in eval_idx) / len(eval_idx)\n\n    # ours_guesser: step2 nearest-neighbour guess of the target\n    g_err = 0.0\n    for i in eval_idx:\n        guessed = step2.guess(train_csv, test_rows[i]).get(target)\n        est = guessed[0] if guessed is not None else med\n        if not math.isfinite(est):\n            est = med\n        g_err += abs(truth[i] - est)\n    ours_guesser = _skill(g_err / len(eval_idx), base_mae)\n\n    # stdlib_model: ridge regression fitted on training rows with a known target\n    spec = _fit_spec(trows, inputs)\n    X, y = [], []\n    for r in trows:\n        v = _finite_or_none(r.get(target, \"\"))\n        if v is None:\n            continue\n        X.append(_features(r, spec))\n        y.append(v)\n    if not X:\n        stdlib_model = 0.0\n    else:\n        w = _fit(X, y)\n        m_err = 0.0\n        for i in eval_idx:\n            feats = _features(test_rows[i], spec)\n            pred = sum(a * b for a, b in zip(w, feats))\n            if not math.isfinite(pred):\n                pred = med\n            m_err += abs(truth[i] - pred)\n        stdlib_model = _skill(m_err / len(eval_idx), base_mae)\n\n    return {\n        \"ours\": float(ours),\n        \"random_search\": float(random_search),\n        \"ours_guesser\": float(ours_guesser),\n        \"stdlib_model\": float(stdlib_model),\n    }\n```",
+ "ttft_ms": 45507,
+ "type": "result",
+ "duration_ms": 54873,
+ "uuid": "6fb78d58-55c6-4dcb-8529-b18e76e5df4f",
+ "ttft_stream_ms": 1258,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
