@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 45394,
+ "stop_reason": "end_turn",
+ "session_id": "025716f9-4de7-4d2e-a2af-c809757557dd",
+ "total_cost_usd": 0.0206975,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14809,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10049,
+  "output_tokens_details": {
+   "thinking_tokens": 8529
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14809,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10049,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14809,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14809
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12611,
+   "outputTokens": 20,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012711,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10049,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14809,
+   "webSearchRequests": 0,
+   "costUSD": 0.0079865,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step7.py\n\"Step 7: choose. Find the best build while benchmarking at most BUDGET builds.\"\nimport math\nimport random\nimport ezr\n\nSTART = 4      # builds labelled at random before any guided choice\n\ndef _val(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _name(s: str) -> str:\n  \"A goal name without its +, - or ! suffix.\"\n  return s[:-1] if s[-1:] in \"+-!\" else s\n\ndef _goals(tbl, goal) -> list:\n  \"Numeric goal columns to optimise: all of them, or the one named GOAL.\"\n  ys = list(tbl.y)\n  if goal is not None:\n    want  = goal.lower()\n    tests = (lambda c: c.txt == goal,\n             lambda c: c.txt.lower() == want,\n             lambda c: _name(c.txt).lower() == _name(want),\n             lambda c: _name(c.txt).lower().startswith(_name(want)))\n    hits = []\n    for test in tests:\n      hits = [c for c in ys if test(c)]\n      if hits: break\n    if len(hits) != 1:\n      raise ValueError(f\"choose: goal {goal!r} must name exactly one goal\")\n    ys = hits\n  ys = [c for c in ys if type(c) is ezr.Num]\n  if not ys: raise ValueError(\"choose: no numeric goal to optimise\")\n  return ys\n\ndef _scores(goals, known: dict) -> dict:\n  \"Each labelled build's distance from the ideal, over the chosen goals only.\"\n  norms = {}\n  for c in goals:\n    num = ezr.Num(c.txt, c.at)\n    for vals in known.values():\n      v = vals.get(c.txt)\n      if isinstance(v, (int, float)): ezr.add(num, v)\n    norms[c.txt] = num\n  out = {}\n  for i, vals in known.items():\n    sq, n = 0.0, 0\n    for c in goals:\n      v = vals.get(c.txt)\n      if not isinstance(v, (int, float)): continue\n      sq += (ezr.norm(norms[c.txt], v) - c.goal) ** 2\n      n  += 1\n    out[i] = (sq / n) ** .5 if n else math.inf\n  return out\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"Index of the best build found, after labelling at most BUDGET builds.\"\n  tbl  = ezr.Tbl(ezr.csv(blind_csv))\n  rows = tbl.rows\n  if not rows: raise ValueError(\"choose: no builds to choose from\")\n  if budget < 1: raise ValueError(\"choose: budget must be at least 1\")\n  goals  = _goals(tbl, goal)\n  budget = min(budget, len(rows))\n  known: dict[int, dict] = {}\n  near:  dict[int, list[float]] = {}\n  spent  = 0\n\n  def ask(i: int) -> None:\n    nonlocal spent\n    if i in known: return\n    if spent >= budget: raise RuntimeError(\"choose: budget exhausted\")\n    spent += 1\n    known[i] = {k: _val(v) for k, v in label(i).items()}\n\n  def gaps(b: int) -> list[float]:\n    \"Input distance from labelled build B to every build (cached).\"\n    if b not in near:\n      near[b] = [ezr.xdist(tbl, z, rows[b]) for z in rows]\n    return near[b]\n\n  def lure(z: int, best: list, rest: list) -> float:\n    \"Closer to the best labelled builds than to the rest: lower is better.\"\n    nb = min(gaps(b)[z] for b in best)\n    return nb - min(gaps(b)[z] for b in rest) if rest else nb\n\n  order = random.Random(ezr.the.Seed).sample(range(len(rows)), len(rows))\n  for i in order[:min(START, budget)]: ask(i)\n\n  while spent < budget:\n    scores = _scores(goals, known)\n    ranked = sorted(known, key=lambda i: (scores[i], i))\n    k      = max(1, int(math.sqrt(len(ranked))))\n    best, rest = ranked[:k], ranked[k:]\n    pick = min((z for z in range(len(rows)) if z not in known),\n               key=lambda z: (lure(z, best, rest), z))\n    ask(pick)\n\n  scores = _scores(goals, known)\n  return min(known, key=lambda i: (scores[i], i))\n```",
+ "ttft_ms": 39231,
+ "type": "result",
+ "duration_ms": 43290,
+ "uuid": "e2bd70fb-7aa1-48ed-abaa-89fe9756914c",
+ "ttft_stream_ms": 2104,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
