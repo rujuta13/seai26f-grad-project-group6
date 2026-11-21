@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6821,
+ "stop_reason": "end_turn",
+ "session_id": "977037b4-fa4d-430b-9d91-d08e2b667c90",
+ "total_cost_usd": 0.0480116,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 46382,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 966,
+  "output_tokens_details": {
+   "thinking_tokens": 771
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 46382,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 966,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 46382,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 46382
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 38187,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.038252,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 966,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 46382,
+   "webSearchRequests": 0,
+   "costUSD": 0.0097596,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step28.py\n#!/usr/bin/env python3 -B\n\"Smallest nudge to a row's inputs that makes it good, leaving frozen columns alone, via ezr.\"\nimport step8\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"Inputs of ROW (goals removed) with as few values changed as possible so that\n  it becomes good. Columns named in FROZEN never change. Raises ValueError if no\n  fix is found, or if FROZEN names a column the table does not have.\"\"\"\n  return step8.fix(train_csv, row, frozen)\n```",
+ "ttft_ms": 4961,
+ "type": "result",
+ "duration_ms": 5506,
+ "uuid": "ad69fead-4c81-4b91-9f6c-4d908c68d964",
+ "ttft_stream_ms": 1440,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
