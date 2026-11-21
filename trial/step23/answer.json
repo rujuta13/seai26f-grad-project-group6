@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7813,
+ "stop_reason": "end_turn",
+ "session_id": "dfd50ad2-d716-4282-a7f3-5e948329ab96",
+ "total_cost_usd": 0.0580963,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 55923,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1209,
+  "output_tokens_details": {
+   "thinking_tokens": 804
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 55923,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1209,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 55923,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 55923
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 46227,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.046306999999999994,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1209,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 55923,
+   "webSearchRequests": 0,
+   "costUSD": 0.0117893,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step23.py\n\"\"\"Step 23: certify.  Did the last campaign really lift purchases, or is\nthat noise?  Do families with teenagers really shop differently?\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport ezr\n\n\ndef same(xs, ys) -> bool:\n  \"\"\"True if XS and YS are NOT really different (the gap is noise),\n  False if the difference is real.  Uses ezr's cliffs and\n  Kolmogorov-Smirnov tests, which must both agree the samples match.\"\"\"\n  def numbers(vs) -> list[float]:\n    \"The finite numeric values of VS, sorted; unknown or text cells are dropped.\"\n    out = []\n    for v in vs:\n      if isinstance(v, str):\n        try: v = float(v)\n        except ValueError: continue      # '?' and other text: unknown\n      if isinstance(v, (int, float)) and not isinstance(v, bool):\n        v = float(v)\n        if math.isfinite(v): out.append(v)\n    return sorted(out)\n\n  xs, ys = numbers(xs), numbers(ys)\n  if not xs or not ys: return True       # no evidence of a real difference\n  return ezr.same(xs, ys)\n```",
+ "ttft_ms": 4586,
+ "type": "result",
+ "duration_ms": 5635,
+ "uuid": "de036c28-fd80-45cf-9b81-635305257297",
+ "ttft_stream_ms": 1217,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
