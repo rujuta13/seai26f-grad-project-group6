@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17668,
+ "stop_reason": "end_turn",
+ "session_id": "7e9322a6-4b4e-41d6-9a62-7fca358f97a4",
+ "total_cost_usd": 0.0113962,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8865,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3730,
+  "output_tokens_details": {
+   "thinking_tokens": 2983
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8865,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3730,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8865,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8865
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7688,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007758,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3730,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8865,
+   "webSearchRequests": 0,
+   "costUSD": 0.0036382,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step2.py: guess a flag set's goal values, and how sure we are.\n\"step2.py: guess a flag set's goal values, and how sure we are.\"\nimport functools\nimport math\nimport ezr\n\nLO, HI = 0.10, 0.90   # the 10th..90th percentile: \"fairly sure\"\nK_MIN  = 5            # fewest neighbours we will trust\n\n@functools.lru_cache(maxsize=8)\ndef _load(train_csv: str):\n  \"Read TRAIN_CSV once; guess() is called once per flag set.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\ndef _pct(xs: list, q: float) -> float:\n  \"The q-th quantile of sorted XS, by linear interpolation.\"\n  i      = q * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef guess(train_csv: str, row: dict) -> dict[str, tuple[float, float, float]]:\n  \"For each goal: (median, 10th pct, 90th pct) of the nearest training rows.\"\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  q    = [row.get(name, \"?\") for name in tbl.names]  # align to columns\n  near = sorted(rows, key=lambda r: ezr.xdist(tbl, q, r))\n  k    = min(len(rows), max(K_MIN, int(math.sqrt(len(rows)))))\n  out  = {}\n  for g in tbl.y:\n    vs = sorted(float(r[g.at]) for r in near[:k] if r[g.at] != \"?\")\n    if not vs:   # no close neighbour has this goal: use the whole column\n      vs = sorted(float(r[g.at]) for r in rows if r[g.at] != \"?\")\n    if not vs:   # the column is empty: fall back on its summary\n      out[g.txt] = (float(g.mu), float(g.mu - g.sd), float(g.mu + g.sd))\n    else:\n      out[g.txt] = (_pct(vs, 0.5), _pct(vs, LO), _pct(vs, HI))\n  return out\n```",
+ "ttft_ms": 14515,
+ "type": "result",
+ "duration_ms": 16825,
+ "uuid": "d9d9c3f1-f585-4604-bcfc-e4b5aa5f22eb",
+ "ttft_stream_ms": 1279,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
