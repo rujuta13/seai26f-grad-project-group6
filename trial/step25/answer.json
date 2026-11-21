@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 13613,
+ "stop_reason": "end_turn",
+ "session_id": "1c522da1-ac8e-4299-84c2-1a47aec2669a",
+ "total_cost_usd": 0.044697,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 42099,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2842,
+  "output_tokens_details": {
+   "thinking_tokens": 1710
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 42099,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2842,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 42099,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 42099
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 34791,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.034856000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2842,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 42099,
+   "webSearchRequests": 0,
+   "costUSD": 0.009840999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py: blame. Which input columns are most to blame for the bad rows?\n\"step25.py: blame. Which input columns are most to blame for the bad rows?\"\nimport bisect\nimport math\nimport ezr\n\nBAD  = 0.75   # rows at or above this ydist quantile count as \"bad\"\nBINS = 8      # equal-frequency bins for numeric inputs\n\ndef _ydist_or_inf(tbl, row):\n  \"How far ROW's goals are from ideal; infinite if there are no goals or any goal is unknown.\"\n  if not tbl.y or any(row[c.at] == \"?\" for c in tbl.y): return math.inf\n  return ezr.ydist(tbl, row)\n\ndef _bins(col, rows):\n  \"One discrete bin per row for COL: its symbol, or its numeric quantile bin; '?' if unknown.\"\n  if type(col) is ezr.Sym:\n    return [r[col.at] for r in rows]\n  xs = sorted(r[col.at] for r in rows if r[col.at] != \"?\")\n  if not xs: return [\"?\"] * len(rows)\n  edges = sorted({xs[i * len(xs) // BINS] for i in range(1, BINS)})\n  return [\"?\" if r[col.at] == \"?\" else bisect.bisect_right(edges, r[col.at])\n          for r in rows]\n\ndef _info(bins, labels):\n  \"Mutual information, in bits, between BINS and the bad LABELS (True = bad).\"\n  n  = len(labels)\n  nb = sum(labels)\n  ng = n - nb\n  cnt, bad = {}, {}\n  for b, y in zip(bins, labels):\n    cnt[b] = cnt.get(b, 0) + 1\n    if y: bad[b] = bad.get(b, 0) + 1\n  total = 0.0\n  for b, c in cnt.items():\n    bc = bad.get(b, 0)\n    gc = c - bc\n    for joint, pb in ((bc, nb), (gc, ng)):\n      if joint: total += (joint / n) * math.log2((joint * n) / (c * pb))\n  return total\n\ndef blame(train_csv) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n  Bad means goal distance in the worst BAD fraction of rows with all goals known;\n  goals include RESPONSE+ (never responds) and COMPLAIN- (complains).\"\"\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  names = [c.txt for c in tbl.x]\n  known = [(y, r) for y, r in ((_ydist_or_inf(tbl, r), r) for r in tbl.rows)\n           if y < math.inf]\n  if len(known) < 2 or not tbl.x: return names\n  ys     = sorted(y for y, _ in known)\n  cut    = ys[min(len(ys) - 1, int(BAD * len(ys)))]\n  rows   = [r for _, r in known]\n  labels = [y >= cut for y, _ in known]          # True = bad\n  nb     = sum(labels)\n  if nb == 0 or nb == len(labels): return names  # nothing to tell apart\n  scored = [(_info(_bins(c, rows), labels), c.txt) for c in tbl.x]\n  return [name for _, name in sorted(scored, key=lambda t: -t[0])]\n```",
+ "ttft_ms": 9157,
+ "type": "result",
+ "duration_ms": 12353,
+ "uuid": "03b5e8aa-98dc-4f1e-a081-79b95e3ee02f",
+ "ttft_stream_ms": 1328,
+ "time_to_request_ms": 30,
+ "queued_turn_count": 0
+}
