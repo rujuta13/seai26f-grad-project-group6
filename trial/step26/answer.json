@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 30103,
+ "stop_reason": "end_turn",
+ "session_id": "fb8ac077-a5ed-47da-b0d8-9752accc8325",
+ "total_cost_usd": 0.0331011,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28372,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7659,
+  "output_tokens_details": {
+   "thinking_tokens": 5420
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28372,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7659,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28372,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28372
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23532,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023597,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7659,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28372,
+   "webSearchRequests": 0,
+   "costUSD": 0.009504100000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step26.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep26.py: justify, for the sales director and the customer team.\nexplain() gives reasons to target a group with the next campaign: the\nprofile of the best customer found, goal medians against all customers,\na significance test, the campaign response rate, the tree path to the\nbest group, and the inputs most tied to low-value customers.  why() says\nin one or two sentences why one customer is rated high-value or\nlow-value, and when goals are missing, what the nearest customers predict.\nReuses step1 (best), step2 (cached table, guess, quantile), step3 (same),\nstep4 (cut, stream, row), step6 (tree path helper), and step15 (blame,\nadjusted so identifier-like columns do not look guilty).  Only the\ncustomer wording and the campaign-response check are new.\n\"\"\"\nimport ezr\nimport step1, step2, step3, step4, step6, step15\n\ndef explain(train_csv: str) -> str:\n  \"Reasons, in plain words, that a sales director can check, for targeting the best group.\"\n  tbl  = step2._tbl(train_csv)\n  done = [r for r in tbl.rows if all(r[c.at] != \"?\" for c in tbl.y)]\n  good = [tbl.rows[i] for i in step1.best(train_csv)\n          if all(tbl.rows[i][c.at] != \"?\" for c in tbl.y)]\n  if not done or not good:\n    return \"No customer has every goal known, so there is nothing to explain.\"\n  rec   = min(good, key=lambda r: ezr.ydist(tbl, r))\n  names = step15.blame(train_csv)\n  out = [\n    \"Profile of the strongest customer found (best 5% on all goals together; \"\n    f\"ydist {ezr.say(ezr.ydist(tbl, rec))}, where 0 is ideal):\",\n    \"  \" + \", \".join(f\"{n}={ezr.say(rec[tbl.names.index(n)])}\"\n                     for n in names[:3]),\n  ]\n  for c in tbl.y:   # goal check: the high-value 5% against every customer\n    best_xs = sorted(r[c.at] for r in good)\n    all_xs  = sorted(r[c.at] for r in done)\n    apart   = not step3.same(best_xs, all_xs)\n    verdict = (\"clearly different by Cliff's delta and KS, so the gap is probably real.\"\n               if apart else\n               \"not clearly different by Cliff's delta and KS, so the gap may be noise.\")\n    out.append(\n      f\"{c.txt} (better is {'higher' if c.goal else 'lower'}): high-value median \"\n      f\"{ezr.say(step2._quantile(best_xs, .5))} vs all-customers median \"\n      f\"{ezr.say(step2._quantile(all_xs, .5))}; \" + verdict)\n  for c in tbl.y:   # campaign check: the response goal, as a rate\n    if c.txt != \"RESPONSE+\": continue\n    hit  = sum(r[c.at] for r in good) / len(good)\n    base = sum(r[c.at] for r in done) / len(done)\n    cmp  = \"above\" if hit > base else \"not above\"\n    out.append(\n      f\"Campaign response: {ezr.say(100*hit)}% of the high-value group responded, \"\n      f\"against {ezr.say(100*base)}% of all customers, which is {cmp} the average, so \"\n      + (\"this is a reason to target them.\" if hit > base\n         else \"this is not a reason to target them.\"))\n  old = ezr.the.Leaf                       # few, big groups, as in step1\n  ezr.the.Leaf = max(old, len(done)//8)\n  try:     node = ezr.tree(tbl, done)\n  finally: ezr.the.Leaf = old\n  leaf = min(ezr.leafs(node), key=lambda z: z.mu)\n  path = step6._path(tbl, node, leaf) or []\n  out.append(\n    f\"A tree on all {len(done)} customers (mean ydist {ezr.say(node.mu)}) finds its \"\n    f\"best group (mean ydist {ezr.say(leaf.mu)}, {len(leaf.rows)} customers) at: \"\n    + (\" and \".join(path) if path else \"the root, so no single split helped.\"))\n  out.append(\"Inputs most tied to low-value customers, after discounting identifier-like \"\n             \"columns: \" + \", \".join(names[:3])\n             + \". These are associations in this data; test them with a small \"\n             \"pilot campaign before relying on them.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv: str, row: dict) -> str:\n  \"One or two sentences: why this customer (goals included) is high-value or low-value.\"\n  tbl   = step2._tbl(train_csv)\n  probe = step4._row(tbl, row)\n  if any(probe[c.at] == \"?\" for c in tbl.y):   # no goals: rate by nearest customers\n    est, good_side, notes = step2.guess(train_csv, row), True, []\n    for c in tbl.y:\n      xs  = sorted(r[c.at] for r in tbl.rows if r[c.at] != \"?\")\n      med = step2._quantile(xs, .5)\n      e, lo, hi = est[c.txt]\n      if (e >= med) != (c.goal == 1): good_side = False\n      notes.append(f\"{c.txt} about {ezr.say(e)} \"\n                   f\"(range {ezr.say(lo)} to {ezr.say(hi)})\")\n    verdict = \"likely high-value\" if good_side else \"likely low-value\"\n    return (f\"This customer's goals are missing, so they are rated by the nearest \"\n            f\"training customers: {verdict}, who predict {'; '.join(notes)}.\")\n  y       = ezr.ydist(tbl, probe)\n  cut     = step4._cut(train_csv)\n  ok      = step4.stream(train_csv, [row])[0]\n  verdict = \"high-value (good)\" if ok else \"low-value (bad)\"\n  worst   = max(tbl.y, key=lambda c: abs(ezr.norm(c, probe[c.at]) - c.goal))\n  top     = step15.blame(train_csv)[0]\n  top_v   = probe[tbl.names.index(top)]\n  return (f\"This customer is rated {verdict}: their goals sit {ezr.say(y)} from the best \"\n          f\"possible (the keep cut is {ezr.say(cut)}), and {worst.txt} is the \"\n          f\"furthest off at {ezr.say(probe[worst.at])}. The input most tied to \"\n          f\"low-value customers in training is {top}, which this customer has at \"\n          f\"{ezr.say(top_v)}.\")\n```",
+ "ttft_ms": 22802,
+ "type": "result",
+ "duration_ms": 28756,
+ "uuid": "2317b3fb-eebf-4a31-a77d-84ffa42ff08d",
+ "ttft_stream_ms": 1529,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
