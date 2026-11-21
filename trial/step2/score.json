@@ -1,0 +1,12 @@
+{
+ "domain": "ssw",
+ "step": 2,
+ "skill": "guess",
+ "ok": true,
+ "score": 0.09142236915338364,
+ "baseline": 0.13990870355979101,
+ "better": "lower",
+ "extra": {
+  "coverage": 0.8375
+ }
+}
