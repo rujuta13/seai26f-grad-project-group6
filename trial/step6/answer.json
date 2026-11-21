@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 43615,
+ "stop_reason": "end_turn",
+ "session_id": "e0c76c1d-5935-4cb1-8330-eb6b37a72d5b",
+ "total_cost_usd": 0.017558900000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11666,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10263,
+  "output_tokens_details": {
+   "thinking_tokens": 8312
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11666,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10263,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11666,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11666
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10019,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010094,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10263,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11666,
+   "webSearchRequests": 0,
+   "costUSD": 0.0074649,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\n\"\"\"\nstep6: justify.  Two plain answers a skeptic can check.  explain() says\nwhat the good rows share, with the numbers behind it.  why() says why one\nrow is good or bad.  Reuses step2 (model, _full, _q), step3 (same),\nstep4 (_train_ys, _ydist, KEEP_FRAC), step5 (blame, BAD_FRAC), and\nezr (tree, leaf, leafs, ydist, Sym, say).\n\"\"\"\nimport bisect\nimport ezr\nimport step2\nimport step3\nimport step4\nimport step5\n\n\ndef _test(tbl, node, yes: bool) -> str:\n  \"Plain words for one side of NODE's cut.\"\n  name, v = tbl.names[node.at], ezr.say(node.v)\n  if type(tbl.cols[node.at]) is ezr.Sym:\n    return f\"{name} = {v}\" if yes else f\"{name} != {v}\"\n  return f\"{name} <= {v}\" if yes else f\"{name} > {v}\"\n\n\ndef _path(tbl, node, target) -> list[str] | None:\n  \"The cuts from NODE down to TARGET, as plain words; None if absent.\"\n  if node is target: return []\n  for yes, kid in zip((True, False), node.kids):\n    rest = _path(tbl, kid, target)\n    if rest is not None:\n      return [_test(tbl, node, yes)] + rest\n  return None\n\n\ndef _words(path: list[str]) -> str:\n  \"A path as English: 'all training rows' if empty.\"\n  return \" and \".join(path) if path else \"all training rows\"\n\n\ndef _family(node):\n  \"The leaf with the lowest mean ydist, among leaves big enough to trust.\"\n  ls  = ezr.leafs(node)\n  big = [z for z in ls if len(z.rows) >= 5] or ls\n  return min(big, key=lambda z: z.mu)\n\n\ndef explain(train_csv: str) -> str:\n  \"What the good rows share, in numbers a skeptic can recheck.\"\n  tbl, node = step2._model(train_csv)\n  ys = step4._train_ys(train_csv)               # sorted training ydists\n  n  = len(ys)\n  if not n: return \"No training rows, so nothing to explain.\"\n  k   = max(1, int(step4.KEEP_FRAC * n))\n  fam = _family(node)\n  inside = {id(r) for r in fam.rows}\n  rest   = [r for r in tbl.rows if id(r) not in inside]\n\n  out = [\n    \"ydist is the distance from ideal on the goals, scaled per goal; 0 is best, lower is better.\",\n    f\"Good rows: the best {k} of {n} training rows, ydist <= {ys[k-1]:.2f}.\",\n    \"Recommended flag set: \" + _words(_path(tbl, node, fam) or []) + \".\",\n  ]\n\n  for c in tbl.y:\n    want    = \"higher\" if c.goal else \"lower\"\n    vs_fam  = sorted(r[c.at] for r in fam.rows if r[c.at] != \"?\")\n    vs_all  = sorted(r[c.at] for r in tbl.rows if r[c.at] != \"?\")\n    if vs_fam and vs_all:\n      out.append(f\"{c.txt} (want {want}): median \"\n                 f\"{step2._q(vs_fam, 0.5):.2f} in the family, \"\n                 f\"{step2._q(vs_all, 0.5):.2f} overall.\")\n\n  fy = [ezr.ydist(tbl, r) for r in fam.rows]\n  ry = [ezr.ydist(tbl, r) for r in rest]\n  if fy and ry:\n    gap = (\"is a real gap\" if not step3.same(fy, ry)\n           else \"could be run-to-run noise\")\n    out.append(f\"Family ydist averages {sum(fy)/len(fy):.2f} vs \"\n               f\"{sum(ry)/len(ry):.2f} for the other rows: the gap {gap}.\")\n\n  out.append(\"Inputs most tied to bad rows, most first: \"\n             + \", \".join(step5.blame(train_csv)[:3]) + \".\")\n  out.append(\"Caveat: the family was chosen on training rows; \"\n             \"confirm it on rows the tree never saw.\")\n  return \"\\n\".join(out)\n\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: is this row good or bad, and why.\"\n  tbl, node = step2._model(train_csv)\n  ys   = step4._train_ys(train_csv)\n  n    = len(ys)\n  full = step2._full(tbl, row)\n  miss = [c.txt for c in tbl.y if full[c.at] == \"?\"]\n  y    = step4._ydist(train_csv, row)\n  k    = max(1, int(step4.KEEP_FRAC * n))\n  bar  = ys[k-1]\n  worst = ys[min(n-1, int((1 - step5.BAD_FRAC) * n))]\n  verdict = (\"good\" if y <= bar else\n             \"bad\" if y >= worst else \"middling\")\n  rank = bisect.bisect_right(ys, y)             # training rows at or below y\n  note = (f\" (goals {', '.join(miss)} were not given, so they are estimated)\"\n          if miss else \"\")\n  leaf = ezr.leaf(node, full)\n  fam  = _words(_path(tbl, node, leaf) or [])\n  first = (f\"This row is {verdict}{note}: its ydist is {y:.2f}, at or below \"\n           f\"{rank} of {n} training rows (good: ydist <= {bar:.2f}; \"\n           f\"bad: ydist >= {worst:.2f}).\")\n  second = (f\"It falls in the family where {fam}, which averages \"\n            f\"{leaf.mu:.2f} over {len(leaf.rows)} training rows.\")\n  return first + \" \" + second\n```",
+ "ttft_ms": 37398,
+ "type": "result",
+ "duration_ms": 42732,
+ "uuid": "0f3c2b52-9d75-44e8-94f8-f0783680854c",
+ "ttft_stream_ms": 1246,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
