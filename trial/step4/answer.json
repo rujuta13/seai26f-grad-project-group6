@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 43625,
+ "stop_reason": "end_turn",
+ "session_id": "616bbe26-6ea7-4192-a0b9-f869e1b633bf",
+ "total_cost_usd": 0.015115199999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9840,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9122,
+  "output_tokens_details": {
+   "thinking_tokens": 7972
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9840,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9122,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9840,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9840
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8511,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008586,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9122,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9840,
+   "webSearchRequests": 0,
+   "costUSD": 0.0065292,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step4.py: flow. Keep the good benchmark rows as they arrive; warn when they stop looking like train.\"\nfrom collections import deque\nfrom functools import lru_cache\nfrom ezr import Tbl, csv, xdist, ydist, ks\nfrom step1 import best\n\nW      = 40     # recent new rows compared, as a window, against train\nA      = 1.95   # ks threshold: about a 0.1% chance of a false alarm per test\nSAMPLE = 200    # train rows used as the baseline for drift\n\ndef _row(tbl, row) -> list:\n  \"\"\"ROW as a full table row, in header order.  ROW is a dict, a full\n  list, or a list in header order minus goals (missing cells are '?').\"\"\"\n  names = tbl.names\n  if isinstance(row, dict):\n    return [row.get(s, \"?\") for s in names]\n  row = list(row)\n  if len(row) == len(names): return row\n  free = [s for s in names if s[-1] not in \"+-\"]\n  got  = dict(zip(free, row))\n  return [got.get(s, \"?\") for s in names]\n\n@lru_cache(maxsize=4)\ndef _ref(train_csv: str):\n  \"The training table, and the ydist cutoff: the worst ydist among the best rows.\"\n  tbl = Tbl(csv(train_csv))\n  if not tbl.rows: raise ValueError(f\"no rows in {train_csv}\")\n  idx    = best(train_csv)\n  ys     = [ydist(tbl, r) for r in tbl.rows]\n  cutoff = max(ys[i] for i in idx) if idx else min(ys)\n  return tbl, cutoff\n\n@lru_cache(maxsize=4)\ndef _base(train_csv: str):\n  \"\"\"Train's own spread: each sampled train row's distance to its\n  nearest other train row, sorted.  Returns (base, tbl).\"\"\"\n  tbl, _ = _ref(train_csv)\n  rows   = tbl.rows\n  step   = max(1, len(rows) // SAMPLE)\n  base   = [min((xdist(tbl, rows[i], q)\n                 for j, q in enumerate(rows) if j != i), default=0)\n            for i in range(0, len(rows), step)]\n  return sorted(base), tbl\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"\"\"Keep a row if its goals are at least as good as the best rows of\n  train.  Uses only train_csv and the row in hand, so it is causal.\"\"\"\n  tbl, cutoff = _ref(str(train_csv))\n  out = []\n  for row in rows:\n    full = _row(tbl, row)\n    if any(full[c.at] == \"?\" for c in tbl.y):\n      out.append(False)              # goals unknown: cannot judge it good\n      continue\n    out.append(ydist(tbl, full) <= cutoff)\n  return out\n\ndef drift(train_csv, rows) -> int | None:\n  \"\"\"Index of the first row at which the last W rows' distances to train\n  stop looking like train's own distances.  None if they never do.\"\"\"\n  base, tbl = _base(str(train_csv))\n  recent = deque(maxlen=W)\n  for i, row in enumerate(rows):\n    me = _row(tbl, row)\n    recent.append(min((xdist(tbl, me, q) for q in tbl.rows), default=0))\n    if len(recent) == W and not ks(base, sorted(recent), A):\n      return i\n  return None\n```",
+ "ttft_ms": 38705,
+ "type": "result",
+ "duration_ms": 42113,
+ "uuid": "a48e6eaf-7c66-44de-81b4-9ec6850d607d",
+ "ttft_stream_ms": 1151,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
