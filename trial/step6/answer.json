@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 17409,
+ "duration_api_ms": 17397,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\n\nfrom step1 import _column_kind, _goal_matrix, _load, best\nfrom step4 import stream\nfrom step5 import blame\n\n\ndef _as_float(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _goal_names(header):\n    return [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n\n\ndef _summary(values, is_numeric):\n    \"\"\"Mean for numeric columns, most common label and its share for others.\"\"\"\n    if is_numeric:\n        nums = [v for v in values if isinstance(v, float) and math.isfinite(v)]\n        if not nums:\n            return \"no usable values\"\n        return f\"mean {float(np.mean(nums)):.3g}\"\n    if not values:\n        return \"no values\"\n    counts = {}\n    for v in values:\n        key = str(v)\n        counts[key] = counts.get(key, 0) + 1\n    label, count = max(counts.items(), key=lambda kv: (kv[1], kv[0]))\n    return f\"most common '{label}' in {count / len(values):.0%} of builds\"\n\n\ndef explain(train_csv) -> str:\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"No training builds were given, so nothing can be explained.\"\n\n    goals = _goal_names(header)\n    if not goals:\n        return \"No goal columns (names ending in '+' or '-') were found, so builds cannot be judged.\"\n\n    good = best(train_csv)\n    n = len(rows)\n    lines = []\n    lines.append(\n        \"Goals: \"\n        + \", \".join(\n            f\"{g} ({'maximise' if _column_kind(g) == 'max' else 'minimise'})\"\n            for g in goals\n        )\n        + \".\"\n    )\n    lines.append(\n        f\"Recommended set: {len(good)} of {n} training builds. \"\n        \"A build is in the set if no other build is at least as good on every goal \"\n        \"and strictly better on one; if that front is larger than 5% of the rows, \"\n        \"the best-ranked 5% of it (summed rank over goals) is kept.\"\n    )\n\n    if not good:\n        lines.append(\"No builds qualified, so no flags are recommended from this data.\")\n    else:\n        good_rows = [rows[i] for i in good]\n        top_inputs = blame(train_csv)[:3]\n        if top_inputs:\n            lines.append(\n                \"Inputs most associated with bad goal values (impurity importance from a \"\n                \"random forest, highest first), compared between recommended and all builds:\"\n            )\n            for c in top_inputs:\n                all_vals = [r.get(c) for r in rows]\n                good_vals = [r.get(c) for r in good_rows]\n                is_numeric = all(isinstance(v, float) for v in all_vals)\n                lines.append(\n                    f\"  - {c}: recommended builds show {_summary(good_vals, is_numeric)}; \"\n                    f\"all builds show {_summary(all_vals, is_numeric)}.\"\n                )\n\n    lines.append(\n        f\"Caveat: these are patterns in {n} rows only. They do not show that any flag \"\n        \"causes the effect. Confirm the recommended set on held-out builds before relying on it.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    header, rows = _load(train_csv)\n    goals = _goal_names(header)\n    if not rows or not goals:\n        return \"Cannot judge this build: no training rows or goal columns.\"\n\n    values = []\n    for g in goals:\n        v = _as_float(row.get(g))\n        if v is None:\n            return f\"Cannot judge this build: goal '{g}' is missing or not a finite number.\"\n        values.append(v)\n\n    kept = stream(train_csv, [row])[0]\n    verdict = \"good\" if kept else \"bad\"\n    reason = (\n        \"no training build is at least as good on every goal and strictly better on one\"\n        if kept\n        else \"at least one training build is at least as good on every goal and strictly better on one\"\n    )\n\n    G = _goal_matrix(header, rows)\n    parts = []\n    for j, g in enumerate(goals):\n        sign = -1.0 if _column_kind(g) == \"max\" else 1.0\n        target = sign * values[j]\n        beaten = float((G[:, j] > target).mean())\n        parts.append(f\"{g}={values[j]:g} beats {beaten:.0%} of training builds\")\n\n    return (\n        f\"Rated {verdict} because {reason}; per goal, \" + \"; \".join(parts) + \".\"\n    )\n```",
+ "stop_reason": "end_turn",
+ "session_id": "32c8b838-8bdc-4895-98a9-e96ac0f28dd5",
+ "total_cost_usd": 0.00245665,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 6858,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3198,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6858,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3198,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6858,
+   "webSearchRequests": 0,
+   "costUSD": 0.00245665,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "6f491294-a4d7-49c4-89f4-98a6c093adcc"
+}
