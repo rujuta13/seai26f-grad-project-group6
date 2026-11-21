@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4256,
+ "stop_reason": "end_turn",
+ "session_id": "934bc1dd-be35-401e-bd2d-0bc617a9ee27",
+ "total_cost_usd": 0.026010699999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24905,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 433,
+  "output_tokens_details": {
+   "thinking_tokens": 212
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24905,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 433,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24905,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24905
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20738,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020812999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 433,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24905,
+   "webSearchRequests": 0,
+   "costUSD": 0.0051977,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step26.py\n\"\"\"\nstep26: justify, for the client.  Two asks: why should the sales director\nsend the next campaign to this group, and why was this customer marked low\nvalue, with reasons the team can act on.  step6 already answers both in\nplain words from ezr's tree, so this file only names them for the client.\n\"\"\"\nimport step6\n\n\ndef explain(train_csv) -> str:\n  \"Reasons, in plain words a skeptical expert can check, for what makes rows good.\"\n  return step6.explain(train_csv)\n\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences on why this row (goals included) is good or bad.\"\n  return step6.why(train_csv, row)\n```",
+ "ttft_ms": 2484,
+ "type": "result",
+ "duration_ms": 3195,
+ "uuid": "b9ffdda4-2293-4c70-a6a9-6d3590483550",
+ "ttft_stream_ms": 1382,
+ "time_to_request_ms": 130,
+ "queued_turn_count": 0
+}
