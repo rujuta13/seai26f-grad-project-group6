@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17841,
+ "stop_reason": "end_turn",
+ "session_id": "cf1cab4c-cf60-49da-a4d5-a2aed1f7365f",
+ "total_cost_usd": 0.0481564,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 45341,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3266,
+  "output_tokens_details": {
+   "thinking_tokens": 3003
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 45341,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3266,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 45341,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 45341
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 37390,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.037455,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3266,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 45341,
+   "webSearchRequests": 0,
+   "costUSD": 0.0107014,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py\n#!/usr/bin/env python3 -B\n\"Input columns to blame for bad customers (bad on the goals, such as never responding or complaining), via ezr.\"\nimport step15\n\ndef blame(train_csv) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n  A row is bad if its goals are in the worst quarter by goal distance (ydist).\n  Each input column is scored by its largest lift: how much more often bad rows\n  fall on one side of a candidate split than they fall in the table overall.\n  All goal columns, including RESPONSE+ and COMPLAIN-, are judged together.\n  Rows with an unknown goal cell are ignored. Ties keep file order.\"\"\"\n  return step15.blame(train_csv)\n```",
+ "ttft_ms": 15685,
+ "type": "result",
+ "duration_ms": 16548,
+ "uuid": "8967cc80-a8cd-4b51-ad67-e7ba109a6e9b",
+ "ttft_stream_ms": 1572,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
