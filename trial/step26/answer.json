@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11233,
+ "stop_reason": "end_turn",
+ "session_id": "0b147aa9-0b10-4068-8ca7-dadf1116d8c7",
+ "total_cost_usd": 0.0478132,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 45660,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1964,
+  "output_tokens_details": {
+   "thinking_tokens": 1594
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 45660,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1964,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 45660,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 45660
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 37634,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.037699,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1964,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 45660,
+   "webSearchRequests": 0,
+   "costUSD": 0.0101142,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step26.py\n#!/usr/bin/env python3 -B\n\"Justify the campaign and the low-value call in plain words a sales director can check, via ezr.\"\nimport step16\n\ndef explain(train_csv) -> str:\n  \"\"\"Plain reasons for the next campaign: the input conditions that the best\n  quarter of training customers share, with the rate of each among them against\n  the overall rate, so anyone can check a line by filtering the training CSV.\"\"\"\n  body = step16.explain(train_csv)\n  head = (\"Case for the next campaign: target customers who share the traits \"\n          \"below. These are associations in the training data, to be tested \"\n          \"in the campaign itself.\")\n  return f\"{head}\\n{body}\"\n\ndef why(train_csv, row) -> str:\n  \"\"\"One or two sentences on why ROW (goals included, estimated where missing)\n  is high or low value, judged against the training best-quarter cutoff.\"\"\"\n  s = step16.why(train_csv, row)\n  return (s.replace(\"This build is bad\", \"This customer is low value\")\n           .replace(\"This build is good\", \"This customer is high value\")\n           .replace(\"This build\", \"This customer\"))\n```",
+ "ttft_ms": 8853,
+ "type": "result",
+ "duration_ms": 10009,
+ "uuid": "f486cb13-620e-48c1-8609-b7d5383a1bfd",
+ "ttft_stream_ms": 1219,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
