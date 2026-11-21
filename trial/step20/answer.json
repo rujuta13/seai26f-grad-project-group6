@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 53193,
+ "stop_reason": "end_turn",
+ "session_id": "1c7d06d4-c624-47ef-b1a5-7f07afdcf2f7",
+ "total_cost_usd": 0.0472828,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 39543,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12502,
+  "output_tokens_details": {
+   "thinking_tokens": 9450
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39543,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12502,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 39543,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 39543
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33058,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033123,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12502,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39543,
+   "webSearchRequests": 0,
+   "costUSD": 0.0141598,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py\n\"Step 20: race. Does our shortlist beat a simple top-overall-rating list, and does our penalty guesser beat an off-the-shelf model? All scores are lower-is-better.\"\nimport math\nimport random\nimport ezr\nimport step12\nimport step17\n\nBUDGET = 30           # labels each shortlist method may spend\nPEN    = \"Penalties\"  # the goal the penalty guesser predicts\nRIDGE  = 1.0          # penalty on the linear model's weights\nMINLEV = 3            # a symbol level must occur this often to get its own feature\nSEED   = 1234567891   # fixed seed, so results repeat\n\ndef _load(csv_path: str):\n  \"Table of CSV_PATH, with columns and goals from its header.\"\n  return ezr.Tbl(ezr.csv(csv_path))\n\ndef _name(s: str) -> str:\n  \"A column name without its +, - or ! suffix.\"\n  return s[:-1] if s[-1:] in (\"+\", \"-\", \"!\") else s\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _sd(c) -> float:\n  \"A column's standard deviation, or 1.0 if it has none.\"\n  return c.sd if c.sd > 0 else 1.0\n\ndef _mean(xs: list) -> float:\n  \"Mean of XS, or infinity if XS is empty.\"\n  return sum(xs) / len(xs) if xs else math.inf\n\ndef _dist(gtr, vals: dict) -> float:\n  \"Distance of goal values VALS (goal name -> value) from the ideal, scaled by train goals GTR.\"\n  sq, n = 0.0, 0\n  for c in gtr:\n    v = vals.get(c.txt, \"?\")\n    if not _isnum(v): continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else math.inf\n\ndef _solve(A: list, B: list) -> list:\n  \"Solve A X = B by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(A)\n  M = [A[i][:] + B[i][:] for i in range(n)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    p = M[c][c]\n    M[c] = [x / p for x in M[c]]\n    for r in range(n):\n      if r != c and M[r][c] != 0.0:\n        f = M[r][c]\n        M[r] = [a - f * b for a, b in zip(M[r], M[c])]\n  return [row[n:] for row in M]\n\ndef _shortlist(test_csv: str, gtr) -> dict[str, float]:\n  \"Score our shortlist (step17.choose), the top-OVR list, and random picks, all with the same label budget.\"\n  tbl  = _load(test_csv)\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: raise ValueError(\"race: no builds in test_csv\")\n  budget = min(BUDGET, n)\n\n  def label(i: int) -> dict:\n    \"The true goal values of row I: the oracle, billed once per call.\"\n    return {c.txt: rows[i][c.at] for c in tbl.y}\n\n  # ours: our guided choice\n  ours_i = step17.choose(test_csv, label, budget=budget)\n  ours   = _dist(gtr, label(ours_i))\n\n  # top overall rating: label the BUDGET highest-OVR rows, keep the best of them\n  ovr = [c for c in tbl.x if _name(c.txt) == \"OVR\"]\n  if not ovr: raise ValueError(\"race: no OVR column to rank by\")\n  at = ovr[0].at\n\n  def top(i: int) -> float:\n    v = rows[i][at]\n    return v if _isnum(v) else -math.inf\n\n  order       = sorted(range(n), key=lambda i: (-top(i), i))\n  top_overall = min(_dist(gtr, label(i)) for i in order[:budget])\n\n  # random: BUDGET random rows, keep the best of them\n  picks  = random.Random(SEED).sample(range(n), budget)\n  random_best = min(_dist(gtr, label(i)) for i in picks)\n\n  return {\"ours\": ours, \"top_overall\": top_overall, \"random\": random_best}\n\ndef _penalty(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Score our penalty guesser (step12.guess), a ridge regression, and the train mean, on the same test builds.\"\n  ttr = _load(train_csv)\n  tst = _load(test_csv)\n\n  tgt = [c for c in ttr.y if type(c) is ezr.Num and _name(c.txt) == PEN]\n  if not tgt: raise ValueError(f\"race: no numeric {PEN} goal in train\")\n  pc  = tgt[0]\n  tp  = [c for c in tst.y if c.txt == pc.txt]\n  if not tp: raise ValueError(f\"race: no {pc.txt} goal in test\")\n  pat = tp[0].at\n  sd  = _sd(pc)\n\n  truths = [(row, row[pat]) for row in tst.rows if _isnum(row[pat])]\n  if not truths: raise ValueError(\"race: no test build has a penalty value\")\n\n  # ours: step12's neighbour median, from input columns only\n  errs = []\n  for row, truth in truths:\n    inputs = {c.txt: row[c.at] for c in tst.x}\n    est    = step12.guess(train_csv, inputs)\n    if pc.txt not in est: continue\n    e = est[pc.txt][0]\n    if math.isnan(e): continue\n    errs.append(abs(e - truth) / sd)\n  ours = _mean(errs)\n\n  # rival: the train mean, predicted for every build\n  mu       = pc.mu\n  mean_err = _mean([abs(mu - t) / sd for _, t in truths])\n\n  # rival: ridge regression on standardised numbers and frequent symbol levels\n  fit = [r for r in ttr.rows if _isnum(r[pc.at])]\n  if not fit: raise ValueError(\"race: no train build has a penalty value\")\n  feat_cols = [c for c in ttr.x\n               if type(c) is ezr.Num or len(c.has) < c.n]\n  levels = {c.at: sorted((v for v, k in c.has.items() if k >= MINLEV),\n                         key=str)\n            for c in feat_cols if type(c) is ezr.Sym}\n\n  def feats(row: list) -> list:\n    \"Full-width ROW into a feature vector, with a leading intercept.\"\n    f = [1.0]\n    for c in feat_cols:\n      v = row[c.at]\n      if type(c) is ezr.Num:\n        f.append((v - c.mu) / _sd(c) if _isnum(v) else 0.0)\n      else:\n        f.extend(1.0 if v == s else 0.0 for s in levels[c.at])\n    return f\n\n  X = [feats(r) for r in fit]\n  Y = [(r[pc.at] - mu) / sd for r in fit]\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  b = [0.0] * p\n  for x, y in zip(X, Y):\n    for i, xi in enumerate(x):\n      if xi == 0.0: continue\n      row_a = A[i]\n      for j, xj in enumerate(x):\n        row_a[j] += xi * xj\n      b[i] += xi * y\n  for i in range(p): A[i][i] += RIDGE\n  w = [r[0] for r in _solve(A, [[bi] for bi in b])]\n\n  errs = []\n  for row, truth in truths:\n    f    = feats(row)\n    pred = sum(fi * wi for fi, wi in zip(f, w))\n    errs.append(abs(pred - (truth - mu) / sd))\n  linear = _mean(errs)\n\n  return {\"penalty_ours\": ours, \"penalty_linear\": linear,\n          \"penalty_mean\": mean_err}\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Race our shortlist (step17) against top-OVR and random picks, and our\n  penalty guesser (step12) against ridge regression and the train mean, on\n  test_csv. Returns {method: score}, including the key \"ours\" (our shortlist).\n  Shortlist scores are the goal distance of the best build found (0 is ideal).\n  Penalty scores are the mean penalty error in train standard deviations.\n  All scores are lower-is-better.\"\"\"\n  gtr = [c for c in _load(train_csv).y if type(c) is ezr.Num]\n  if not gtr: raise ValueError(\"race: no numeric goal to race on\")\n  out = _shortlist(test_csv, gtr)\n  out.update(_penalty(train_csv, test_csv))\n  return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 43337,
+ "type": "result",
+ "duration_ms": 51916,
+ "uuid": "87695072-93e9-4fc9-8726-a65e4bd46051",
+ "ttft_stream_ms": 1439,
+ "time_to_request_ms": 134,
+ "queued_turn_count": 0
+}
