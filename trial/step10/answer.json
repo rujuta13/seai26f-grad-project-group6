@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63907,
+ "stop_reason": "end_turn",
+ "session_id": "318229ea-a48c-445c-94a6-0a76cf0183bf",
+ "total_cost_usd": 0.0272606,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 18947,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14706,
+  "output_tokens_details": {
+   "thinking_tokens": 12091
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18947,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14706,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 18947,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 18947
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16003,
+   "outputTokens": 23,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016118,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14706,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18947,
+   "webSearchRequests": 0,
+   "costUSD": 0.011142599999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\nimport os\nimport random\nimport tempfile\nimport ezr\nimport step2\nimport step7\n\nBUDGET = 30    # labels each tuner may request\nRIDGE  = 1e-6  # a tiny ridge keeps the off-the-shelf linear fit stable\n\ndef _num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _blind(test: ezr.TBL, rows: ezr.ROWS) -> str:\n  \"Write ROWS to a temp csv with goal cells blanked to '?'; return its path.\"\n  goal_ats = {c.at for c in test.y if type(c) is ezr.Num}\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(test.names) + \"\\n\")\n    for r in rows:\n      f.write(\",\".join(\"?\" if at in goal_ats else str(v)\n                       for at, v in enumerate(r)) + \"\\n\")\n  return path\n\ndef _mean(tbl: ezr.TBL, at: int) -> float:\n  \"Mean of the numeric cells in column AT of TBL; 0 if there are none.\"\n  vals = [r[at] for r in tbl.rows if _num(r[at])]\n  return sum(vals) / len(vals) if vals else 0.0\n\ndef _cell(v, m: float) -> float:\n  \"V if it is a number, else the column mean M.\"\n  return v if _num(v) else m\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [row[:] + [b[i]] for i, row in enumerate(A)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    if abs(M[c][c]) < 1e-12: continue\n    for r in range(n):\n      if r != c and M[r][c]:\n        f = M[r][c] / M[c][c]\n        M[r] = [x - f * y for x, y in zip(M[r], M[c])]\n  return [M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n          for i in range(n)]\n\ndef _fit(X: list[list[float]], y: list[float]):\n  \"Ridge regression: centre X and y, then solve the normal equations.\"\n  n, p = len(X), len(X[0])\n  mx   = [sum(x[j] for x in X) / n for j in range(p)]\n  my   = sum(y) / n\n  Xc   = [[x[j] - mx[j] for j in range(p)] for x in X]\n  yc   = [v - my for v in y]\n  A    = [[sum(Xc[i][a] * Xc[i][b] for i in range(n)) + (RIDGE if a == b else 0.0)\n           for b in range(p)] for a in range(p)]\n  rhs  = [sum(Xc[i][a] * yc[i] for i in range(n)) for a in range(p)]\n  return mx, my, _solve(A, rhs)\n\ndef _predict(model, x: list[float]) -> float:\n  \"The fitted linear model's guess for feature vector X.\"\n  mx, my, w = model\n  return my + sum(wj * (xj - mj) for wj, xj, mj in zip(w, x, mx))\n\ndef _linear(train: ezr.TBL, goal_at: int):\n  \"An off-the-shelf linear model for one goal: ridge regression on numeric inputs.\"\n  feats = [c.at for c in train.x\n           if any(_num(r[c.at]) for r in train.rows)\n           and all(_num(r[c.at]) or r[c.at] == \"?\" for r in train.rows)]\n  means = {at: _mean(train, at) for at in feats}\n  X, y  = [], []\n  for r in train.rows:\n    if _num(r[goal_at]):\n      X.append([_cell(r[at], means[at]) for at in feats])\n      y.append(r[goal_at])\n  if not feats or len(y) < 2:\n    m = sum(y) / len(y) if y else 0.0\n    return lambda r: m\n  model = _fit(X, y)\n  return lambda r: _predict(model, [_cell(r[at], means[at]) for at in feats])\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"\"\"Lower is better for every entry.\n  Tuners pick one row of TEST_CSV after at most BUDGET labels; the score is\n  the ydist of the pick (0 is best). \"ours\" is step7.choose; \"random\" is\n  random search with the same budget. The standard library has no tuner,\n  so random search is its stand-in.\n  Guessers predict every goal of each TEST_CSV row; the score is mean\n  absolute error, scaled by each goal's range in TRAIN_CSV. \"ours_guess\" is\n  step2.guess; \"linreg_guess\" is an off-the-shelf linear model fit on\n  TRAIN_CSV.\"\"\"\n  train = ezr.Tbl(ezr.csv(train_csv))\n  test  = ezr.Tbl(ezr.csv(test_csv))\n  if train.names != test.names:\n    raise ValueError(\"race: train and test need the same header\")\n  goals = [c for c in test.y if type(c) is ezr.Num]\n  rows  = [r for r in test.rows if goals and all(_num(r[c.at]) for c in goals)]\n  if not rows: raise ValueError(\"race: no test row has numeric goals\")\n  budget = min(BUDGET, len(rows))\n\n  # tuners: each may label at most BUDGET rows of TEST_CSV\n  def label(i: int) -> dict:\n    return {test.names[c.at]: rows[i][c.at] for c in goals}\n\n  path = _blind(test, rows)\n  try:\n    pick = step7.choose(path, label, budget=budget)\n  finally:\n    os.remove(path)\n  ours = ezr.ydist(test, rows[pick])\n\n  rng    = random.Random(ezr.the.Seed)\n  sample = rng.sample(range(len(rows)), budget)\n  rand   = min(ezr.ydist(test, rows[i]) for i in sample)\n\n  # guessers: scale each goal's error by its range in TRAIN_CSV\n  spans = {}\n  for c in goals:\n    vals = [r[c.at] for r in train.rows if _num(r[c.at])]\n    span = (max(vals) - min(vals)) if vals else 1.0\n    spans[test.names[c.at]] = span or 1.0\n\n  models = {c.at: _linear(train, c.at) for c in goals}\n\n  def ours_guess(r) -> dict:\n    g = step2.guess(train_csv,\n                    {test.names[c.at]: r[c.at] for c in test.x})\n    return {test.names[c.at]: g.get(test.names[c.at], (0.0,))[0]\n            for c in goals}\n\n  def linreg_guess(r) -> dict:\n    return {test.names[c.at]: models[c.at](r) for c in goals}\n\n  def mae(guess_fn) -> float:\n    total, n = 0.0, 0\n    for r in rows:\n      est = guess_fn(r)\n      for c in goals:\n        name   = test.names[c.at]\n        total += abs(est[name] - r[c.at]) / spans[name]\n        n     += 1\n    return total / n\n\n  return {\n    \"ours\":         ours,\n    \"random\":       rand,\n    \"ours_guess\":   mae(ours_guess),\n    \"linreg_guess\": mae(linreg_guess),\n  }\n```",
+ "ttft_ms": 55336,
+ "type": "result",
+ "duration_ms": 62550,
+ "uuid": "9e4c23e1-38f3-4c23-a644-90b2ec844a44",
+ "ttft_stream_ms": 970,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
