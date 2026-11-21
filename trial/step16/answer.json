@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 128057,
+ "stop_reason": "end_turn",
+ "session_id": "3dedf052-d762-468e-b873-bcd54e1286ca",
+ "total_cost_usd": 0.0522668,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 35193,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 31752,
+  "output_tokens_details": {
+   "thinking_tokens": 26310
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 35193,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 31752,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 35193,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 35193
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29277,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029352,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 31752,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 35193,
+   "webSearchRequests": 0,
+   "costUSD": 0.0229148,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 16: justify.\n\nexplain(train_csv): plain-language reasons a manager can check for why the good\nplayers in train_csv are worth signing. Every reason is a count, median or\ncomparison that can be recomputed from the training csv.\n\nwhy(train_csv, row): one or two sentences on why one player is rated good or\nlow, with reasons that can be checked on video.\n\nShared definitions:\n  - Goal score: each goal is scaled to [0, 1] over the training players with\n    complete goal values (0 = worst, 1 = best) and averaged over goals.\n  - Good players: the Pareto front of the goals (no other player is at least as\n    good on every goal and better on one), capped at 5% of rows, as step11.best\n    returns them.\n  - Rated good: no training player dominates the player on the goals. Rated low:\n    at least one does.\n\"\"\"\nimport math\nfrom collections import Counter\n\nfrom step1 import _load\nfrom step11 import best\nfrom step13 import same\n\nMIN_SUPPORT = 3      # a value must appear at least this often on both sides of a comparison\nTOP_SETTINGS = 5     # how many associated attribute values explain() tests and reports\nTOP_PROFILE = 5      # how many numeric inputs explain() reports\nMAX_CATEGORICAL = 8  # how many common categorical attributes explain() reports\nMAX_LEVELS = 30      # text columns with more distinct values are identifier-like and skipped\nMAJORITY = 0.6       # a common value is flagged \"mixed\" below this share of good players\nNUMERIC_FRAC = 0.9   # a column is numeric if this share of its cells parse as numbers\nID_FRAC = 0.9        # a numeric column with more distinct values than this share of rows is an id\nMIN_DIFF = 0.5       # a numeric input this many spreads from the good-player median is a reason\nMAX_TEST = 1000      # permutation tests use at most this many evenly spaced players per group\n\n\ndef _finite(v):\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v.strip()\n    return \"\" if v is None else str(v).strip()\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal vector with higher always better, or None if any goal cell is unusable.\"\"\"\n    out = []\n    for c, sign in goals:\n        x = _finite(row.get(c))\n        if x is None:\n            return None\n        out.append(sign * x)\n    return out\n\n\ndef _dominates(q, p):\n    \"\"\"True if q is at least as good as p on every goal and better on at least one.\"\"\"\n    return all(a >= b for a, b in zip(q, p)) and any(a > b for a, b in zip(q, p))\n\n\ndef _scale(vectors, g):\n    lo = [min(v[j] for v in vectors) for j in range(g)]\n    hi = [max(v[j] for v in vectors) for j in range(g)]\n    return lo, hi\n\n\ndef _score(o, lo, hi):\n    \"\"\"Mean of the per-goal scaled values; a constant goal contributes 0, as in step1.\"\"\"\n    total = 0.0\n    for j in range(len(o)):\n        span = hi[j] - lo[j]\n        if span > 0:\n            total += (o[j] - lo[j]) / span\n    return total / len(o)\n\n\ndef _median(vals):\n    \"\"\"Median of a non-empty list of numbers.\"\"\"\n    s = sorted(vals)\n    m = len(s)\n    mid = m // 2\n    if m % 2:\n        return s[mid]\n    return (s[mid - 1] + s[mid]) / 2.0\n\n\ndef _quantile(vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty ascending list.\"\"\"\n    pos = q * (len(vals) - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, len(vals) - 1)\n    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo)\n\n\ndef _spread(vals):\n    \"\"\"Interquartile range of a non-empty list, or its standard deviation if that is zero.\"\"\"\n    s = sorted(vals)\n    iqr = _quantile(s, 0.75) - _quantile(s, 0.25)\n    if iqr > 0:\n        return iqr\n    mu = sum(s) / len(s)\n    return math.sqrt(sum((x - mu) ** 2 for x in s) / max(1, len(s) - 1))\n\n\ndef _numeric_values(rows, c):\n    \"\"\"Finite float per row for a numeric column (None where a cell is unusable),\n    or None if the column is not numeric.\"\"\"\n    vals = [_finite(r.get(c)) for r in rows]\n    present = sum(1 for x in vals if x is not None)\n    if present == 0 or present < NUMERIC_FRAC * len(rows):\n        return None\n    return vals\n\n\ndef _is_id(vals):\n    \"\"\"True for a numeric column with almost one distinct value per row (ids, ranks).\"\"\"\n    present = [x for x in vals if x is not None]\n    n = len(vals)\n    return n >= 20 and len(set(present)) > ID_FRAC * n\n\n\ndef _thin(vals, limit):\n    \"\"\"At most `limit` values, evenly spaced through the list.\"\"\"\n    if len(vals) <= limit:\n        return vals\n    step = len(vals) / limit\n    return [vals[int(k * step)] for k in range(limit)]\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for why the good players\n    in train_csv are worth signing.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return \"There are no training players, so no reasons can be given for signing anyone.\"\n    if not goals:\n        return (\"The file has no goal columns (names ending in + or -), so no player \"\n                \"can be called good and no reasons can be given.\")\n    if not inputs:\n        return \"The file has goals but no input columns, so there is nothing to compare.\"\n\n    g = len(goals)\n    oriented = [_oriented(r, goals) for r in rows]\n    usable = [i for i, o in enumerate(oriented) if o is not None]\n    if not usable:\n        return \"No player has numeric values for every goal, so players cannot be compared.\"\n    lo, hi = _scale([oriented[i] for i in usable], g)\n    score = {i: _score(oriented[i], lo, hi) for i in usable}\n    usable_set = set(usable)\n    good = [i for i in best(train_csv) if i in usable_set]\n    if not good:\n        return (\"No player is unusually good on all goals together, so this data gives \"\n                \"no evidence-based reason to sign anyone.\")\n\n    goal_names = \", \".join(c for c, _ in goals)\n    lines = [\n        f\"Goals: {goal_names}. Each goal is scaled to 0-1 over the {len(usable)} players with \"\n        \"complete goal values (0 = worst, 1 = best), and a player's goal score is the average.\",\n        f\"Good players: {len(good)} of {n} rows, the Pareto front of the goals (no other player \"\n        \"is at least as good on every goal and better on one), capped at 5% of rows.\",\n        \"Goal medians, good players vs all players:\",\n    ]\n    for j, (c, sign) in enumerate(goals):\n        med_good = sign * _median([oriented[i][j] for i in good])\n        med_all = sign * _median([oriented[i][j] for i in usable])\n        lines.append(f\"  {c}: {med_good:g} among good players vs {med_all:g} among all players\")\n\n    # Numeric inputs where the good players differ most from everyone.\n    profile = []\n    for c in inputs:\n        vals = _numeric_values(rows, c)\n        if vals is None or _is_id(vals):\n            continue\n        present = [x for x in vals if x is not None]\n        spread = _spread(present)\n        good_v = [vals[i] for i in good if vals[i] is not None]\n        all_v = [vals[i] for i in usable if vals[i] is not None]\n        if spread <= 0 or not good_v or not all_v:\n            continue\n        mg, ma = _median(good_v), _median(all_v)\n        if mg != ma:\n            profile.append((abs(mg - ma) / spread, c, mg, ma))\n    profile.sort(key=lambda t: (-t[0], t[1]))\n    if profile:\n        lines.append(\"Numeric inputs where good players differ most from all players \"\n                     \"(median among good vs all):\")\n        for _, c, mg, ma in profile[:TOP_PROFILE]:\n            lines.append(f\"  {c}: {mg:g} vs {ma:g}\")\n\n    # Most common categorical values among good players.\n    cats = []\n    for c in inputs:\n        if _numeric_values(rows, c) is not None:\n            continue\n        texts = [_text(r.get(c)) for r in rows]\n        if len({t for t in texts if t}) > MAX_LEVELS:\n            continue\n        counts = Counter(texts[i] for i in good if texts[i])\n        if not counts:\n            continue\n        value, k = counts.most_common(1)[0]\n        share = k / len(good)\n        note = (\"\" if share >= MAJORITY\n                else f\"  [mixed: only {k} of {len(good)} good players agree]\")\n        cats.append((share, c, value, k, note))\n    cats.sort(key=lambda t: (-t[0], t[1]))\n    if cats:\n        lines.append(\"Common attributes among good players (most frequent value):\")\n        for _, c, value, k, note in cats[:MAX_CATEGORICAL]:\n            lines.append(f\"  {c} = {value}  ({k} of {len(good)} good players){note}\")\n\n    # Attribute values associated with a higher goal score than the rest.\n    n_use = len(usable)\n    total = sum(score[i] for i in usable)\n    cands = []\n    screened = 0\n    for c in inputs:\n        texts = {i: _text(rows[i].get(c)) for i in usable}\n        agg = {}\n        for i in usable:\n            v = texts[i]\n            if not v:\n                continue\n            st = agg.get(v)\n            if st is None:\n                st = agg[v] = [0, 0.0]\n            st[0] += 1\n            st[1] += score[i]\n        for v, (nm, sm) in agg.items():\n            screened += 1\n            nr = n_use - nm\n            if nm < MIN_SUPPORT or nr < MIN_SUPPORT:\n                continue\n            mw = sm / nm\n            mo = (total - sm) / nr\n            if mw > mo:\n                cands.append((mw - mo, c, v, mw, mo, nm, nr))\n    cands.sort(key=lambda t: (-t[0], t[1], t[2]))\n\n    if not cands:\n        lines.append(\"No single attribute value is clearly associated with a higher goal \"\n                     \"score in this data.\")\n    else:\n        lines.append(\n            f\"Attribute values most associated with a higher goal score (of {screened} values \"\n            \"screened; mean score with the value vs without it):\"\n        )\n        for _, c, v, mw, mo, nm, nr in cands[:TOP_SETTINGS]:\n            with_s = [score[i] for i in usable if _text(rows[i].get(c)) == v]\n            without_s = [score[i] for i in usable if _text(rows[i].get(c)) != v]\n            noise = same(_thin(with_s, MAX_TEST), _thin(without_s, MAX_TEST))\n            verdict = (\"not distinguishable from noise by a permutation test\" if noise\n                       else \"unlikely to be noise (permutation test, p below 0.05)\")\n            lines.append(f\"  {c} = {v}: {mw:.2f} with vs {mo:.2f} without \"\n                         f\"(n = {nm} vs {nr}); {verdict}.\")\n\n    lines.append(\n        \"Caveats: these are associations in the training data, not proof that a player causes \"\n        \"better results. Each value is judged on its own, and with many values screened some \"\n        \"can be chance. Permutation tests use an evenly spaced sample of at most \"\n        f\"{MAX_TEST} players per group. Check each reason on video or in fresh data before \"\n        \"relying on it.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this player (goals included) is rated good or low.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not goals:\n        return \"This file has no goal columns, so the player cannot be rated good or low.\"\n\n    o_row = _oriented(row, goals)\n    if o_row is None:\n        return (\"The player cannot be rated: one or more of their goal values is missing \"\n                \"or not a number.\")\n\n    oriented = [_oriented(r, goals) for r in rows]\n    usable = [i for i, o in enumerate(oriented) if o is not None]\n    if not usable:\n        return \"The training data has no complete goal values, so the player cannot be compared.\"\n\n    g = len(goals)\n    lo, hi = _scale([oriented[i] for i in usable], g)\n    s = _score(o_row, lo, hi)\n    below = sum(1 for i in usable if _score(oriented[i], lo, hi) < s)\n    pct = 100.0 * below / len(usable)\n    dominators = sum(1 for i in usable if _dominates(oriented[i], o_row))\n    is_good = dominators == 0\n\n    # Goal gaps against the training median, in units of each goal's range.\n    meds = [_median([oriented[i][j] for i in usable]) for j in range(g)]\n    gaps = []\n    for j, (_, sign) in enumerate(goals):\n        span = hi[j] - lo[j]\n        if span <= 0:\n            continue\n        gaps.append(((o_row[j] - meds[j]) / span, j, sign * o_row[j], sign * meds[j]))\n\n    if is_good:\n        verdict = (f\"Rated good: no training player is at least as good on every goal and better \"\n                   f\"on one, and the goal score {s:.2f} (0 = worst, 1 = best) is higher than \"\n                   f\"{pct:.0f}% of training players.\")\n        picks = sorted((t for t in gaps if t[0] > 0), reverse=True)[:2]\n        label = \"strongest goals\"\n    else:\n        verdict = (f\"Rated low: {dominators} of {len(usable)} training players are at least as good \"\n                   f\"on every goal and better on one, and the goal score {s:.2f} (0 = worst, \"\n                   f\"1 = best) is higher than only {pct:.0f}% of training players.\")\n        picks = sorted(t for t in gaps if t[0] < 0)[:2]\n        label = \"weakest goals\"\n\n    reasons = []\n    if picks:\n        items = [f\"{goals[j][0]} is {raw:g} against a training median of {med_raw:g}\"\n                 for _, j, raw, med_raw in picks]\n        reasons.append(f\"{label}: \" + \"; \".join(items))\n\n    # Numeric inputs where this player differs most from the good players.\n    usable_set = set(usable)\n    good = [i for i in best(train_csv) if i in usable_set]\n    if good:\n        cands = []\n        for c in inputs:\n            vals = _numeric_values(rows, c)\n            if vals is None or _is_id(vals):\n                continue\n            rv = _finite(row.get(c))\n            if rv is None:\n                continue\n            good_v = [vals[i] for i in good if vals[i] is not None]\n            if not good_v:\n                continue\n            present = [x for x in vals if x is not None]\n            spread = _spread(present)\n            if spread <= 0:\n                continue\n            mg = _median(good_v)\n            diff = (rv - mg) / spread\n            if abs(diff) >= MIN_DIFF:\n                cands.append((abs(diff), c, rv, mg))\n        cands.sort(key=lambda t: (-t[0], t[1]))\n        if cands:\n            parts = [f\"{c} is {rv:g} against {mg:g} for good players\"\n                     for _, c, rv, mg in cands[:2]]\n            reasons.append(\"numeric profile: \" + \"; \".join(parts))\n\n    if reasons:\n        return f\"{verdict} Checkable reasons: {' and '.join(reasons)}.\"\n    return verdict\n```",
+ "ttft_ms": 112710,
+ "type": "result",
+ "duration_ms": 126915,
+ "uuid": "19fe4ee7-cc8f-4c34-a11a-21180c185cee",
+ "ttft_stream_ms": 1334,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
