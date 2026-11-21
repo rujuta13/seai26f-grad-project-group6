@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5109,
+ "stop_reason": "end_turn",
+ "session_id": "53b4d029-a415-4086-a516-34391530ee9f",
+ "total_cost_usd": 0.029903600000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28967,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 700,
+  "output_tokens_details": {
+   "thinking_tokens": 344
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28967,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 700,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28967,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28967
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23670,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02376,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 700,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28967,
+   "webSearchRequests": 0,
+   "costUSD": 0.006143600000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 24: flow. Welcome offers for new customers, and drift warnings.\n\nStandard library only. Both client questions are answered by the streaming\nlogic of step 4 (exposed as step 14): stream() keeps each new customer who is\nnot beaten on every goal by a training customer or an earlier arrival, and\ndrift() warns at the end of the first block of DRIFT_BLOCK sign-ups whose\nnearest-neighbour distances differ from the training reference.\n\"\"\"\n\nfrom step14 import stream as _stream, drift as _drift\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each new customer worth a welcome offer, one row at a time.\n\n    Each decision uses only train_csv and the rows before it, so the rows may\n    arrive one at a time and in order.\"\"\"\n    return _stream(train_csv, rows)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows at which the warning first fires, or None if the new\n    rows never stop looking like train_csv.\"\"\"\n    return _drift(train_csv, rows)\n```",
+ "ttft_ms": 2691,
+ "type": "result",
+ "duration_ms": 3949,
+ "uuid": "847043e8-e777-47d7-bc6e-37a1b78fa588",
+ "ttft_stream_ms": 1274,
+ "time_to_request_ms": 96,
+ "queued_turn_count": 0
+}
