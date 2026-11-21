@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 25420,
+ "duration_api_ms": 25407,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _read, _columns, _to_float_column\n\n\ndef _same(a, b):\n    \"\"\"True if two cell values denote the same input value.\"\"\"\n    if a is None or b is None:\n        return a is None and b is None\n    try:\n        return float(a) == float(b)\n    except (TypeError, ValueError):\n        return str(a) == str(b)\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs changed as little as possible so the build is good.\n\n    A candidate is a training build that is good by the step6 criterion: no\n    other training build beats it on every goal at once, and on average it\n    beats at least half of the training builds across the goals. Candidates\n    are taken from observed builds, so every returned configuration has known\n    goal values. Among candidates reachable without changing any column in\n    `frozen`, the one that differs from `row` in the fewest inputs is chosen.\n    Ties go to the higher average percentile, then to the lower training index.\n\n    Only input columns are returned. If no admissible good candidate exists in\n    the training data, the row's inputs are returned unchanged.\n    \"\"\"\n    fieldnames, rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    frozen_set = set(frozen)\n    original = {c: row.get(c) for c in inputs}\n\n    if not rows or not goals or not inputs:\n        return original\n\n    names = [g for g, _ in goals]\n    G = len(names)\n    S = np.column_stack(\n        [sign * _to_float_column(rows, name) for name, sign in goals]\n    )\n    fin = np.all(np.isfinite(S), axis=1)\n    idx_fin = np.flatnonzero(fin)\n    if idx_fin.size == 0:\n        return original\n    Sf = S[idx_fin]\n\n    # Pareto status and average percentile (oriented: larger is better).\n    nondom = np.ones(len(idx_fin), dtype=bool)\n    pct = np.zeros(len(idx_fin), dtype=float)\n    for k in range(len(idx_fin)):\n        v = Sf[k]\n        at_least = np.all(Sf >= v, axis=1)\n        strictly = np.any(Sf > v, axis=1)\n        nondom[k] = not bool(np.any(at_least & strictly))\n        pct[k] = float(np.mean([np.mean(Sf[:, g] < v[g]) for g in range(G)]))\n\n    good = nondom & (pct >= 0.5)\n    if not np.any(good):\n        return original\n\n    best_key = None\n    best_row = None\n    for k in np.flatnonzero(good):\n        t = rows[int(idx_fin[k])]\n        n_changed = 0\n        admissible = True\n        for c in inputs:\n            if not _same(original[c], t[c]):\n                if c in frozen_set:\n                    admissible = False\n                    break\n                n_changed += 1\n        if not admissible:\n            continue\n        key = (n_changed, -float(pct[k]), int(idx_fin[k]))\n        if best_key is None or key < best_key:\n            best_key = key\n            best_row = t\n\n    if best_row is None:\n        return original\n\n    result = {}\n    for c in inputs:\n        if _same(original[c], best_row[c]):\n            result[c] = original[c]\n        else:\n            result[c] = best_row[c]\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "a40877f1-fe8d-43b5-a1e3-806b1e87b143",
+ "total_cost_usd": 0.0037166499999999993,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 10162,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4892,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10162,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4892,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10162,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037166499999999993,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "4ca8f2a5-a9be-4918-b889-17c47810e250"
+}
