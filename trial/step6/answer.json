@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 45829,
+ "duration_api_ms": 45817,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _load, best\nfrom step2 import _columns, guess\nfrom step3 import same\nfrom step4 import _goal_layout, _goal_vec\n\n\ndef _standardize(train_csv):\n    G = _load(train_csv)[\"G\"]\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    return G, mu, sd, (G - mu) / sd\n\n\ndef _goal_names(train_csv):\n    maxg, ming = _goal_layout(train_csv)\n    return maxg + ming\n\n\ndef _is_num(v):\n    try:\n        return v is not None and bool(np.isfinite(float(v)))\n    except (TypeError, ValueError):\n        return False\n\n\ndef explain(train_csv) -> str:\n    inputs, _ = _columns(train_csv)\n    G, mu, sd, Z = _standardize(train_csv)\n    n = len(G)\n    if n == 0 or G.shape[1] == 0 or not inputs:\n        return \"Not enough data (need rows, flags and goals) to explain anything.\"\n\n    d = _load(train_csv)\n    rows, X = d[\"rows\"], d[\"X\"]\n    score = Z.mean(axis=1)\n    names = _goal_names(train_csv)\n\n    lines = [\n        f\"Data: {n} measured builds, {len(inputs)} on/off flags, \"\n        f\"goals: {', '.join(names)}.\",\n        \"Score: each goal is z-scored against the training data (minimised goals \"\n        \"negated, so higher is better); a build's score is the mean of its z-scores.\",\n    ]\n\n    # Recommended flag set: the best-scoring Pareto-front build.\n    front = best(train_csv)\n    if front:\n        gi = max(front, key=lambda i: score[i])\n        rec = rows[gi]\n        on_flags = [c for j, c in enumerate(inputs)\n                    if X[gi, j] != X[:, j].min()]\n        lines.append(\n            f\"Recommended build: training row {gi}, score {score[gi]:.2f}; \"\n            \"no other build beats it on every goal.\"\n        )\n        lines.append(\n            \"Flags on: \" + (\", \".join(on_flags) if on_flags else \"none\") + \".\"\n        )\n        lines.append(\n            \"Measured goals: \" + \", \".join(\n                f\"{g} = {rec[g]:.6g}\" for g in names if _is_num(rec.get(g))\n            ) + \".\"\n        )\n        est = guess(train_csv, rec)\n        if est:\n            lines.append(\n                \"Model estimate for this flag set (random forest, 10th-90th \"\n                \"percentile of held-out errors; fitted on the same rows, so \"\n                \"optimistic): \" + \"; \".join(\n                    f\"{g} {mid:.4g} [{lo:.4g}, {hi:.4g}]\"\n                    for g, (mid, lo, hi) in est.items()\n                ) + \".\"\n            )\n\n    # Which flags go with better builds, with a permutation test per flag.\n    effects = []\n    for j, c in enumerate(inputs):\n        on = X[:, j] != X[:, j].min()\n        off = ~on\n        if not (on.any() and off.any()):\n            continue\n        diff = float(score[on].mean() - score[off].mean())\n        real = not same(score[on], score[off])\n        if real:\n            effects.append((abs(diff), c, diff, float(score[on].mean()),\n                            float(score[off].mean())))\n    effects.sort(key=lambda t: -t[0])\n\n    if effects:\n        lines.append(\n            \"Flags whose on/off split changes the score beyond run-to-run noise \"\n            f\"(permutation test, 5%; {len(inputs)} flags tested without \"\n            \"correction, so treat marginal ones as hypotheses):\"\n        )\n        for _, c, diff, m_on, m_off in effects[:8]:\n            verb = \"helps\" if diff > 0 else \"hurts\"\n            lines.append(\n                f\"  {c} {verb}: mean score {m_on:.2f} when on vs {m_off:.2f} when off.\"\n            )\n    else:\n        lines.append(\n            \"No single flag's on/off split is distinguishable from noise in this data.\"\n        )\n\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    G, mu, sd, Z = _standardize(train_csv)\n    if len(G) == 0 or G.shape[1] == 0:\n        return \"Cannot judge this build: the training data has no goal columns.\"\n\n    maxg, ming = _goal_layout(train_csv)\n    names = maxg + ming\n    median = float(np.median(Z.mean(axis=1)))\n\n    measured = all(_is_num(row.get(g)) for g in names)\n    if measured:\n        vec = np.array(_goal_vec(row, maxg, ming), dtype=float)\n        source = \"measured\"\n    else:\n        est = guess(train_csv, row)\n        mid_row = {g: est[g][0] for g in names if g in est}\n        vec = np.array(_goal_vec(mid_row, maxg, ming), dtype=float)\n        source = \"estimated\"\n\n    z = (vec - mu) / sd\n    s = float(z.mean())\n    verdict = \"good\" if s >= median else \"bad\"\n    k = int(np.sum(np.all(Z >= z, axis=1) & np.any(Z > z, axis=1)))\n    dom_text = (\"no training build beats it on every goal\" if k == 0\n                else f\"{k} training build(s) beat it on every goal\")\n    first = (f\"Rated {verdict}: {source} goals give an average standardized score of \"\n             f\"{s:.2f} against a training median of {median:.2f}, and {dom_text}.\")\n\n    i_min, i_max = int(np.argmin(z)), int(np.argmax(z))\n    second = (f\"Weakest goal: {names[i_min]} (z {z[i_min]:.2f}); strongest: \"\n              f\"{names[i_max]} (z {z[i_max]:.2f})\")\n    if not measured:\n        second += \"; goal values are model estimates, not measurements\"\n    return first + \" \" + second + \".\"\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4298ce3e-94c2-4f22-991a-68578af03cd7",
+ "total_cost_usd": 0.0047170250000000006,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 5689,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8011,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5689,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 8011,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5689,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047170250000000006,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "05a70632-5800-4921-889a-4babf0395502"
+}
