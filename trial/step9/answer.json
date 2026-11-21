@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 55538,
+ "stop_reason": "end_turn",
+ "session_id": "530f6c12-75b2-457f-9cdb-81aad11b4d9e",
+ "total_cost_usd": 0.0271527,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19930,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12743,
+  "output_tokens_details": {
+   "thinking_tokens": 10451
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19930,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12743,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19930,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19930
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16720,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016794999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12743,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19930,
+   "webSearchRequests": 0,
+   "costUSD": 0.010357700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step9.py\n\"\"\"Step 9: spot.  Flag benchmark rows that look like glitches or typos, or\nthat are unlike anything in the training data.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nimport ezr\n\n_SAMPLE = 100     # train rows used to learn how far apart normal rows sit\n_SAFE   = 3.0     # robust z-scores up to this are ordinary, not odd\n_TYPO   = 5.0     # cost of a text cell where a number belongs\n_UNSEEN = 1.0     # cost of a symbol never seen in training\n_Q      = 0.9     # a row farther than this train quantile is novel\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _sd(xs: list[float]) -> float:\n  \"Sample standard deviation of XS, or 0 if fewer than two values.\"\n  n = len(xs)\n  if n < 2: return 0.0\n  mu = sum(xs) / n\n  return math.sqrt(sum((x - mu) ** 2 for x in xs) / (n - 1))\n\n\ndef _full(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"Lay ROW out full-width (one cell per column of TBL), '?' where missing; strings are cast.\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):                    # {column name: value}\n    stripped = {str(k).rstrip(\"+-!\"): v for k, v in row.items()}\n    for c in tbl.cols.values():\n      name = tbl.names[c.at]\n      if name in row: q[c.at] = row[name]\n      elif name.rstrip(\"+-!\") in stripped:\n        q[c.at] = stripped[name.rstrip(\"+-!\")]\n  elif len(row) == len(tbl.names):             # already full-width\n    q = list(row)\n  elif len(row) == len(tbl.cols):              # every non-X column, file order\n    cols = sorted(tbl.cols.values(), key=lambda c: c.at)\n    for c, v in zip(cols, row): q[c.at] = v\n  else:                                        # positional, x-column order\n    for c, v in zip(tbl.x, row): q[c.at] = v\n  return [ezr.atom(v) if isinstance(v, str) else v for v in q]\n\n\ndef _model(tbl: ezr.TBL) -> dict:\n  \"Per column, what training looks like: a robust (centre, scale) for numbers, or the symbols seen.\"\n  out = {}\n  for c in tbl.cols.values():\n    if isinstance(c, ezr.Num):\n      vs = [r[c.at] for r in tbl.rows if isinstance(r[c.at], (int, float))]\n      if not vs:\n        out[c.at] = None\n      else:\n        med = _quantile(vs, 0.5)\n        iqr = _quantile(vs, 0.75) - _quantile(vs, 0.25)\n        out[c.at] = (med, iqr / 1.349 if iqr > 0 else _sd(vs))\n    else:\n      out[c.at] = {r[c.at] for r in tbl.rows if r[c.at] != \"?\"}\n  return out\n\n\ndef _cell(c: ezr.COL, v, m) -> float:\n  \"How odd one cell V is in column C, given what training looked like (M).\"\n  if v == \"?\": return 0.0\n  if isinstance(c, ezr.Num):\n    if isinstance(v, str): return _TYPO        # text where a number belongs\n    if m is None: return 0.0                   # training had no numbers here\n    med, scale = m\n    if scale > 0: z = abs(v - med) / scale\n    else:         z = 0.0 if v == med else 10.0\n    return math.log1p(max(0.0, z - _SAFE))     # graded, so typos stand out\n  return 0.0 if v in m else _UNSEEN            # a symbol never seen before\n\n\ndef odd(train_csv: str, rows) -> list[float]:\n  \"\"\"One suspicion score per row of ROWS, in order, goals included.  Higher\n  means more likely a glitch or typo, or unlike anything in TRAIN_CSV.  Each\n  cell far outside the training values adds to the score, as does a text\n  cell where a number belongs, and a symbol never seen in training.  A row\n  whose flags are farther from every training row than most training rows\n  are from each other also adds its novelty.\"\"\"\n  tbl  = _load(train_csv)\n  rows = list(rows)\n  if not rows: return []\n  if not tbl.rows: return [0.0] * len(rows)\n\n  m    = _model(tbl)\n  cols = sorted(tbl.cols.values(), key=lambda c: c.at)\n\n  def clean(q: ezr.ROW) -> ezr.ROW:\n    \"Q with text in numeric input columns blanked, so that distances can be taken.\"\n    q = list(q)\n    for c in tbl.x:\n      if isinstance(c, ezr.Num) and isinstance(q[c.at], str):\n        q[c.at] = \"?\"\n    return q\n\n  def nearest(q: ezr.ROW) -> float:\n    \"Distance from full-width Q to its nearest training row, over the x columns.\"\n    return min(ezr.xdist(tbl, q, t) for t in tbl.rows)\n\n  # What normal looks like for novelty: each sampled train row's nearest other train row.\n  ref = []\n  if tbl.x:\n    rng = random.Random(ezr.the.Seed)\n    idx = rng.sample(range(len(tbl.rows)), min(_SAMPLE, len(tbl.rows)))\n    for i in idx:\n      d = [ezr.xdist(tbl, tbl.rows[i], t)\n           for j, t in enumerate(tbl.rows) if j != i]\n      if d: ref.append(min(d))\n  ref_q = _quantile(ref, _Q) if ref else 0.0\n\n  out = []\n  for raw in rows:\n    q = _full(tbl, raw)\n    s = sum(_cell(c, q[c.at], m[c.at]) for c in cols)\n    if tbl.x and ref:\n      d  = nearest(clean(q))\n      s += math.log1p(max(0.0, d / (ref_q + 1e-32) - 1))\n    out.append(s)\n  return out\n```",
+ "ttft_ms": 48075,
+ "type": "result",
+ "duration_ms": 54516,
+ "uuid": "b381d3e8-3ce3-4ecc-96dd-2d4896acddd1",
+ "ttft_stream_ms": 1106,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
