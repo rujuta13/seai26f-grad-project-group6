@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 84738,
+ "stop_reason": "end_turn",
+ "session_id": "4a88c88a-44cf-4e74-b52c-fbfbb53631f1",
+ "total_cost_usd": 0.041028300000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29198,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 21235,
+  "output_tokens_details": {
+   "thinking_tokens": 17511
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29198,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 21235,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29198,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29198
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24511,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024571000000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 21235,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29198,
+   "webSearchRequests": 0,
+   "costUSD": 0.0164573,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step16.py\n\"Step 16: justify, for the client. Plain reasons a manager can check, and a short verdict on one player.\"\nimport math\nimport os\nimport ezr\n\nQUANTILE = 0.25   # a player is \"good\" if its goals are in the best 25% of train\nTOP      = 5      # settings to report in explain, per direction\nMINSUP   = 5      # a setting must occur in at least this many players\nLIFT     = 1.2    # ...and be this much more (or less) common among good players\n\n_CACHE: dict = {}  # (path, mtime) -> (table, pairs, distances, cutoff, good rate, settings)\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _name(s: str) -> str:\n  \"A column name without its +, - or ! suffix.\"\n  return s[:-1] if s[-1:] in (\"+\", \"-\", \"!\") else s\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict,\n  a full-width list, or a list with goal columns removed (header order).\n  Any cell not given is '?'. Non-numeric cells in numeric columns become '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row:\n        out[at] = _coerce(row[n])\n      elif n[-1:] in (\"+\", \"-\", \"!\") and _name(n) in row:\n        out[at] = _coerce(row[_name(n)])\n  else:\n    row = list(row)\n    if len(row) == len(names):\n      out = [_coerce(v) for v in row]\n    else:\n      keep = [i for i, n in enumerate(names) if n[-1:] not in (\"+\", \"-\", \"!\")]\n      for i, v in zip(keep, row): out[i] = _coerce(v)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _isnum(out[c.at]):\n      out[c.at] = \"?\"\n  return out\n\ndef _ydist(tbl, row) -> float | None:\n  \"Distance of ROW's numeric goals from their best; None if no goal is known.\"\n  sq, n = 0.0, 0\n  for c in tbl.y:\n    if type(c) is not ezr.Num: continue\n    v = row[c.at]\n    if not _isnum(v): continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else None\n\ndef _pct(xs: list, p: float) -> float:\n  \"Percentile P (0..1) of sorted XS, by linear interpolation.\"\n  i  = p * (len(xs) - 1)\n  lo = int(i)\n  hi = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef _settings(tbl, pairs: list, base: float) -> list:\n  \"\"\"Every checkable input setting, with how many players have it and how\n  many of those are good. Each is a dict with at, text, test, n, rate, lift.\"\"\"\n  out = []\n\n  def add(at, text, test):\n    flags = [g for r, g in pairs if r[at] != \"?\" and test(r[at])]\n    if len(flags) < MINSUP or base == 0: return\n    rate = sum(flags) / len(flags)\n    out.append({\"at\": at, \"text\": text, \"test\": test, \"n\": len(flags),\n                \"rate\": rate, \"lift\": rate / base})\n\n  for col in tbl.x:\n    if type(col) is ezr.Sym:\n      if len(col.has) >= col.n: continue     # every value distinct: an identifier\n      for v in sorted({r[col.at] for r, _ in pairs if r[col.at] != \"?\"}, key=str):\n        add(col.at, f\"{col.txt} = {v}\", lambda x, v=v: x == v)\n    elif type(col) is ezr.Num:\n      vals = sorted(r[col.at] for r, _ in pairs if _isnum(r[col.at]))\n      if len(vals) < 2 * MINSUP: continue\n      lo, hi = _pct(vals, 0.25), _pct(vals, 0.75)\n      add(col.at, f\"{col.txt} at or above {ezr.say(hi)}\",\n          lambda x, t=hi: _isnum(x) and x >= t)\n      add(col.at, f\"{col.txt} at or below {ezr.say(lo)}\",\n          lambda x, t=lo: _isnum(x) and x <= t)\n  return out\n\ndef _model(train_csv: str):\n  \"\"\"Train table; (row, is_good) for every row with known goals; the sorted\n  goal distances; the good cutoff; the good rate; and the input settings.\n  Cached per file version.\"\"\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl    = ezr.Tbl(ezr.csv(train_csv))\n    scored = []\n    for r in tbl.rows:\n      d = _ydist(tbl, r)\n      if d is not None: scored.append((r, d))\n    ys    = sorted(d for _, d in scored)\n    thr   = ys[int(QUANTILE * (len(ys) - 1))] if ys else None\n    pairs = [(r, d <= thr) for r, d in scored]\n    base  = sum(g for _, g in pairs) / len(pairs) if pairs else 0.0\n    sets  = _settings(tbl, pairs, base)\n    _CACHE[key] = (tbl, pairs, ys, thr, base, sets)\n  return _CACHE[key]\n\ndef _goal_text(c) -> str:\n  \"Goal name without its suffix, and its direction.\"\n  return f\"{_name(c.txt)} ({'maximise' if c.goal else 'minimise'})\"\n\ndef _line(s: dict, base: float) -> str:\n  \"One checkable line: the setting, its good rate, and the overall good rate.\"\n  return (f\"{s['text']}: {s['rate']:.0%} of the {s['n']} players with it are \"\n          f\"good, versus {base:.0%} overall.\")\n\ndef explain(train_csv) -> str:\n  \"Plain reasons for what makes players good; each one is a count a skeptical expert can check.\"\n  tbl, pairs, ys, thr, base, sets = _model(train_csv)\n  if not ys:\n    return \"No training player has known goal values, so nothing can be explained.\"\n  goals = \", \".join(_goal_text(c) for c in tbl.y if type(c) is ezr.Num)\n  out   = [f\"A player is good when their goals ({goals}) are in the best \"\n           f\"{round(100 * QUANTILE)}% of the {len(ys)} training players with \"\n           f\"known goals. Distance 0 is ideal; good means distance at or below \"\n           f\"{ezr.say(thr)}, and the average distance over all of them is \"\n           f\"{ezr.say(sum(ys) / len(ys))}.\"]\n\n  up   = sorted((s for s in sets if s[\"lift\"] >= LIFT),\n                key=lambda s: (-s[\"lift\"], -s[\"n\"], s[\"text\"]))\n  down = sorted((s for s in sets if s[\"lift\"] <= 1 / LIFT),\n                key=lambda s: (s[\"lift\"], -s[\"n\"], s[\"text\"]))\n  if up:\n    out.append(\"Settings more common in good players (checkable by counting):\")\n    out += [f\"  {_line(s, base)}\" for s in up[:TOP]]\n  else:\n    out.append(\"No setting is clearly more common in good players, so no \"\n               \"positive rule is claimed.\")\n  if down:\n    out.append(\"Settings less common in good players (checkable by counting):\")\n    out += [f\"  {_line(s, base)}\" for s in down[:TOP]]\n  out.append(\"These are associations in the training data, not proof that a \"\n             \"setting causes the goals; check each on video before relying on it.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences: is this player good or bad, judged by its goals, and one checkable reason from its settings.\"\n  tbl, pairs, ys, thr, base, sets = _model(train_csv)\n  if not ys:\n    return (\"This player cannot be rated: the training file has no known \"\n            \"goal values.\")\n  full  = _full(tbl, row)\n  known = [(c, full[c.at]) for c in tbl.y\n           if type(c) is ezr.Num and _isnum(full[c.at])]\n  if not known:\n    return \"This player cannot be rated: it gives no numeric goal values.\"\n  d       = _ydist(tbl, full)\n  verdict = \"good\" if d <= thr else \"bad\"\n  beat    = sum(1 for y in ys if y > d) / len(ys)\n  vals    = \", \".join(f\"{_name(c.txt)}={ezr.say(v)}\" for c, v in known)\n  first   = (f\"This player is {verdict}: their goals ({vals}) sit closer to the \"\n             f\"ideal than {beat:.0%} of the {len(ys)} training players \"\n             f\"(distance {ezr.say(d)}, good means at or below {ezr.say(thr)}).\")\n\n  def has(s) -> bool:\n    cell = full[s[\"at\"]]\n    return cell != \"?\" and s[\"test\"](cell)\n\n  def lacks(s) -> bool:\n    cell = full[s[\"at\"]]\n    return cell != \"?\" and not s[\"test\"](cell)\n\n  def phrase(s) -> str:\n    return (f\"{s['text']} ({s['rate']:.0%} of the {s['n']} players with that \"\n            f\"setting are good, versus {base:.0%} overall)\")\n\n  if verdict == \"good\":\n    verb  = \"has\"\n    picks = [s for s in sets if s[\"lift\"] >= LIFT and has(s)]\n  else:\n    verb  = \"has\"\n    picks = [s for s in sets if s[\"lift\"] <= 1 / LIFT and has(s)]\n    if not picks:\n      verb  = \"lacks\"\n      picks = [s for s in sets if s[\"lift\"] >= LIFT and lacks(s)]\n  picks.sort(key=lambda s: (-abs(s[\"lift\"] - 1), -s[\"n\"], s[\"text\"]))\n\n  if not picks:\n    return (f\"{first} No single setting in its inputs clearly separates good \"\n            f\"players from bad ones, so the verdict rests on its goal numbers alone.\")\n  reasons = \" and \".join(phrase(s) for s in picks[:2])\n  return f\"{first} Checkable reasons: it {verb} {reasons}.\"\n```",
+ "ttft_ms": 73571,
+ "type": "result",
+ "duration_ms": 83493,
+ "uuid": "e067961c-e82f-4d8f-89dc-db4f175f38a7",
+ "ttft_stream_ms": 1429,
+ "time_to_request_ms": 94,
+ "queued_turn_count": 0
+}
