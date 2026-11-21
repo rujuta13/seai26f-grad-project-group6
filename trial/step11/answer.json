@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 32825,
+ "stop_reason": "end_turn",
+ "session_id": "3be0e0cb-4dbf-4881-ac29-8fdd466de68b",
+ "total_cost_usd": 0.0290035,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24524,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7021,
+  "output_tokens_details": {
+   "thinking_tokens": 5220
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24524,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7021,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24524,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24524
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20518,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020588000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7021,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24524,
+   "webSearchRequests": 0,
+   "costUSD": 0.008415500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step11.py: player types and strong-and-good-from-the-spot players at scale.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers,\ninput encoding and scaling, k-means, silhouette, goal scoring and the\n5% cap). Only the scalable parts are new.\n\nfamilies(): step1.families runs k-means on every row. That is too slow in\npure Python for about 17,000 rows, so for larger files k and the clusters\nare chosen on a fixed random sample of _FIT_CAP rows (same k range and\nsilhouette rule as step1). Every row is then assigned to its nearest\ncluster centre. Files of _FIT_CAP rows or fewer use step1.families as is.\n\nbest(): the same Pareto front and the same 5% cap as step1.best, with the\nsame ordering. step1 compares every pair of rows, which is O(n^2). Here\nrows are visited in decreasing order of their goal-score sum. A row can\nonly be dominated by a row with a strictly larger sum, and dominance is\ntransitive, so a row is non-dominated exactly when no row already on the\nfront dominates it.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport random\n\nfrom step1 import families as _step1_families\nfrom step1 import (\n    _BEST_DEN,\n    _BEST_NUM,\n    _MAX_K,\n    _SEED,\n    _best_kmeans,\n    _classify,\n    _encode_inputs,\n    _goal_scores,\n    _minmax,\n    _read,\n    _relabel,\n    _silhouette,\n)\n\n_FIT_CAP = 1000  # rows used to choose k and fit the clusters on large files\n\n\ndef _centers(X: list[list[float]], labels: list[int]) -> dict[int, list[float]]:\n    \"\"\"Mean vector of each label that is used.\"\"\"\n    dims = len(X[0])\n    sums: dict[int, list[float]] = {}\n    counts: dict[int, int] = {}\n    for x, c in zip(X, labels):\n        if c not in sums:\n            sums[c] = [0.0] * dims\n            counts[c] = 0\n        s = sums[c]\n        for d in range(dims):\n            s[d] += x[d]\n        counts[c] += 1\n    return {c: [v / counts[c] for v in s] for c, s in sums.items()}\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\n\n    Labels are contiguous integers starting at 0. For files larger than\n    _FIT_CAP rows, k and the cluster centres come from a random sample and\n    all rows are then assigned to the nearest centre.\n    \"\"\"\n    path = os.fspath(train_csv)\n    header, rows = _read(path)\n    inputs, _ = _classify(header)\n    n = len(rows)\n    if n == 0:\n        return []\n    if not inputs:\n        return [0] * n\n    if n <= _FIT_CAP:\n        return _step1_families(path)\n\n    X = _minmax(_encode_inputs(rows, inputs))\n    rng = random.Random(_SEED)\n    fit_idx = sorted(rng.sample(range(n), _FIT_CAP))\n    Xf = [X[i] for i in fit_idx]\n\n    chosen: list[int] | None = None\n    chosen_score = -math.inf\n    for k in range(2, min(_MAX_K, len(Xf)) + 1):\n        labels = _best_kmeans(Xf, k, rng)\n        score = _silhouette(Xf, labels, rng)\n        if score > chosen_score:\n            chosen, chosen_score = labels, score\n    if chosen is None:\n        return [0] * n\n\n    centers = _centers(Xf, chosen)\n    keys = list(centers)\n    cens = [centers[c] for c in keys]\n    out: list[int] = []\n    for x in X:\n        best_j = 0\n        best_d = math.inf\n        for j, cen in enumerate(cens):\n            d = math.dist(x, cen)\n            if d < best_d:\n                best_j, best_d = j, d\n        out.append(keys[best_j])\n    return _relabel(out)\n\n\ndef _dominates(f: list[float], s: list[float]) -> bool:\n    \"\"\"True if f is at least as good as s on every goal and better on one.\"\"\"\n    strict = False\n    for a, b in zip(f, s):\n        if a < b:\n            return False\n        if a > b:\n            strict = True\n    return strict\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together).\n\n    The Pareto front over the normalised goals (1 is best for each goal),\n    ordered by mean score. At most 5% of the rows are returned.\n    \"\"\"\n    header, rows = _read(os.fspath(train_csv))\n    _, goals = _classify(header)\n    n = len(rows)\n    cap = n * _BEST_NUM // _BEST_DEN\n    if n == 0 or not goals or cap == 0:\n        return []\n\n    S = _goal_scores(rows, goals)\n    sums = [sum(s) for s in S]\n    order = sorted(range(n), key=lambda i: (-sums[i], i))\n\n    front: list[int] = []\n    for i in order:\n        si = S[i]\n        if any(_dominates(S[f], si) for f in front):\n            continue\n        front.append(i)\n\n    front.sort(key=lambda i: (-sums[i], i))\n    return front[:cap]\n```",
+ "ttft_ms": 25872,
+ "type": "result",
+ "duration_ms": 31737,
+ "uuid": "9e660460-40a1-43ad-84d1-2ee6370016b7",
+ "ttft_stream_ms": 1535,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
