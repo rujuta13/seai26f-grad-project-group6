@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6548,
+ "stop_reason": "end_turn",
+ "session_id": "23cccc62-a763-4d54-996b-5c508be54212",
+ "total_cost_usd": 0.028661700000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27565,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 827,
+  "output_tokens_details": {
+   "thinking_tokens": 389
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27565,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 827,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27565,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27565
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22655,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022735000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 827,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27565,
+   "webSearchRequests": 0,
+   "costUSD": 0.005926700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step19.py: spot. Flag player records that look like data-entry mistakes, and\nplayers so unusual that their ratings should be checked before they are trusted.\n\nThe suspicion score is step9.odd: an input part (how far a flag set lies from\nthe nearest training flag set) plus a goal part (how far each goal value lies\nfrom what training players with the same flags measured). This module reuses\nthat scorer and only makes sure every score is a finite float.\n\nReading, column splitting, encoding, the reference limit, robust goal scales\nand the scoring itself come from steps 1, 2, 4 and 9.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nfrom step9 import CAP\nfrom step9 import odd as _odd\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included). Higher means more\n    likely a glitch, a typo, or a flag set unlike anything in train_csv.\n\n    Each score is a finite, non-negative float, capped at CAP per part. Scores\n    of 0.0 mean nothing unusual was found, or that there were too few training\n    rows to compare against.\n    \"\"\"\n    out: list[float] = []\n    for s in _odd(train_csv, rows):\n        v = float(s)\n        out.append(v if math.isfinite(v) else float(CAP))\n    return out\n```",
+ "ttft_ms": 3016,
+ "type": "result",
+ "duration_ms": 4783,
+ "uuid": "3fe1ba2d-c8c7-4eb6-9b7d-6f2baa02ef4b",
+ "ttft_stream_ms": 1240,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
