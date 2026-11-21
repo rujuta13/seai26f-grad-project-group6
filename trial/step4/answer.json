@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 42685,
+ "stop_reason": "end_turn",
+ "session_id": "b9e4cdcb-5e99-4157-bd53-ea6359d726d1",
+ "total_cost_usd": 0.0157213,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10388,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9229,
+  "output_tokens_details": {
+   "thinking_tokens": 7857
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10388,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9229,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10388,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10388
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8949,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009029,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9229,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10388,
+   "webSearchRequests": 0,
+   "costUSD": 0.0066923,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py\n\"\"\"Stream flow: keep good nightly rows as they arrive, and warn on drift.\n\nstream(): a new row is kept when its goals fall inside the best 5% of\nTRAIN_CSV (the same cut step1.best makes). It uses only TRAIN_CSV and\nthe row itself.\n\ndrift(): nearness is how close a new row sits to its nearest training\nrow over the x columns. Training rows give their own reference nearness\n(leave-one-out). New rows are tested in non-overlapping blocks of WINDOW,\nand the first block that no longer matches the reference raises the\nwarning. The test is KS at a stricter level than step3.same's 95%, since\nthe blocks are checked repeatedly and a looser bar would false-alarm.\n\"\"\"\nimport ezr\nimport step1\nimport step2\n\nWINDOW = 25        # rows per drift block\nREF    = 100       # training rows sampled as the nearness reference\nALPHA  = 1.95      # KS at about 99.9%: repeated looks need a stricter bar\n\n_cut: dict = {}    # train_csv -> ydist of the best-5% cutoff\n_ref: dict = {}    # train_csv -> sorted nearness of sampled training rows\n\n\ndef _goals(tbl) -> list:\n  \"The goal columns (+ or -), skipping any klass column.\"\n  return [g for g in tbl.y if g.txt[-1] in \"+-\"]\n\n\ndef _ydist(tbl, full) -> float:\n  \"How far a full-width ROW's goals are from the best, over goals only.\"\n  gs = _goals(tbl)\n  return ezr.dist((abs(ezr.norm(g, full[g.at]) - g.goal) for g in gs),\n                  len(gs))\n\n\ndef _cutoff(train_csv: str) -> float:\n  \"ydist of the worst row in the best 5% of TRAIN_CSV (step1.best's cut).\"\n  if train_csv not in _cut:\n    tbl = step2._load(train_csv)\n    idx = step1.best(train_csv)\n    _cut[train_csv] = max(_ydist(tbl, tbl.rows[i]) for i in idx)\n  return _cut[train_csv]\n\n\ndef _nearness(tbl, q) -> float:\n  \"Distance from full-width row Q to its nearest training row, over x.\"\n  return min(ezr.xdist(tbl, r, q) for r in tbl.rows)\n\n\ndef _reference(train_csv: str) -> list:\n  \"Sorted leave-one-out nearness of a sample of training rows.\"\n  if train_csv not in _ref:\n    tbl  = step2._load(train_csv)\n    step = max(1, len(tbl.rows) // REF)\n    seen = tbl.rows[::step]\n    ref  = [min(ezr.xdist(tbl, o, r) for o in tbl.rows if o is not r)\n            for r in seen]\n    _ref[train_csv] = sorted(ref)\n  return _ref[train_csv]\n\n\ndef stream(train_csv: str, rows: list) -> list[bool]:\n  \"Keep (True) each row whose goals are within the training cut.\"\n  tbl = step2._load(train_csv)\n  cut = _cutoff(train_csv)\n  out = []\n  for row in rows:\n    full = step2._full(tbl, row)\n    if any(not step2._known(full[g.at]) for g in _goals(tbl)):\n      out.append(False)               # a missing goal cannot be judged\n    else:\n      out.append(_ydist(tbl, full) <= cut)\n  return out\n\n\ndef drift(train_csv: str, rows: list) -> int | None:\n  \"Index of the last row of the first block that no longer looks like TRAIN_CSV, or None.\"\n  tbl  = step2._load(train_csv)\n  ref  = _reference(train_csv)\n  near = []\n  for row in rows:\n    near.append(_nearness(tbl, step2._full(tbl, row)))\n    if len(near) % WINDOW == 0:\n      block = sorted(near[-WINDOW:])\n      if not ezr.ks(ref, block, a=ALPHA):\n        return len(near) - 1\n  return None\n```",
+ "ttft_ms": 37920,
+ "type": "result",
+ "duration_ms": 41860,
+ "uuid": "03a05ca1-3707-4f27-a584-ed4cf6bce762",
+ "ttft_stream_ms": 1063,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
