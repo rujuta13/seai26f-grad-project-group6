@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21123,
+ "stop_reason": "end_turn",
+ "session_id": "af76efc9-128c-4bfa-9fd6-13085a845949",
+ "total_cost_usd": 0.013628600000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10787,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4252,
+  "output_tokens_details": {
+   "thinking_tokens": 3423
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10787,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4252,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10787,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10787
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9280,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009345000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4252,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10787,
+   "webSearchRequests": 0,
+   "costUSD": 0.0042836,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step5.py\n\"\"\"\nstep5: blame.  Which input columns go with the bad rows?  A row is bad\nwhen its goals are far from ideal (high ydist).  For each input column,\nfind the single value, or the single side of a single cut, where bad\nrows are most concentrated.  Score it by lift: the bad-row rate on that\nside divided by the bad-row rate overall.  Reuses ezr's table,\ncandidates, and ydist.\n\"\"\"\nimport ezr\n\nBAD_FRAC = 0.25   # the worst 25% of training rows count as bad\n\n\ndef _lift(bad_in: int, n_in: int, base: float) -> float:\n  \"How much denser bad rows are on one side of a split than overall.\"\n  if n_in == 0 or base == 0: return 0.0\n  return (bad_in / n_in) / base\n\n\ndef blame(train_csv: str) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals)\n  first. Ties keep the order of the header.\"\"\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  if not rows:\n    return [tbl.names[c.at] for c in tbl.x]\n  ys    = [ezr.ydist(tbl, r) for r in rows]     # higher = worse\n  order = sorted(ys)\n  cut   = order[min(len(order) - 1, int((1 - BAD_FRAC) * len(order)))]\n  bad   = [y >= cut for y in ys]\n  nbad  = sum(bad)\n  base  = nbad / len(rows)                      # > 0: the worst row is bad\n  need  = max(ezr.the.Leaf, len(rows) // 10)    # ignore tiny sides\n  score = {}\n  for col in tbl.x:\n    best = 0.0\n    for _, go in ezr.candidates(col, rows):\n      hit  = [bool(go(r)) for r in rows]\n      nyes = sum(hit)\n      nno  = len(rows) - nyes\n      byes = sum(b and h for b, h in zip(bad, hit))\n      bno  = nbad - byes\n      if nyes >= need: best = max(best, _lift(byes, nyes, base))\n      if nno  >= need: best = max(best, _lift(bno,  nno,  base))\n    score[col.at] = best\n  ranked = sorted(tbl.x, key=lambda c: -score[c.at])\n  return [tbl.names[c.at] for c in ranked]\n```",
+ "ttft_ms": 17546,
+ "type": "result",
+ "duration_ms": 20234,
+ "uuid": "6f2c1523-5faa-4048-8856-eb03750a7941",
+ "ttft_stream_ms": 1278,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
