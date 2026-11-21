@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 54235,
+ "stop_reason": "end_turn",
+ "session_id": "badaf79b-0ee1-4868-9199-00d19a8e5c79",
+ "total_cost_usd": 0.016651600000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10277,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11300,
+  "output_tokens_details": {
+   "thinking_tokens": 9743
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10277,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11300,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10277,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10277
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8866,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008946,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11300,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10277,
+   "webSearchRequests": 0,
+   "costUSD": 0.0077056,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py\n\"\"\"Step 4: flow.  Keep worthwhile nightly results as they arrive, and warn\nwhen they stop looking like the training data.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport bisect\nimport random\nimport ezr\n\n_WIN    = 30     # rows per drift block\n_MIN    = 10     # smallest trailing block worth testing\n_KEEP_Q = 0.25   # keep a row if it is in the best quarter seen so far\n_SAMPLE = 200    # train rows used as the flag-novelty reference\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef _full(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"Lay ROW out full-width, with '?' for anything missing; cast strings.\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):                    # {column name: value}\n    for c in tbl.cols.values():\n      name = tbl.names[c.at]\n      if name in row: q[c.at] = row[name]\n  elif len(row) == len(tbl.names):             # already full-width\n    q = list(row)\n  else:                                        # positional, x-column order\n    for c, v in zip(tbl.x, row): q[c.at] = v\n  return [ezr.atom(v) if isinstance(v, str) else v for v in q]\n\n\ndef _score(tbl: ezr.TBL, q: ezr.ROW) -> float:\n  \"RMS gap of Q's goals from their ideal: 0 is best, 1 is worst.  Missing is worst.\"\n  gaps = []\n  for c in tbl.y:\n    v = q[c.at]\n    if v == \"?\" or isinstance(v, str): gaps.append(1.0)\n    else: gaps.append(abs(ezr.norm(c, v) - c.goal))\n  return ezr.dist(gaps, len(gaps)) if gaps else 0.0\n\n\ndef stream(train_csv: str, rows) -> list[bool]:\n  \"For each row in ROWS, in order: keep it if its goals are in the best quarter seen so far.\"\n  tbl = _load(train_csv)\n  if not tbl.rows: return [False] * len(rows)\n  pool = sorted(_score(tbl, r) for r in tbl.rows)   # what \"good\" looks like\n  keep = []\n  for raw in rows:\n    s = _score(tbl, _full(tbl, raw))\n    cut = pool[int(_KEEP_Q * (len(pool) - 1))]      # decide before learning\n    keep.append(s <= cut)\n    bisect.insort(pool, s)                          # then learn from it\n  return keep\n\n\ndef drift(train_csv: str, rows) -> int | None:\n  \"\"\"Index into ROWS where new rows first stop looking like train_csv,\n  or None.  Rows are tested in blocks of _WIN; a block differs if its goal\n  scores or its flag novelty (distance to nearest train row) differ from\n  train's, by ezr.same.  Warn at the end of the second differing block in\n  a row, which keeps false alarms from single noisy blocks rare.\"\"\"\n  tbl = _load(train_csv)\n  if not tbl.rows or not rows: return None\n\n  ref_g = [_score(tbl, r) for r in tbl.rows]\n  rng   = random.Random(ezr.the.Seed)\n  idx   = rng.sample(range(len(tbl.rows)), min(_SAMPLE, len(tbl.rows)))\n  S     = [tbl.rows[i] for i in idx]\n  ref_f = []                                        # train's own novelty\n  for i, s in enumerate(S):\n    d = [ezr.xdist(tbl, s, t) for j, t in enumerate(S) if j != i]\n    if d: ref_f.append(min(d))\n  if not ref_f: ref_f = [0.0]\n\n  qs = [_full(tbl, r) for r in rows]\n  g  = [_score(tbl, q) for q in qs]\n  f  = [min(ezr.xdist(tbl, q, t) for t in S) for q in qs]\n\n  run = 0\n  for lo in range(0, len(rows), _WIN):\n    hi = min(lo + _WIN, len(rows))\n    if hi - lo < _MIN: break\n    differs = (not ezr.same(g[lo:hi], ref_g)\n               or not ezr.same(f[lo:hi], ref_f))\n    run = run + 1 if differs else 0\n    if run >= 2: return hi - 1\n  return None\n```",
+ "ttft_ms": 48001,
+ "type": "result",
+ "duration_ms": 52755,
+ "uuid": "bde45b26-ed15-433e-b55d-a3ee9ca1d2bb",
+ "ttft_stream_ms": 1149,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
