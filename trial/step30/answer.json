@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37165,
+ "stop_reason": "end_turn",
+ "session_id": "bf3a1655-f083-446f-9e49-1f5805183396",
+ "total_cost_usd": 0.04751369999999999,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 42160,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8971,
+  "output_tokens_details": {
+   "thinking_tokens": 6831
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 42160,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8971,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 42160,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 42160
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 34501,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.034595999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8971,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 42160,
+   "webSearchRequests": 0,
+   "costUSD": 0.0129177,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step30.py: race our targeting and response guesser against simple rivals.\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every key.\n\nTargeting race. test_csv is the pool of customers, with goals hidden until a\ncustomer is mailed. Each method may mail at most MAILING_BUDGET customers.\n  - ours: step27.choose (step7's search), averaged over SEEDS.\n  - highest_income: the client's rival. Mail customers in order of INCOME,\n    highest first, and keep the best one seen.\n  The score is the chosen customer's goal quality over the test pool (step10's\n  normalised goal sum, 1 = best on every goal).\n\nResponse guesser race. Models are trained on train_csv and tested on test_csv\nfor RESPONSE+ only.\n  - response_guess_ours: step22.guess, the calibrated nearest-neighbour median\n    clipped to the training range.\n  - response_guess_linear: ordinary least squares on the numeric flags, an\n    off-the-shelf model (step10's solver), with training means filling gaps.\n  The score is R^2 on test_csv (1 = perfect, 0 = no better than the test mean).\n\nReuses step7 (search seed), step27 (targeting), step22 (guesser), step10\n(benchmark wrapper, quality, least squares, R^2) and step1 (loading).\nStandard library only.\n\"\"\"\nimport math\nimport os\nimport tempfile\n\nimport step7\nimport step10\nfrom step1 import _load, _columns\nfrom step22 import guess as _guess_response\nfrom step27 import choose as _choose\n\nMAILING_BUDGET = 50      # customers the team may mail per method\nSEEDS = (1, 2, 3, 4, 5)  # search seeds for our method (the rival is deterministic)\nINCOME_COL = \"INCOME\"    # the client's rival ranks customers by this column\nRESPONSE = \"RESPONSE\"    # goal name without its +/- suffix\n\n\ndef _income(row):\n    \"\"\"The income of a row, or -inf if it is missing or not finite.\"\"\"\n    v = row.get(INCOME_COL)\n    if isinstance(v, float) and math.isfinite(v):\n        return v\n    return -math.inf\n\n\ndef _response_goal(goal_names):\n    \"\"\"The name of the response goal column, or None if there is none.\"\"\"\n    for c in goal_names:\n        if c == RESPONSE or c[:-1] == RESPONSE:\n            return c\n    return None\n\n\ndef _race_targeting(cols, rows, goals, budget):\n    names = [c for c, _ in goals]\n    g = len(goals)\n    q = step10._quality([step10._oriented(r, goals) for r in rows], g)\n\n    def label(i):\n        return {c: rows[i][c] for c in names}\n\n    # Ours: average the chosen customer's quality over the seeds.\n    ours_total = 0.0\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        step10._write_blind(cols, rows, set(names), blind)\n        for seed in SEEDS:\n            old = step7.SEED\n            step7.SEED = seed\n            try:\n                pick = _choose(blind, label, budget=budget)\n            finally:\n                step7.SEED = old\n            ours_total += q[pick]\n\n    # Rival: mail the highest-income customers first, and keep the best seen.\n    order = sorted(range(len(rows)), key=lambda i: (-_income(rows[i]), i))\n    bench = step10._Bench(label, goals, budget)\n    for i in order[:budget]:\n        bench(i)\n    rich = step10._chosen_quality(bench.seen, q, g)\n\n    return {\"ours\": ours_total / len(SEEDS), \"highest_income\": rich}\n\n\ndef _race_response(train_csv, rows, goal):\n    tcols, trows = _load(train_csv)\n    inputs, maxi, mini = _columns(tcols, trows)\n    if goal not in set(maxi + mini) or not trows:\n        return {}\n\n    # Training means fill attributes missing from a test row for the linear model.\n    means = {c: sum(r[c] for r in trows) / len(trows) for c in inputs}\n\n    pts = [([1.0] + [float(r[c]) for c in inputs], float(r[goal]))\n           for r in trows\n           if isinstance(r[goal], float) and math.isfinite(r[goal])]\n    if not pts:\n        return {}\n    w = step10._fit_one([x for x, _ in pts], [y for _, y in pts])\n\n    ours_pairs, lin_pairs = [], []\n    for r in rows:\n        y = r.get(goal)\n        if not (isinstance(y, float) and math.isfinite(y)):\n            continue\n        flags = {c: r.get(c) for c in inputs}\n        est = _guess_response(train_csv, flags)[goal][0]\n        x = [1.0] + [float(r[c]) if isinstance(r.get(c), float) else means[c]\n                     for c in inputs]\n        ours_pairs.append((y, est))\n        lin_pairs.append((y, step10._predict(w, x)))\n\n    return {\"response_guess_ours\": step10._r2(ours_pairs),\n            \"response_guess_linear\": step10._r2(lin_pairs)}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our targeting (\"ours\") against the highest-income rival\n    (\"highest_income\"), and our response guesser against an off-the-shelf\n    linear model on RESPONSE+.\n\n    Targeting scores lie in [0, 1]; guesser scores are R^2 (at most 1).\n    Higher is better for every key. If test_csv has no response goal, only\n    the targeting keys are returned.\n    \"\"\"\n    cols, rows = _load(test_csv)\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals or not rows:\n        raise ValueError(f\"{test_csv} needs goal columns and rows\")\n\n    budget = min(MAILING_BUDGET, len(rows))\n    out = _race_targeting(cols, rows, goals, budget)\n\n    response = _response_goal([c for c, _ in goals])\n    if response is not None:\n        out.update(_race_response(train_csv, rows, response))\n\n    return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 30043,
+ "type": "result",
+ "duration_ms": 35870,
+ "uuid": "1054e53a-b662-44ea-aacc-ff6333fa1a88",
+ "ttft_stream_ms": 1222,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
