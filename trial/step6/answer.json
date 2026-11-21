@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 54459,
+ "duration_api_ms": 54447,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step6.py: plain-language justification of the recommended flag set and of single builds.\n\nEverything statistical or structural is delegated to the earlier steps:\nstep1 for loading, column classification, the Pareto front and mean goal rank,\nstep3 for the permutation test, step4 for the keep/discard decision, and step5\nfor the blamed input columns.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\n\nfrom step1 import _classify, _goal_matrix, _load, best\nfrom step3 import same\nfrom step4 import stream\nfrom step5 import blame\n\n_TOP_BLAME = 3   # number of blamed input columns to report in explain()\n\n\ndef _mean_rank(G):\n    \"\"\"Mean rank across goals per row (lower is better). G is a minimisation matrix.\"\"\"\n    n = G.shape[0]\n    ranks = np.empty_like(G)\n    for k in range(G.shape[1]):\n        order = np.argsort(G[:, k], kind=\"stable\")\n        r = np.empty(n, dtype=float)\n        r[order] = np.arange(n, dtype=float)\n        ranks[:, k] = r\n    return ranks.mean(axis=1)\n\n\ndef _goal_text(header, cols, row):\n    return \", \".join(f\"{header[c]}={float(row[header[c]]):g}\" for c in cols)\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words account of what makes rows good and why the recommended set is chosen.\"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        raise ValueError(\"train_csv contains no data rows\")\n    maximise, minimise, inputs = _classify(header)\n    n = len(rows)\n    goal_cols = minimise + maximise\n    if not goal_cols:\n        return \"The file has no goal columns, so no build can be called good.\"\n\n    G = _goal_matrix(rows, maximise, minimise)\n    score = _mean_rank(G)\n    rec = int(np.argmin(score))\n\n    good = best(train_csv)\n    if not good:\n        good = [rec]\n    good_set = set(good)\n    rest = [i for i in range(n) if i not in good_set]\n\n    lines = []\n    lines.append(\n        \"Definition: a build is 'good' if no other build is at least as good on every \"\n        \"goal and strictly better on at least one (the Pareto front). If the front is \"\n        \"larger than 5% of the builds, the ones with the best mean rank across goals are kept.\"\n    )\n    lines.append(\n        f\"{len(good)} of {n} builds qualify as good. You can check this with step1.best().\"\n    )\n\n    lines.append(f\"Recommended flag set (row {rec}, lowest mean goal rank):\")\n    for col in inputs:\n        lines.append(f\"  {header[col]} = {rows[rec][col]}\")\n\n    lines.append(\"Goal values of the recommended build against the other builds:\")\n    for col in goal_cols:\n        name = header[col]\n        direction = \"lower is better\" if col in minimise else \"higher is better\"\n        value = float(rows[rec][col])\n        good_med = float(np.median([float(rows[i][col]) for i in good]))\n        line = f\"  {name} ({direction}): recommended {value:g}, median of good builds {good_med:g}\"\n        if rest:\n            rest_vals = [float(rows[i][col]) for i in rest]\n            significant = not same([float(rows[i][col]) for i in good], rest_vals)\n            verdict = \"a significant gap\" if significant else \"no significant gap\"\n            line += f\", median of other builds {float(np.median(rest_vals)):g} ({verdict}, permutation test)\"\n        lines.append(line)\n\n    lines.append(\n        f\"Input columns most associated with bad builds (step5.blame, top {_TOP_BLAME}):\"\n    )\n    for name in blame(train_csv)[:_TOP_BLAME]:\n        col = header.index(name)\n        val = rows[rec][col]\n        share_good = float(np.mean([rows[i][col] == val for i in good]))\n        share_all = float(np.mean([rows[i][col] == val for i in range(n)]))\n        lines.append(\n            f\"  {name} = {val}: present in {share_good:.0%} of good builds \"\n            f\"and {share_all:.0%} of all builds\"\n        )\n\n    lines.append(\n        \"Caveats: these are associations observed in one data file, not proof that a \"\n        \"flag causes the difference; flags were not tested in isolation, so interactions \"\n        \"between flags are not separated out.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this build is rated good or bad.\n\n    `row` is a dict {column name: value} that includes the goal columns. An integer\n    is also accepted and is read as a data row index of train_csv.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        raise ValueError(\"train_csv contains no data rows\")\n    maximise, minimise, _ = _classify(header)\n    goal_cols = minimise + maximise\n    if not goal_cols:\n        raise ValueError(\"train_csv has no goal columns\")\n\n    if isinstance(row, (int, np.integer)) and not isinstance(row, bool):\n        row = dict(zip(header, rows[int(row)]))\n\n    missing = [header[c] for c in goal_cols if header[c] not in row]\n    if missing:\n        raise ValueError(f\"row is missing goal columns: {missing}\")\n\n    G = _goal_matrix(rows, maximise, minimise)\n    gv = np.array([float(row[header[c]]) for c in minimise]\n                  + [-float(row[header[c]]) for c in maximise], dtype=float)\n\n    kept = bool(stream(train_csv, [row])[0])\n    goals = _goal_text(header, goal_cols, row)\n\n    if kept:\n        beats = [float(np.mean(G[:, k] > gv[k])) for k in range(G.shape[1])]\n        pct = 100.0 * float(np.mean(beats))\n        return (\n            f\"Rated good: no training build is at least as good on every goal and strictly \"\n            f\"better on one ({goals}), and this build beats {pct:.0f}% of training builds \"\n            f\"on average across the goals.\"\n        )\n\n    dominators = np.flatnonzero((G <= gv).all(axis=1) & (G < gv).any(axis=1))\n    k = int(dominators[0]) if dominators.size else -1\n    return (\n        f\"Rated bad: training build {k} is at least as good on every goal and strictly \"\n        f\"better on at least one, so this build ({goals}) is dominated and adds nothing \"\n        f\"to the Pareto front.\"\n    )\n```",
+ "stop_reason": "end_turn",
+ "session_id": "244ad927-87b5-4314-8503-7c49e79ddda9",
+ "total_cost_usd": 0.004362775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 7887,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6753,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7887,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6753,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7887,
+   "webSearchRequests": 0,
+   "costUSD": 0.004362775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c7dd4c1e-57c1-43ed-82ee-db7ccc7385c6"
+}
