@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 19017,
+ "duration_api_ms": 19004,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step5.py: blame. Which input columns are most associated with bad rows.\"\"\"\n\nimport numpy as np\n\nfrom step1 import _load\nfrom step3 import same\n\n# Rows at or below this quantile of the combined goal score count as \"bad\".\n_BAD_QUANTILE = 0.25\n\n\ndef _goal_scores(rows, goals):\n    \"\"\"Combined goal score per row, larger is better (z-scored, minimised goals negated).\"\"\"\n    M = np.array(\n        [[float(r[name]) * sign for name, sign in goals] for r in rows],\n        dtype=float,\n    )\n    M = np.nan_to_num(M, nan=0.0, posinf=0.0, neginf=0.0)\n    sd = M.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    Z = (M - M.mean(axis=0)) / sd\n    return Z.sum(axis=1)\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    A column is blamed in proportion to how differently its values are\n    distributed among the bad rows compared with the good rows (total variation\n    distance). Columns whose difference is statistically real (step3.same) rank\n    ahead of those that look like noise.\n    \"\"\"\n    rows, inputs, goals = _load(train_csv)\n    n = len(rows)\n    if not inputs:\n        return []\n    if not goals or n < 2:\n        return list(inputs)\n\n    score = _goal_scores(rows, goals)\n    cut = np.quantile(score, _BAD_QUANTILE)\n    bad = [i for i in range(n) if score[i] <= cut]\n    good = [i for i in range(n) if score[i] > cut]\n    if not bad or not good:\n        # Goal scores are too tied to separate bad from good rows.\n        return list(inputs)\n\n    tv_scores: dict[str, float] = {}\n    significant: dict[str, bool] = {}\n    for c in inputs:\n        vals = [str(r[c]) for r in rows]\n        tv = 0.0\n        sig = False\n        for v in sorted(set(vals)):\n            ind = np.array([1.0 if x == v else 0.0 for x in vals], dtype=float)\n            p_bad = float(ind[bad].mean())\n            p_good = float(ind[good].mean())\n            tv += abs(p_bad - p_good)\n            if not same(ind[bad], ind[good]):\n                sig = True\n        tv_scores[c] = 0.5 * tv\n        significant[c] = sig\n\n    order = {c: i for i, c in enumerate(inputs)}\n    return sorted(\n        inputs,\n        key=lambda c: (not significant[c], -tv_scores[c], order[c]),\n    )\n```",
+ "stop_reason": "end_turn",
+ "session_id": "cd1980c5-e3e3-43d8-8279-eccdcc947af5",
+ "total_cost_usd": 0.002301525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 4641,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3442,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4641,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3442,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4641,
+   "webSearchRequests": 0,
+   "costUSD": 0.002301525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "5e91ec4a-0cac-4dc9-99ff-50730e1291f9"
+}
