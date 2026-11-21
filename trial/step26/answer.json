@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 54299,
+ "stop_reason": "end_turn",
+ "session_id": "a2818353-ca73-435c-a3f7-fd287f41619e",
+ "total_cost_usd": 0.0712995,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 62984,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13391,
+  "output_tokens_details": {
+   "thinking_tokens": 9042
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 62984,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13391,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 62984,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 62984
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 51942,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.052007000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13391,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 62984,
+   "webSearchRequests": 0,
+   "costUSD": 0.0192925,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step26.py\n\"\"\"Step 26: justify.  Explain to the sales director why this group of\ncustomers should get the next campaign, and say in a sentence or two why\none customer was rated low value, with reasons that can be acted on.\n\nCustomers are read as in step21: identifier and text columns are left\nout, goals are the numeric columns named with a trailing \"+\" (higher is\nbetter) or \"-\" (lower is better), and every other kept column is an input.\nA column is numeric if most of its known cells are numbers; text cells in\na numeric column count as unknown.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nfrom collections import Counter\nimport ezr\n\n_GOOD_Q = 0.25   # best quarter of customers counts as the target group\n_BAD_Q  = 0.75   # worst quarter counts as low value\n_SHIFT  = 0.10   # an input must shift by at least 10 points to be reported\n_TOP    = 5      # how many inputs to explain\n_DROP   = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n_NOT_ENOUGH = \"There is not enough training data to explain anything.\"\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable finite number (not text, not missing, not a bool).\"\n  if isinstance(v, bool) or not isinstance(v, (int, float)): return False\n  return not isinstance(v, float) or math.isfinite(v)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast; blanks, '?' and non-finite numbers are unknown.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    if s in (\"\", \"?\"): return \"?\"\n    v = ezr.atom(s)\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _avg(xs: list[float]):\n  \"Mean of XS, or None if empty.\"\n  return sum(xs) / len(xs) if xs else None\n\n\ndef _fmt(x) -> str:\n  \"A number for display, or 'n/a'.\"\n  return \"n/a\" if x is None else ezr.say(x)\n\n\ndef _way(m: ezr.Num) -> str:\n  \"Plain words for which direction of a goal is better.\"\n  return \"higher is better\" if m.goal else \"lower is better\"\n\n\ndef _load(train_csv: str):\n  \"Read TRAIN_CSV: (header names, full-width rows with cleaned cells), or None if empty.\"\n  raw = list(ezr.csv(train_csv))\n  if not raw: return None\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  return names, rows\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _prepare(train_csv: str):\n  \"\"\"Load TRAIN_CSV: (names, rows, goals, inputs, kept).  GOALS are (position, Num)\n  for numeric goals; INPUTS are (position, Num) or (position, None) when the\n  input is symbolic; KEPT lists every usable column position, goals included.\"\"\"\n  loaded = _load(train_csv)\n  if loaded is None: return None\n  names, rows = loaded\n  kept, goals, inputs = [], [], []\n  for at, nm in enumerate(names):\n    if not nm or nm in _DROP or nm.endswith(\"X\"): continue\n    kept.append(at)\n    numeric = _is_num(rows, at)\n    if nm[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return names, rows, goals, inputs, kept\n\n\ndef _full(names: list, kept: list, row) -> list:\n  \"Lay ROW out full-width in header order, '?' where missing; cells are cleaned.\"\n  q = [\"?\"] * len(names)\n  if isinstance(row, dict):                    # {column name: value}\n    by_stem = {str(k).strip().rstrip(\"+-!\"): v for k, v in row.items()}\n    for at, name in enumerate(names):\n      stem = name.rstrip(\"+-!\")\n      if name in row:          q[at] = row[name]\n      elif stem in by_stem:    q[at] = by_stem[stem]\n  elif len(row) == len(names):                 # already full-width\n    q = list(row)\n  else:                                        # positional, over kept columns\n    for at, v in zip(kept, row): q[at] = v\n  return [_clean(v) for v in q]\n\n\ndef _gaps(goals: list, row: list) -> list[float]:\n  \"Per goal: distance from its ideal (0 is best); a missing goal is the worst, 1.\"\n  return [abs(ezr.norm(m, row[at]) - m.goal) if _num(row[at]) else 1.0\n          for at, m in goals]\n\n\ndef _ydist(goals: list, row: list) -> float:\n  \"How far ROW's goals, taken together, are from the ideal.\"\n  gs = _gaps(goals, row)\n  return ezr.dist(gs, len(gs)) if gs else 0.0\n\n\ndef _shares(rs: list, at: int) -> dict:\n  \"Share of the known cells of column AT in RS, per value seen.\"\n  vals = [r[at] for r in rs if r[at] != \"?\"]\n  if not vals: return {}\n  n = len(vals)\n  return {v: k / n for v, k in Counter(vals).items()}\n\n\ndef explain(train_csv: str) -> str:\n  \"Plain-words reasons, checkable on the training data, why the best-quarter customers are the ones to target.\"\n  data = _prepare(train_csv)\n  if data is None: return _NOT_ENOUGH\n  names, rows, goals, inputs, _kept = data\n  if not rows or not goals or not inputs: return _NOT_ENOUGH\n\n  ys   = [_ydist(goals, r) for r in rows]\n  cut  = _quantile(ys, _GOOD_Q)\n  good = [r for r, y in zip(rows, ys) if y <= cut]\n\n  avg_parts = []\n  for at, _ in goals:\n    gv = _avg([r[at] for r in good if _num(r[at])])\n    av = _avg([r[at] for r in rows if _num(r[at])])\n    avg_parts.append(f\"{names[at]} {_fmt(gv)} vs {_fmt(av)}\")\n\n  out = [\n    f\"Target group: the best quarter of {len(rows)} training customers on all \"\n    f\"goals together, {len(good)} customers, with distance from the ideal at \"\n    f\"most {cut:.2f}.\",\n    \"Goals the campaign should move: \"\n    + \", \".join(f\"{names[at]} ({_way(m)})\" for at, m in goals) + \".\",\n    \"Average goals, target group vs all customers: \"\n    + \"; \".join(avg_parts) + \".\",\n  ]\n\n  findings = []                                       # (size, sentence)\n  for at, m in inputs:\n    name = names[at]\n    if m is not None:\n      gv_raw = [r[at] for r in good if _num(r[at])]\n      av_raw = [r[at] for r in rows if _num(r[at])]\n      if not gv_raw or not av_raw: continue\n      mg = sum(ezr.norm(m, v) for v in gv_raw) / len(gv_raw)\n      ma = sum(ezr.norm(m, v) for v in av_raw) / len(av_raw)\n      if abs(mg - ma) >= _SHIFT:\n        way = \"higher\" if mg > ma else \"lower\"\n        findings.append((abs(mg - ma),\n                         f\"{name} is {way} in the target group: average \"\n                         f\"{_fmt(_avg(gv_raw))} vs {_fmt(_avg(av_raw))} \"\n                         f\"across all customers.\"))\n    else:\n      sg, sa = _shares(good, at), _shares(rows, at)\n      if not sa: continue\n      v     = max(sorted(set(sa) | set(sg), key=str),\n                  key=lambda k: abs(sg.get(k, 0) - sa.get(k, 0)))\n      shift = sg.get(v, 0) - sa.get(v, 0)\n      if abs(shift) >= _SHIFT:\n        findings.append((abs(shift),\n                         f\"{name}={ezr.say(v)} appears in {sg.get(v, 0):.0%} \"\n                         f\"of target-group customers but {sa.get(v, 0):.0%} \"\n                         f\"of all customers.\"))\n  findings.sort(key=lambda t: -t[0])                  # stable: ties keep file order\n\n  if findings:\n    out.append(\"Inputs that separate the target group from the rest, largest shift first:\")\n    out += [f\"  {i}. {s}\" for i, (_, s) in enumerate(findings[:_TOP], 1)]\n  else:\n    out.append(f\"No input shifts by {_SHIFT:.0%} or more between the target group \"\n               \"and the rest, so there is no clear input reason in the data.\")\n  out.append(\"These are associations in the training data, not proof of cause. \"\n             \"Before a full rollout, send the campaign to a random sample of the \"\n             \"target group and compare its response with a random sample of other \"\n             \"customers of the same size.\")\n  return \"\\n\".join(out)\n\n\ndef why(train_csv: str, row) -> str:\n  \"Two sentences: is this customer (goals included) high, middle, or low value, and which goal decides it.\"\n  data = _prepare(train_csv)\n  if data is None:\n    return \"Cannot rate this customer: the training data has no goals.\"\n  names, rows, goals, _inputs, kept = data\n  if not rows or not goals:\n    return \"Cannot rate this customer: the training data has no goals.\"\n\n  if isinstance(row, int) and not isinstance(row, bool):\n    if not 0 <= row < len(rows):\n      return f\"Cannot rate this customer: there is no training row {row}.\"\n    q = rows[row]                                     # a training row, by index\n  else:\n    q = _full(names, kept, row)\n  if not any(_num(q[at]) for at, _ in goals):\n    return \"Cannot rate this customer: its goal values are missing.\"\n\n  ys = [_ydist(goals, r) for r in rows]\n  lo = _quantile(ys, _GOOD_Q)\n  hi = _quantile(ys, _BAD_Q)\n  y  = _ydist(goals, q)\n  if y <= lo:   verdict, tier = \"high value\", \"best quarter\"\n  elif y >= hi: verdict, tier = \"low value\", \"worst quarter\"\n  else:         verdict, tier = \"middle value\", \"middle half\"\n\n  gaps  = _gaps(goals, q)\n  k     = max(range(len(goals)), key=lambda i: gaps[i])   # first of ties\n  at, m = goals[k]\n  v     = q[at]\n  if _num(v):\n    good = [r for r, yy in zip(rows, ys) if yy <= lo]\n    gavg = _avg([r[at] for r in good if _num(r[at])])\n    aavg = _avg([r[at] for r in rows if _num(r[at])])\n    s2 = (f\"The goal furthest from its ideal is {names[at]} at {ezr.say(v)} \"\n          f\"({_way(m)}; the best quarter averages {_fmt(gavg)} and all \"\n          f\"customers {_fmt(aavg)}).\")\n  else:\n    s2 = (f\"The goal furthest from its ideal is {names[at]}, \"\n          \"which is missing for this customer.\")\n\n  s1 = (f\"Rated {verdict}: its goals put it in the {tier} of the \"\n        f\"{len(rows)} training customers (distance to the ideal {y:.2f}; \"\n        f\"best-quarter cutoff {lo:.2f}, worst-quarter cutoff {hi:.2f}).\")\n  return s1 + \" \" + s2\n```",
+ "ttft_ms": 41331,
+ "type": "result",
+ "duration_ms": 52900,
+ "uuid": "7904554d-51ce-4573-ad66-0f1de3f41183",
+ "ttft_stream_ms": 1244,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
