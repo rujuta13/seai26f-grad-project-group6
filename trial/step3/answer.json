@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 12400,
+ "duration_api_ms": 12388,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step3.py: decide whether two sets of measurements differ for real.\n\nUsed to answer questions like \"is turning on `inline` really faster, or is it\nrun-to-run noise?\". The test is a two-sided permutation test on the difference\nof means, so it makes no normality assumption and works with small samples.\n\"\"\"\n\nimport numpy as np\n\n_ALPHA = 0.05\n_N_PERM = 10000\n_SEED = 0\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise),\n    False if the difference is statistically real at the 5% level.\n\n    Non-finite values are ignored. If either sample is empty, there is no\n    evidence of a difference, so the result is True.\n    \"\"\"\n    x = np.asarray([float(v) for v in xs], dtype=float)\n    y = np.asarray([float(v) for v in ys], dtype=float)\n    x = x[np.isfinite(x)]\n    y = y[np.isfinite(y)]\n    if x.size == 0 or y.size == 0:\n        return True\n\n    n_x = x.size\n    pooled = np.concatenate([x, y])\n    observed = abs(x.mean() - y.mean())\n    if observed == 0.0:\n        return True\n\n    # Under the null hypothesis the labels are exchangeable, so reshuffle the\n    # pooled values and count how often a gap at least as large appears.\n    rng = np.random.default_rng(_SEED)\n    tol = 1e-12 * max(1.0, observed)\n    hits = 0\n    for _ in range(_N_PERM):\n        perm = rng.permutation(pooled)\n        gap = abs(perm[:n_x].mean() - perm[n_x:].mean())\n        if gap >= observed - tol:\n            hits += 1\n\n    # Add-one correction keeps the p-value away from an impossible exact zero.\n    p_value = (hits + 1) / (_N_PERM + 1)\n    return p_value >= _ALPHA\n```",
+ "stop_reason": "end_turn",
+ "session_id": "81468664-f934-4d59-8730-2ca4222f4827",
+ "total_cost_usd": 0.0011000250000000001,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3209,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1397,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3209,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1397,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3209,
+   "webSearchRequests": 0,
+   "costUSD": 0.0011000250000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "34c201aa-b06a-444a-84e7-897e98f19639"
+}

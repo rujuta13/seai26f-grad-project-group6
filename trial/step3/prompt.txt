@@ -1,0 +1,214 @@
+Use the Python 3.13 standard library plus scikit-learn 1.7 and numpy 1.26. No other third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+"""step1.py: flag-combination families (clusters) and unusually good rows.
+
+No earlier step modules were provided with this request, so the CSV loading and
+encoding helpers needed here are defined in this file instead of being imported.
+"""
+
+import csv
+
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
+
+
+def _load(path):
+    """Return (rows, input_cols, goals) where goals is a list of (name, sign)."""
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        names = reader.fieldnames or []
+        rows = list(reader)
+    inputs, goals = [], []
+    for name in names:
+        if name.endswith("+"):
+            goals.append((name, 1.0))
+        elif name.endswith("-"):
+            goals.append((name, -1.0))
+        elif name.endswith("X"):
+            continue
+        else:
+            inputs.append(name)
+    return rows, inputs, goals
+
+
+def _encode(rows, cols):
+    """Numeric matrix for input columns; non-numeric columns get ordinal codes."""
+    out = np.zeros((len(rows), len(cols)), dtype=float)
+    for j, c in enumerate(cols):
+        vals = [r[c] for r in rows]
+        try:
+            out[:, j] = [float(v) for v in vals]
+        except (TypeError, ValueError):
+            codes = {v: i for i, v in enumerate(sorted(set(map(str, vals))))}
+            out[:, j] = [codes[str(v)] for v in vals]
+    return out
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    rows, inputs, _ = _load(train_csv)
+    n = len(rows)
+    if n == 0:
+        return []
+    if not inputs:
+        return [0] * n
+
+    X = StandardScaler().fit_transform(_encode(rows, inputs))
+
+    best_labels = np.zeros(n, dtype=int)
+    best_score = -np.inf
+    for k in range(2, min(8, n - 1) + 1):
+        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)
+        labels = km.labels_
+        if len(set(labels.tolist())) < 2:
+            continue
+        score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score = score
+            best_labels = labels
+
+    return [int(x) for x in best_labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together),
+    at most 5% of rows. Uses the Pareto front over all goals, ranked when the
+    front is larger than the cap."""
+    rows, _, goals = _load(train_csv)
+    n = len(rows)
+    if n == 0 or not goals:
+        return []
+
+    # Build a matrix where larger is always better.
+    M = np.array(
+        [[float(r[name]) * sign for name, sign in goals] for r in rows],
+        dtype=float,
+    )
+
+    # Non-dominated (Pareto) front. ge[i, j]: row j >= row i on all goals.
+    # gt[i, j]: row j > row i on at least one goal. Row i is dominated if some j does both.
+    M_j = M[None, :, :]
+    M_i = M[:, None, :]
+    ge = (M_j >= M_i).all(axis=2)
+    gt = (M_j > M_i).any(axis=2)
+    dominated = (ge & gt).any(axis=1)
+    front_idx = np.flatnonzero(~dominated)
+
+    cap = max(1, int(0.05 * n))
+    if len(front_idx) <= cap:
+        return sorted(int(i) for i in front_idx)
+
+    # Too many non-dominated rows: keep the ones with the best normalised total.
+    F = M[front_idx]
+    mins = F.min(axis=0)
+    maxs = F.max(axis=0)
+    span = np.where(maxs > mins, maxs - mins, 1.0)
+    score = ((F - mins) / span).sum(axis=1)
+    order = np.argsort(-score, kind="stable")
+    chosen = front_idx[order[:cap]]
+    return sorted(int(i) for i in chosen)
+```
+
+### step2.py
+```python
+"""step2.py: predict each goal for an unseen flag set, with an uncertainty range."""
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from step1 import _load, _encode
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Return {goal: (estimate, low, high)} for every goal of train_csv.
+
+    `row` maps input column names to values (goal columns removed). The range
+    low..high is the 5th to 95th percentile of out-of-bag prediction errors,
+    added around the point estimate.
+    """
+    rows, inputs, goals = _load(train_csv)
+    if not goals:
+        return {}
+
+    n = len(rows)
+    if n == 0:
+        return {name: (float("nan"), float("nan"), float("nan")) for name, _ in goals}
+
+    # Encode training rows and the query together so categorical codes agree.
+    query = {c: row.get(c, "") for c in inputs}
+    X_all = _encode(rows + [query], inputs)
+    X, x_new = X_all[:-1], X_all[-1:]
+
+    out: dict[str, tuple[float, float, float]] = {}
+    for name, _sign in goals:
+        y = np.array([float(r[name]) for r in rows], dtype=float)
+
+        # Too little data for a meaningful model: fall back to the observed spread.
+        if n < 10:
+            est = float(y.mean())
+            lo = float(y.min())
+            hi = float(y.max())
+            out[name] = (est, min(lo, est), max(hi, est))
+            continue
+
+        model = RandomForestRegressor(
+            n_estimators=300,
+            min_samples_leaf=2,
+            bootstrap=True,
+            oob_score=True,
+            random_state=0,
+            n_jobs=1,
+        )
+        model.fit(X, y)
+        est = float(model.predict(x_new)[0])
+
+        # Out-of-bag errors estimate how wrong the model is on unseen rows.
+        oob = np.asarray(model.oob_prediction_, dtype=float)
+        resid = y - oob
+        resid = resid[np.isfinite(resid)]
+        if resid.size >= 2:
+            q_lo = float(np.quantile(resid, 0.05))
+            q_hi = float(np.quantile(resid, 0.95))
+        else:
+            q_lo = q_hi = 0.0
+
+        lo = min(est + q_lo, est)
+        hi = max(est + q_hi, est)
+        out[name] = (est, lo, hi)
+
+    return out
+```
+
+Step 3: certify.
+The client asks:
+  - "Turning on `inline` looked faster last week; is that real or just run-to-run noise?"
+  - "Are my two favourite flag sets actually different, or should I pick the simpler one?"
+
+Write step3.py defining exactly these functions:
+def same(xs, ys) -> bool
+    xs, ys: lists of numbers (e.g. run times). True if they are NOT really different
+    (the gap is noise), False if the difference is real.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step3.py in one ```python block.
