@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5508,
+ "stop_reason": "end_turn",
+ "session_id": "ee47a40d-eb7f-47ea-804e-9c7da9028f33",
+ "total_cost_usd": 0.029294999999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27874,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 722,
+  "output_tokens_details": {
+   "thinking_tokens": 370
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27874,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 722,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27874,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27874
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23274,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023358999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 722,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27874,
+   "webSearchRequests": 0,
+   "costUSD": 0.005936,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step13.py: certify whether two sets of measurements really differ.\n\nStandard library only (Python 3.13). Reuses step3 (Cliff's delta and the\nEfron bootstrap test) rather than repeating it.\n\nBoth client questions reduce to this check:\n  - shortlist versus league average: pass the shortlist's measurements as xs\n    and the league's as ys;\n  - strikers versus midfielders on penalties: pass the penalty values of each\n    group as xs and ys.\n\nReturns True when the gap is noise, and False only when the difference is\nboth non-negligible in effect size and statistically significant.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step3 import same as _step3_same\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise).\n\n    xs, ys: lists of numbers (e.g. run times). Returns False only when the\n    difference is both non-negligible in effect size and statistically\n    significant. Empty input or identical values count as the same.\n    \"\"\"\n    return _step3_same(xs, ys)\n```",
+ "ttft_ms": 3030,
+ "type": "result",
+ "duration_ms": 4376,
+ "uuid": "2da7c114-9d8f-4b8d-86c1-851f770622e6",
+ "ttft_stream_ms": 1286,
+ "time_to_request_ms": 13,
+ "queued_turn_count": 0
+}
