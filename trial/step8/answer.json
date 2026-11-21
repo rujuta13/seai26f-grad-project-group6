@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 40726,
+ "stop_reason": "end_turn",
+ "session_id": "783d1747-223e-4bf1-972c-101595419510",
+ "total_cost_usd": 0.0199481,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14932,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8509,
+  "output_tokens_details": {
+   "thinking_tokens": 7211
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14932,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8509,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14932,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14932
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12637,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012707000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8509,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14932,
+   "webSearchRequests": 0,
+   "costUSD": 0.0072410999999999994,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step8.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep8.py: fix.  Given a bad build (goals removed), find the fewest input\nflags to change so that the build becomes good.  \"Good\" is judged as in\nstep4.stream: the goals predicted by step2.guess, once placed in the table,\nmust have ydist within the keep cut from step4._cut.  Columns named in\nFROZEN are never changed.  The search tries one changed column, then two,\nand so on.  The first size with a good answer wins, and among answers of\nthat size the one with the lowest predicted ydist is returned.  The search\nstops after MAX_EVALS guesses.  If no good fix is found by then, the result\nis the least-bad change tried.\n\"\"\"\nfrom itertools import combinations, product\nimport ezr\nimport step2, step4\n\nMAX_EVALS = 1000   # cap on guesses, so the search stays bounded\n\ndef _values(col, tbl) -> list:\n  \"Distinct known values of input COL in the training rows, thinned to about 10.\"\n  vs = {r[col.at] for r in tbl.rows if r[col.at] != \"?\"}\n  vs = sorted(vs, key=(lambda v: v) if type(col) is ezr.Num else str)\n  if len(vs) > 10:\n    vs = [vs[round(i*(len(vs)-1)/9)] for i in range(10)]\n  return vs\n\ndef fix(train_csv: str, row: dict, frozen=()) -> dict:\n  \"Same row's inputs, with as few values changed as possible so the build is good.\"\n  tbl    = step2._tbl(train_csv)\n  cut    = step4._cut(train_csv)\n  frozen = set(frozen)\n  base   = {}\n  for c in tbl.x:\n    v = row.get(c.txt, \"?\")\n    base[c.txt] = \"?\" if v is None else v\n  cache  = {}        # input values -> (good?, ydist), so repeats cost nothing\n  evals  = [0]\n\n  def judge(changes: dict) -> tuple[bool, float]:\n    \"Is the build with CHANGES applied good, judged on its predicted goals?\"\n    cand = {**base, **changes}\n    key  = tuple(cand[c.txt] for c in tbl.x)\n    if key not in cache:\n      evals[0] += 1\n      est   = step2.guess(train_csv, cand)\n      probe = step2._probe(tbl, cand)\n      for c in tbl.y: probe[c.at] = est[c.txt][0]   # predicted goals\n      y = ezr.ydist(tbl, probe)\n      cache[key] = (y <= cut, y)\n    return cache[key]\n\n  ok, y = judge({})\n  if ok: return dict(row)                 # already good: nothing to change\n\n  cols    = [c for c in tbl.x if c.txt not in frozen]\n  choices = {c.txt: [v for v in _values(c, tbl) if v != base[c.txt]]\n             for c in cols}\n  names   = [n for n in choices if choices[n]]\n\n  def trials():\n    \"Every change set, smallest first: one column, then two, and so on.\"\n    for k in range(1, len(names)+1):\n      for combo in combinations(names, k):\n        for vals in product(*(choices[n] for n in combo)):\n          yield k, dict(zip(combo, vals))\n\n  best_k, found = None, None\n  best_any      = (y, {})                 # least-bad change, if nothing is good\n  for k, changes in trials():\n    if best_k is not None and k > best_k: break   # finished the smallest good size\n    if evals[0] >= MAX_EVALS: break\n    good, yy = judge(changes)\n    if yy < best_any[0]: best_any = (yy, changes)\n    if good and (found is None or yy < found[0]):\n      found, best_k = (yy, changes), k\n  pick = found or best_any\n  return {**row, **pick[1]}\n```",
+ "ttft_ms": 35640,
+ "type": "result",
+ "duration_ms": 39734,
+ "uuid": "64a52ead-84eb-4118-a30c-3e94fb0ed42d",
+ "ttft_stream_ms": 1245,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
