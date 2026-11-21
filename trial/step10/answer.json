@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 45202,
+ "duration_api_ms": 45190,
+ "num_turns": 1,
+ "result": "```python\nimport warnings\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.gaussian_process import GaussianProcessRegressor\nfrom sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel\nfrom sklearn.metrics import r2_score\n\nfrom step1 import _read, _columns, _to_float_column\nfrom step2 import _encode_inputs, guess\nfrom step7 import choose\n\n_BUDGET = 30\n_TRIALS = 20\n_KAPPA = 1.0\n\n\ndef _oriented(rows, goals):\n    \"\"\"Oriented goal matrix (larger is better), NaN where a value is unusable.\"\"\"\n    return np.column_stack(\n        [sign * _to_float_column(rows, name) for name, sign in goals]\n    )\n\n\ndef _norm_bounds(S):\n    \"\"\"Per-goal min and span over the finite values of S.\"\"\"\n    G = S.shape[1]\n    lo = np.zeros(G)\n    hi = np.ones(G)\n    for g in range(G):\n        col = S[:, g]\n        fin = col[np.isfinite(col)]\n        if fin.size:\n            lo[g] = float(fin.min())\n            hi[g] = float(fin.max())\n    span = np.where(hi - lo > 0, hi - lo, 1.0)\n    return lo, span\n\n\ndef _quality_rows(S, lo, span):\n    \"\"\"Mean min-max normalised goal value per row; unusable cells count as 0.\"\"\"\n    Z = (S - lo) / span\n    Z = np.where(np.isfinite(Z), Z, 0.0)\n    return Z.mean(axis=1)\n\n\ndef _select_from(idxs, S):\n    \"\"\"Labelled-set selection rule: best normalised goal mean among labelled rows.\"\"\"\n    idxs = np.asarray(idxs, dtype=int)\n    M = S[idxs]\n    ok = np.all(np.isfinite(M), axis=1)\n    if not np.any(ok):\n        return int(idxs[0])\n    Mo = M[ok]\n    io = idxs[ok]\n    lo, span = _norm_bounds(Mo)\n    score = _quality_rows(Mo, lo, span)\n    return int(io[int(np.argmax(score))])\n\n\ndef _objective(M):\n    \"\"\"Scalar objective per labelled row: sum of z-scored oriented goals.\"\"\"\n    obj = np.full(M.shape[0], np.nan)\n    fin_rows = np.all(np.isfinite(M), axis=1)\n    if not np.any(fin_rows):\n        return obj\n    Mf = M[fin_rows]\n    mu = Mf.mean(axis=0)\n    sd = Mf.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    obj[fin_rows] = ((Mf - mu) / sd).sum(axis=1)\n    return obj\n\n\ndef _features(rows, inputs):\n    \"\"\"Standardised encoded inputs for every row.\"\"\"\n    n = len(rows)\n    if inputs:\n        X, _ = _encode_inputs(rows, inputs)\n    else:\n        X = np.zeros((n, 1))\n    mu = X.mean(axis=0)\n    sd = X.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    return (X - mu) / sd\n\n\ndef _gp_pick(Z, S, B, rng):\n    \"\"\"Off-the-shelf rival tuner: GP surrogate with an upper-confidence-bound rule.\"\"\"\n    n = S.shape[0]\n    first_k = min(B, max(2, B // 3))\n    labelled = [int(i) for i in rng.choice(n, size=first_k, replace=False)]\n    while len(labelled) < B:\n        idx = np.array(labelled, dtype=int)\n        unl = np.setdiff1d(np.arange(n), idx)\n        if unl.size == 0:\n            break\n        obj = _objective(S[idx])\n        ok = np.isfinite(obj)\n        if ok.sum() < 3:\n            nxt = int(rng.choice(unl))\n        else:\n            kernel = ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5) + WhiteKernel(1e-3)\n            gp = GaussianProcessRegressor(\n                kernel=kernel, normalize_y=True, random_state=0\n            )\n            with warnings.catch_warnings():\n                warnings.simplefilter(\"ignore\")\n                gp.fit(Z[idx[ok]], obj[ok])\n                mu, sd = gp.predict(Z[unl], return_std=True)\n            nxt = int(unl[int(np.argmax(mu + _KAPPA * sd))])\n        labelled.append(nxt)\n    return _select_from(np.array(labelled, dtype=int), S)\n\n\ndef _mean_r2(test_rows, goals, preds):\n    \"\"\"Mean per-goal R^2 of predictions against finite test goal values.\"\"\"\n    scores = []\n    for name, _sign in goals:\n        y = _to_float_column(test_rows, name)\n        p = preds[name]\n        mask = np.isfinite(y) & np.isfinite(p)\n        if mask.sum() >= 2 and np.var(y[mask]) > 0:\n            scores.append(float(r2_score(y[mask], p[mask])))\n    return float(np.mean(scores)) if scores else 0.0\n\n\ndef _guesser_r2(train_csv, test_rows, goals):\n    preds = {name: np.full(len(test_rows), np.nan) for name, _ in goals}\n    for i, row in enumerate(test_rows):\n        est = guess(train_csv, row)\n        for name, _ in goals:\n            preds[name][i] = est[name][0]\n    return _mean_r2(test_rows, goals, preds)\n\n\ndef _forest_r2(train_csv, test_rows, goals):\n    fieldnames, train_rows = _read(train_csv)\n    inputs, _ = _columns(fieldnames)\n    m = len(test_rows)\n    n = len(train_rows)\n    if n == 0:\n        return 0.0\n    if inputs:\n        X, encode_row = _encode_inputs(train_rows, inputs)\n        Xte = np.vstack([encode_row(r) for r in test_rows]).astype(float)\n    else:\n        X = np.zeros((n, 1))\n        Xte = np.zeros((m, 1))\n    preds = {}\n    for name, _sign in goals:\n        y = _to_float_column(train_rows, name)\n        fin = np.isfinite(y)\n        p = np.full(m, np.nan)\n        if fin.sum() >= 2:\n            model = RandomForestRegressor(n_estimators=200, random_state=0, n_jobs=1)\n            model.fit(X[fin], y[fin])\n            p = model.predict(Xte)\n        preds[name] = p\n    return _mean_r2(test_rows, goals, preds)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race the tuner against rivals on test_csv, and the guesser against a\n    standard model. Higher scores are better.\n\n    Tuner keys (score = mean min-max normalised goal value of the chosen build,\n    in [0, 1], with a budget of 30 labelled rows):\n      - \"ours\": step7.choose\n      - \"random_search\": mean over repeated random draws of 30 rows\n      - \"gp_tuner\": scikit-learn Gaussian-process UCB tuner\n    Guesser keys (score = mean per-goal R^2 of predicted goal medians):\n      - \"guess:ours\": step2.guess\n      - \"guess:random_forest\": scikit-learn RandomForestRegressor\n    \"\"\"\n    fieldnames, test_rows = _read(test_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(test_rows)\n    keys = [\"ours\", \"random_search\", \"gp_tuner\", \"guess:ours\", \"guess:random_forest\"]\n    if n == 0 or not goals:\n        return {k: 0.0 for k in keys}\n\n    names = [g for g, _ in goals]\n    S = _oriented(test_rows, goals)\n    lo, span = _norm_bounds(S)\n    qual = _quality_rows(S, lo, span)\n    B = min(_BUDGET, n)\n\n    def label(i):\n        return {g: test_rows[i].get(g) for g in names}\n\n    scores: dict[str, float] = {}\n\n    # Our tuner.\n    ours_idx = choose(test_csv, label, budget=B)\n    scores[\"ours\"] = float(qual[ours_idx])\n\n    # Random search rival, averaged over repeated draws.\n    rs = []\n    for t in range(_TRIALS):\n        rng = np.random.default_rng(t)\n        pick = rng.choice(n, size=B, replace=False)\n        rs.append(float(qual[_select_from(pick, S)]))\n    scores[\"random_search\"] = float(np.mean(rs))\n\n    # Standard library-style tuner rival (GP with UCB).\n    Z = _features(test_rows, inputs)\n    gp_rng = np.random.default_rng(0)\n    gp_idx = _gp_pick(Z, S, B, gp_rng)\n    scores[\"gp_tuner\"] = float(qual[gp_idx])\n\n    # Guesser versus off-the-shelf model.\n    scores[\"guess:ours\"] = _guesser_r2(train_csv, test_rows, goals)\n    scores[\"guess:random_forest\"] = _forest_r2(train_csv, test_rows, goals)\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "e36611a1-59e8-423e-9c3e-56c367a27864",
+ "total_cost_usd": 0.007117525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 13205,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10933,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13205,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 10933,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13205,
+   "webSearchRequests": 0,
+   "costUSD": 0.007117525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "1e7014da-06fb-4415-b807-a9cadc980a80"
+}
