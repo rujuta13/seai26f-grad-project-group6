@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 22891,
+ "stop_reason": "end_turn",
+ "session_id": "da6a2c81-f6ac-4e58-b380-c536f824c670",
+ "total_cost_usd": 0.014509900000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11326,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4929,
+  "output_tokens_details": {
+   "thinking_tokens": 3924
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11326,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4929,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11326,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11326
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9715,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00978,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4929,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11326,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047299,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step5.py: which input columns are to blame for the bad rows?\n\"step5.py: which input columns are to blame for the bad rows?\"\nimport bisect\nimport math\nimport ezr\n\nBAD  = 0.75   # rows at or above this ydist quantile count as \"bad\"\nBINS = 8      # equal-frequency bins for numeric inputs\n\ndef blame(train_csv: str) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n\n  def ydist_of(row):\n    \"How far ROW's goals are from ideal; infinite if any goal is unknown.\"\n    if any(row[c.at] == \"?\" for c in tbl.y): return math.inf\n    return ezr.ydist(tbl, row)\n\n  known = [(y, r) for y, r in ((ydist_of(r), r) for r in tbl.rows)\n           if y < math.inf]\n  names = [c.txt for c in tbl.x]\n  if len(known) < 2 or not tbl.x: return names\n\n  sorted_ys = sorted(y for y, _ in known)\n  cut   = sorted_ys[min(len(sorted_ys) - 1, int(BAD * len(sorted_ys)))]\n  rows  = [r for _, r in known]\n  labels = [y >= cut for y, _ in known]          # True = bad\n  n  = len(rows)\n  nb = sum(labels)\n  ng = n - nb\n  if nb == 0 or ng == 0: return names            # nothing to tell apart\n\n  def bins_of(col):\n    \"One discrete bin per row for COL: its symbol, or its numeric quantile bin.\"\n    if type(col) is ezr.Sym:\n      return [r[col.at] for r in rows]\n    xs = sorted(r[col.at] for r in rows if r[col.at] != \"?\")\n    if not xs: return [\"?\"] * n\n    edges = sorted({xs[i * len(xs) // BINS] for i in range(1, BINS)})\n    return [\"?\" if r[col.at] == \"?\"\n            else bisect.bisect_right(edges, r[col.at]) for r in rows]\n\n  def info(bins):\n    \"Mutual information, in bits, between a column's bins and badness.\"\n    cnt, bad = {}, {}\n    for b, y in zip(bins, labels):\n      cnt[b] = cnt.get(b, 0) + 1\n      if y: bad[b] = bad.get(b, 0) + 1\n    total = 0.0\n    for b, c in cnt.items():\n      bc = bad.get(b, 0)\n      gc = c - bc\n      for joint, pb in ((bc, nb), (gc, ng)):\n        if joint: total += (joint / n) * math.log2((joint * n) / (c * pb))\n    return total\n\n  scored = [(info(bins_of(c)), c.txt) for c in tbl.x]\n  return [name for _, name in sorted(scored, key=lambda t: -t[0])]\n```",
+ "ttft_ms": 19043,
+ "type": "result",
+ "duration_ms": 22027,
+ "uuid": "fea25c0e-1c70-40d4-9d46-41e90371795b",
+ "ttft_stream_ms": 1396,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
