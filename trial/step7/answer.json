@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63626,
+ "stop_reason": "end_turn",
+ "session_id": "51a69b84-ac4b-4b90-8eae-241424c20cbc",
+ "total_cost_usd": 0.0226825,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14909,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13889,
+  "output_tokens_details": {
+   "thinking_tokens": 12273
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14909,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13889,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14909,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14909
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12676,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012756,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13889,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14909,
+   "webSearchRequests": 0,
+   "costUSD": 0.0099265,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step7.py\nimport math\nimport random\nimport ezr\n\nALIAS = {\"speed\": \"performance\"}   # client words -> goal base names\n\ndef _base(s: str) -> str:\n  \"A column name without its + or - sign, in lower case.\"\n  return s.rstrip(\"+-\").lower()\n\ndef _value(d: dict, name: str):\n  \"The label for column NAME, whether keyed with its sign or without.\"\n  for k in (name, name.rstrip(\"+-\")):\n    if k in d: return d[k]\n  return None\n\ndef _goal_ats(hdr: list[str], goal) -> list[int]:\n  \"Columns of the numeric goals in HDR, or only the one named GOAL.\"\n  ats = [at for at, s in enumerate(hdr) if s[-1] in \"+-\"]\n  if not ats: raise ValueError(\"choose: the file has no goal columns\")\n  if goal is None: return ats\n  g    = str(goal).rstrip(\"+-\").lower()\n  g    = ALIAS.get(g, g)\n  hits = [at for at in ats if _base(hdr[at]) == g]\n  hits = hits or [at for at in ats if g and g in _base(hdr[at])]\n  if not hits: raise ValueError(f\"choose: no goal named {goal!r}\")\n  return hits\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row in BLIND_CSV (goals all '?'), calling LABEL\n  at most BUDGET times. If GOAL names one goal, optimise only that one.\"\"\"\n  if budget < 1: raise ValueError(\"choose: budget must be at least 1\")\n  raw   = [[str(s) for s in row] for row in ezr.csv(blind_csv)]\n  hdr, body = raw[0], raw[1:]\n  n     = len(body)\n  if n == 0: raise ValueError(\"choose: no rows to choose from\")\n  goals = _goal_ats(hdr, goal)\n  # unselected goals become ignored columns (names ending X), so ezr skips them\n  names = [s.rstrip(\"+-\") + \"X\"\n           if (at not in goals and s[-1] in \"+-\") else s\n           for at, s in enumerate(hdr)]\n  has_x = any(s[-1] not in \"X+-!\" for s in names)   # ezr's input test\n  calls = 0\n  filled: dict[int, list] = {}\n\n  def ask(i: int) -> dict:\n    nonlocal calls\n    if calls >= budget:\n      raise RuntimeError(f\"choose: more than {budget} labels requested\")\n    calls += 1\n    return label(i) or {}\n\n  def take(i: int) -> None:\n    d   = ask(i)\n    row = list(body[i])\n    for at in goals:\n      v = _value(d, hdr[at])\n      if isinstance(v, str): v = ezr.atom(v)\n      ok = isinstance(v, (int, float)) and not isinstance(v, bool)\n      row[at] = v if ok else \"?\"\n    filled[i] = row\n\n  def complete(i: int) -> bool:\n    return all(isinstance(filled[i][at], (int, float)) for at in goals)\n\n  def table(ids: list[int]) -> ezr.TBL:\n    return ezr.Tbl([names] + [filled[i] for i in ids])\n\n  m     = min(budget, n)\n  rng   = random.Random(ezr.the.Seed)\n  order = list(range(n))\n  rng.shuffle(order)\n  for i in order[:min(ezr.the.Start, m)]: take(i)\n\n  while len(filled) < m:\n    done = [i for i in filled if complete(i)]\n    pool = [i for i in order if i not in filled]\n    if len(done) < 4 or not has_x:\n      nxt = pool[0]                       # too little to model: explore\n    else:\n      tbl    = table(done)\n      ys     = [ezr.ydist(tbl, filled[i]) for i in done]\n      ranked = sorted(zip(ys, done))\n      k      = max(1, int(math.sqrt(len(done))))\n      best   = [i for _, i in ranked[:k]]\n      rest   = [i for _, i in ranked[k:]]\n      cb     = ezr.mids(ezr.clone(tbl, [filled[i] for i in best]))\n      cr     = ezr.mids(ezr.clone(tbl, [filled[i] for i in rest]))\n      nxt    = max(pool, key=lambda i: ezr.xdist(tbl, body[i], cr)\n                                     - ezr.xdist(tbl, body[i], cb))\n    take(nxt)\n\n  done = [i for i in filled if complete(i)]\n  if not done: return min(filled)\n  tbl = table(done)\n  ys  = [ezr.ydist(tbl, filled[i]) for i in done]\n  return done[ys.index(min(ys))]\n```",
+ "ttft_ms": 57640,
+ "type": "result",
+ "duration_ms": 62605,
+ "uuid": "4f18b7af-5952-48c4-97f1-9b22d0b74c17",
+ "ttft_stream_ms": 1302,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
