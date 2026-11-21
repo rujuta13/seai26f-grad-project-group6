@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 14078,
+ "stop_reason": "end_turn",
+ "session_id": "c9b42d14-b42d-4eee-9622-e88111d8b446",
+ "total_cost_usd": 0.0549299,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 52471,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3023,
+  "output_tokens_details": {
+   "thinking_tokens": 2046
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 52471,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3023,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 52471,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 52471
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 42849,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.042924,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3023,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 52471,
+   "webSearchRequests": 0,
+   "costUSD": 0.0120059,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 30: race. Our targeting and response guesser against standard rivals on test data.\n\nServes the client's questions:\n  - \"Does our targeting beat simply mailing our highest-income customers?\"\n  - \"Does our response guesser beat an off-the-shelf model?\"\n\nBuilds on step20.race, which scores our tuner and guesser against random search,\nlocal search, a top-OVR shortlist and a ridge regression. This module adds the\nclient's own baseline, \"top_income\": test-mail the _BUDGET test customers with\nthe highest INCOME, then pick the best of that list on the goals. All scores lie\nin [0, 1]; higher is better.\n\"\"\"\n\nimport step1\nimport step7\nimport step10\nimport step20\n\n_INCOME = \"INCOME\"  # income column used by the simple top-income list\n\n\ndef _top_income_score(test_rows, goals, has_income):\n    \"\"\"Normalised goal quality of the best customer on the top-income shortlist.\"\"\"\n    n = len(test_rows)\n    budget = min(step10._BUDGET, n)\n    if budget <= 0 or not has_income or not goals:\n        return 0.0\n\n    def income_order(i):\n        inc = step7._num(test_rows[i].get(_INCOME))\n        # Highest income first; rows without a usable income go last.\n        # Ties go to the lower index.\n        return (0, -inc, i) if inc is not None else (1, 0.0, i)\n\n    shortlist = sorted(range(n), key=income_order)[:budget]\n    measured = {i: step10._measure(test_rows, goals, i) for i in shortlist}\n    pick = step10._best_measured(measured, goals)\n\n    full = {i: step10._measure(test_rows, goals, i) for i in range(n)}\n    totals = step7._totals(full, goals)  # normalised over all test rows\n    return float(totals[pick] / len(goals))\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our methods and the standard rivals on test_csv.\n\n    Returns {method: score}, higher is better, all in [0, 1]:\n      \"ours\", \"random_search\", \"local_search\", \"top_overall\", \"top_income\"\n          - targeting: normalised goal quality of the chosen customer\n      \"ours_guesser\", \"linear_model\"\n          - response prediction: 1 - MAE / range\n    \"\"\"\n    results = dict(step20.race(train_csv, test_csv))\n\n    header, test_rows = step1._read(test_csv)\n    _, goals_max, goals_min = step1._classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    has_income = _INCOME in header\n\n    if test_rows and goals:\n        results[\"top_income\"] = _top_income_score(test_rows, goals, has_income)\n    else:\n        results[\"top_income\"] = 0.0\n    results.setdefault(\"ours\", 0.0)\n\n    return {k: float(v) for k, v in results.items()}\n```",
+ "ttft_ms": 9451,
+ "type": "result",
+ "duration_ms": 12139,
+ "uuid": "a5bfe8d9-dfba-4bcd-95b5-9a830675f7e4",
+ "ttft_stream_ms": 1403,
+ "time_to_request_ms": 32,
+ "queued_turn_count": 0
+}
