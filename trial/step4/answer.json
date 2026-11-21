@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 30310,
+ "duration_api_ms": 30297,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _read, _columns, _to_float_column\n\n_ALPHA = 0.05\n_N_PERM = 2000\n_SEED = 0\n_CHUNK = 500\n_FIRST_CHECK = 16\n\n\ndef _train_goal_matrix(train_csv):\n    \"\"\"Return (goal names, signs, oriented finite training matrix).\"\"\"\n    fieldnames, rows = _read(train_csv)\n    _, goals = _columns(fieldnames)\n    names = [name for name, _ in goals]\n    signs = np.array([sign for _, sign in goals], dtype=float)\n    if not goals or not rows:\n        return names, signs, np.empty((0, len(goals)))\n    S = np.column_stack(\n        [sign * _to_float_column(rows, name) for name, sign in goals]\n    )\n    S = S[np.all(np.isfinite(S), axis=1)]\n    return names, signs, S\n\n\ndef _oriented_row(row, names, signs):\n    \"\"\"Oriented goal vector for one incoming row, or None if unusable.\"\"\"\n    vals = np.empty(len(names), dtype=float)\n    for j, name in enumerate(names):\n        try:\n            vals[j] = float(row.get(name))\n        except (TypeError, ValueError, AttributeError):\n            return None\n    if not np.all(np.isfinite(vals)):\n        return None\n    return signs * vals\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a streamed row iff no reference row dominates it.\n\n    The reference set is the finite training rows plus every row kept so far.\n    Dominated rows never change the Pareto status of other rows, so only kept\n    rows need to be added to the reference set.\n    \"\"\"\n    names, signs, ref = _train_goal_matrix(train_csv)\n    decisions: list[bool] = []\n    if not names:\n        return [False] * len(rows)\n\n    for row in rows:\n        v = _oriented_row(row, names, signs)\n        if v is None:\n            decisions.append(False)\n            continue\n        if ref.shape[0] == 0:\n            keep = True\n        else:\n            at_least = np.all(ref >= v, axis=1)\n            strictly = np.any(ref > v, axis=1)\n            keep = not bool(np.any(at_least & strictly))\n        decisions.append(keep)\n        if keep:\n            ref = np.vstack([ref, v[None, :]])\n    return decisions\n\n\ndef _perm_pvalue(x, y):\n    \"\"\"Two-sided permutation p-value for the difference in means.\"\"\"\n    n, m = len(x), len(y)\n    observed = abs(float(x.mean()) - float(y.mean()))\n    if observed == 0.0:\n        return 1.0\n    pooled = np.concatenate([x, y])\n    total = n + m\n    rng = np.random.default_rng(_SEED)\n    threshold = observed * (1.0 - 1e-12)\n    count = 0\n    done = 0\n    while done < _N_PERM:\n        b = min(_CHUNK, _N_PERM - done)\n        perm = rng.random((b, total)).argsort(axis=1)\n        vals = pooled[perm]\n        diff = np.abs(vals[:, :n].mean(axis=1) - vals[:, n:].mean(axis=1))\n        count += int(np.count_nonzero(diff >= threshold))\n        done += b\n    return (count + 1) / (_N_PERM + 1)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Warn at the first row where new results differ from training results.\n\n    Checks happen at geometrically growing window sizes (16, 32, 64, ...), so\n    the number of tests is logarithmic in the stream length. The j-th check\n    (0-based) spends alpha * 1 / ((j+1)(j+2)) in total, which sums to alpha\n    over all checks. The budget is split evenly across goals. Each check\n    compares the window of new goal values against the training goal values\n    with a permutation test on the difference in means.\n    \"\"\"\n    names, _signs, _ref = _train_goal_matrix(train_csv)\n    if not names:\n        return None\n\n    fieldnames, train_rows = _read(train_csv)\n    train_vals = {}\n    for name in names:\n        col = _to_float_column(train_rows, name)\n        train_vals[name] = col[np.isfinite(col)]\n\n    window = {name: [] for name in names}\n    G = len(names)\n    next_check = _FIRST_CHECK\n    j = 0\n    count = 0\n\n    for i, row in enumerate(rows):\n        count += 1\n        for name in names:\n            try:\n                v = float(row.get(name))\n            except (TypeError, ValueError, AttributeError):\n                continue\n            if np.isfinite(v):\n                window[name].append(v)\n\n        if count == next_check:\n            alpha_j = _ALPHA / ((j + 1) * (j + 2)) / G\n            for name in names:\n                x = train_vals[name]\n                y = np.asarray(window[name], dtype=float)\n                if len(x) == 0 or len(y) == 0:\n                    continue\n                if _perm_pvalue(x, y) <= alpha_j:\n                    return i\n            j += 1\n            next_check *= 2\n\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "3c4ed12e-bccb-4301-91dd-1f336eab050a",
+ "total_cost_usd": 0.0029564,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3772,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4969,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3772,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4969,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3772,
+   "webSearchRequests": 0,
+   "costUSD": 0.0029564,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "cbf762ab-57a7-4505-8f11-bdaa885470b6"
+}
