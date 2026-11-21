@@ -1,0 +1,15 @@
+{
+ "domain": "marketing",
+ "step": 24,
+ "skill": "flow",
+ "ok": true,
+ "score": 0.6632248578091163,
+ "baseline": 0.7482105433639181,
+ "better": "lower",
+ "extra": {
+  "kept": 16,
+  "drift_at": 119,
+  "drift_hit": true,
+  "false_alarm": false
+ }
+}
