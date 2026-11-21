@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 47537,
+ "stop_reason": "end_turn",
+ "session_id": "d771d0f3-6a6f-4ccd-8a7a-b9ab4d80490b",
+ "total_cost_usd": 0.0747157,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 67370,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11353,
+  "output_tokens_details": {
+   "thinking_tokens": 8812
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 67370,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11353,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 67370,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 67370
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 55500,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.055565,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11353,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 67370,
+   "webSearchRequests": 0,
+   "costUSD": 0.0191507,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step27.py\n\"\"\"Step 27: choose.  Find the best customers to target while test-mailing\nonly a small budget of them, and optionally optimise only one goal.\n\nThe client's two requests map onto the arguments:\n  - \"best customers, test-mailing only 50 people\": budget=50.\n  - \"store visits rather than web orders\": goal=\"NUMSTOREPURCHASES+\".\n\nIdentifier and text columns (ID, num, Rank, Name, Nation, League, Team, url)\nare left out, as in steps 11 and 21, and so are columns whose names end in\n\"X\".  Numeric columns keep only numbers; anything else counts as unknown.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nfrom collections.abc import Callable\nimport ezr\n\n_DROP = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable finite number (not text, not missing, not a bool).\"\n  if isinstance(v, bool) or not isinstance(v, (int, float)): return False\n  return not isinstance(v, float) or math.isfinite(v)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast; blanks, '?' and non-finite numbers are unknown.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    if s in (\"\", \"?\"): return \"?\"\n    v = ezr.atom(s)\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\n\ndef _stem(name) -> str:\n  \"A column name without its goal sign, lower-cased: 'Cpu-' -> 'cpu'.\"\n  return str(name).strip().rstrip(\"+-!\").lower()\n\n\ndef _load(blind_csv: str) -> ezr.TBL:\n  \"Read BLIND_CSV into an ezr table: identifier and text columns dropped, numeric columns kept numeric.\"\n  raw = list(ezr.csv(blind_csv))\n  if not raw: raise ValueError(\"choose: blind_csv has no rows\")\n  names = [str(h).strip() for h in raw[0]]\n  kept  = [at for at, nm in enumerate(names)\n           if nm and nm not in _DROP and not nm.endswith(\"X\")]\n  head  = [names[at] for at in kept]\n  numeric = [h[:1].isupper() for h in head]    # ezr types a column the same way\n  rows = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    r += [\"?\"] * (len(names) - len(r))\n    row = [r[at] for at in kept]\n    rows.append([v if (not numeric[j] or _num(v)) else \"?\"\n                 for j, v in enumerate(row)])\n  return ezr.Tbl([head] + rows)\n\n\ndef _goals(tbl: ezr.TBL, goal: str | None) -> list[ezr.COL]:\n  \"The numeric goal columns to optimise: all of them, or the one named GOAL.\"\n  nums = [c for c in tbl.y if isinstance(c, ezr.Num)]\n  if not nums:\n    raise ValueError(\"choose: blind_csv has no numeric goal columns\")\n  if goal is None: return nums\n  hits = [c for c in nums if _stem(c.txt) == _stem(goal)]\n  if not hits:\n    names = \", \".join(c.txt for c in nums)\n    raise ValueError(f\"choose: no goal named {goal!r} (goals are: {names})\")\n  return hits\n\n\ndef choose(blind_csv: str, label: Callable[[int], dict],\n           budget: int = 30, goal: str | None = None) -> int:\n  \"\"\"Index of the best row found.  BLIND_CSV has every goal cell '?'.\n  LABEL(i) returns row i's goals as a dict, and is called at most BUDGET\n  times (a further call raises RuntimeError).  If GOAL names one goal, only\n  that goal is optimised; GOAL may be given with or without its sign.\"\"\"\n  tbl  = _load(blind_csv)\n  rows = tbl.rows\n  if not rows: raise ValueError(\"choose: blind_csv has no rows\")\n  if budget < 1: raise ValueError(\"choose: budget must be at least 1\")\n  active = _goals(tbl, goal)\n  ats    = [c.at for c in active]\n  n      = len(rows)\n  rng    = random.Random(ezr.the.Seed)     # local rng: no global side effects\n  done: dict[int, ezr.ROW] = {}            # row index -> row with goals known\n  dists: dict[int, list[float]] = {}       # labelled row -> xdist to every row\n\n  def xd(z: int, j: int) -> float:\n    \"How far row Z is from row J over the x columns (0 if there are none).\"\n    return ezr.xdist(tbl, rows[z], rows[j]) if tbl.x else 0.0\n\n  def ask(i: int) -> None:\n    \"Label row I, once, and remember its goals and its distances.\"\n    if len(done) >= budget:\n      raise RuntimeError(f\"choose: budget of {budget} labels exhausted\")\n    got   = dict(label(i) or {})\n    stems = {_stem(k): v for k, v in got.items()}\n    row   = list(rows[i])\n    for c in tbl.y:\n      if not isinstance(c, ezr.Num): continue\n      v = got[c.txt] if c.txt in got else stems.get(_stem(c.txt), \"?\")\n      v = _clean(v)\n      row[c.at] = v if _num(v) else \"?\"\n    done[i]  = row\n    dists[i] = [xd(z, i) for z in range(n)]\n\n  def score(lab: ezr.TBL, row: ezr.ROW) -> float:\n    \"Distance from the ideal on the chosen goals; lower is better, inf if unknown.\"\n    gaps = []\n    for at in ats:\n      c, v = lab.cols[at], row[at]\n      if v == \"?\" or isinstance(v, str): return math.inf\n      gaps.append(abs(ezr.norm(c, v) - c.goal))\n    return ezr.dist(gaps, len(gaps))\n\n  def scores() -> dict[int, float]:\n    \"Score of every labelled row, normalised by the labelled rows so far.\"\n    ids = sorted(done)\n    lab = ezr.clone(tbl, [done[i] for i in ids])\n    return {i: score(lab, done[i]) for i in ids}\n\n  def predict(z: int, sc: dict[int, float]) -> float:\n    \"Mean score of the nearest labelled rows to unlabelled row Z.\"\n    k    = max(1, int(math.sqrt(len(sc))))\n    near = sorted(sc, key=lambda j: (dists[j][z], j))[:k]\n    return sum(sc[j] for j in near) / len(near)\n\n  # Start with a few random labels, then label the predicted best rows,\n  # with a random row now and then so the search does not stall.\n  start = min(budget, n, max(4, budget // 4))\n  for i in rng.sample(range(n), start): ask(i)\n  step = 0\n  while len(done) < min(budget, n):\n    step += 1\n    todo = [z for z in range(n) if z not in done]\n    if step % 4 == 0:\n      ask(rng.choice(todo))\n      continue\n    sc = scores()\n    ask(min(todo, key=lambda z: (predict(z, sc), z)))\n\n  sc = scores()\n  return min(sc, key=lambda i: (sc[i], i))\n```",
+ "ttft_ms": 39631,
+ "type": "result",
+ "duration_ms": 46143,
+ "uuid": "0ac08665-0c38-4b56-a19e-ff59e359a36d",
+ "ttft_stream_ms": 1476,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
