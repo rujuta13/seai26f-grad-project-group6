@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 10435,
+ "stop_reason": "end_turn",
+ "session_id": "013d9a02-c87e-4c80-9fda-f41ecd48c6f2",
+ "total_cost_usd": 0.0259484,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24066,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1828,
+  "output_tokens_details": {
+   "thinking_tokens": 1335
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24066,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1828,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24066,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24066
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20151,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020221,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1828,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24066,
+   "webSearchRequests": 0,
+   "costUSD": 0.0057274000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step13.py: certify the client's two comparisons.\n\n  1. Is the shortlist really better than the league average, or is that luck?\n  2. Are strikers really better penalty takers than midfielders?\n\nBoth questions compare two groups of goal values. Pass the two lists of values\nto same(): it returns True when the gap is noise, and False only when the\ndifference is both statistically significant and practically large. The test\nitself is step3.same, reused unchanged. This module only cleans the inputs:\nmissing, non-numeric and non-finite values (e.g. NaN from empty player cells)\nare dropped first, so they cannot corrupt the medians or the effect size.\nStandard library only.\n\"\"\"\nimport math\n\nfrom step3 import same as _step3_same\n\n\ndef _clean(values):\n    \"\"\"The finite float values of an iterable; anything else is dropped.\"\"\"\n    out = []\n    for v in values:\n        try:\n            f = float(v)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            out.append(f)\n    return out\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise),\n    False if the difference is real.\n\n    xs, ys: lists of numbers (e.g. run times, or goal values of two groups).\n    Missing and non-finite entries are ignored. If either group is left empty,\n    there is no evidence of a difference, so the result is True.\n    \"\"\"\n    return bool(_step3_same(_clean(xs), _clean(ys)))\n```",
+ "ttft_ms": 7443,
+ "type": "result",
+ "duration_ms": 9386,
+ "uuid": "9b224084-d740-430a-80e6-85c4ea451f32",
+ "ttft_stream_ms": 1235,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
