@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 16265,
+ "stop_reason": "end_turn",
+ "session_id": "8b31624f-c9db-48f6-89d5-80c05e76e82a",
+ "total_cost_usd": 0.021105199999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 18405,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3392,
+  "output_tokens_details": {
+   "thinking_tokens": 3046
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18405,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3392,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 18405,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 18405
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 15663,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.015728,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3392,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18405,
+   "webSearchRequests": 0,
+   "costUSD": 0.0053772,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step14.py\nimport step2\nimport step4\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"For each row, in order: True if it is worth keeping (good on the goals). Goals a scouting report lacks are estimated from train_csv alone.\"\n  tbl, score = step4._scorer(train_csv)\n  out = []\n  for row in rows:\n    full    = step2._row(tbl, row)                    # row in full column layout\n    missing = [c for c in tbl.y if full[c.at] == \"?\"]\n    if missing:                                       # scouting reports lack goals:\n      est = step2.guess(train_csv, row)               # estimate them from train only\n      for c in missing: full[c.at] = est[c.txt][0]\n    out.append(bool(score(full) > 0))                 # >0 means better than train average\n  return out\n\ndef drift(train_csv, rows) -> int | None:\n  \"Index of the first row where the last W new rows stop looking like train_csv, or None if they never do.\"\n  return step4.drift(train_csv, rows)\n```",
+ "ttft_ms": 14340,
+ "type": "result",
+ "duration_ms": 15345,
+ "uuid": "df8f539c-15a9-408d-8a2c-fb5a1ea03faa",
+ "ttft_stream_ms": 1427,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
