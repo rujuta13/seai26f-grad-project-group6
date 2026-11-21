@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 10959,
+ "stop_reason": "end_turn",
+ "session_id": "73948c92-08bd-40f0-94ad-c8f193af2daa",
+ "total_cost_usd": 0.006332000000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 4539,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2096,
+  "output_tokens_details": {
+   "thinking_tokens": 1468
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4539,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2096,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4539,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 4539
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4301,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.0043760000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2096,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4539,
+   "webSearchRequests": 0,
+   "costUSD": 0.001956,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 3: decide whether two sets of measurements really differ.\n\nsame(xs, ys) runs a two-sided permutation test on the difference of means.\nIt uses only the standard library and a fixed random seed, so repeated calls\ngive the same answer. Non-numeric and non-finite values are ignored.\n\"\"\"\n\nimport math\nimport random\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"Return True if the gap between xs and ys is consistent with noise.\n\n    Returns False only when the difference in means is statistically\n    significant at the 5% level (two-sided permutation test).\n    Returns True when either sample has no usable values.\n    \"\"\"\n    alpha = 0.05\n    n_perm = 10000\n\n    a = []\n    for x in xs:\n        try:\n            f = float(x)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            a.append(f)\n\n    b = []\n    for y in ys:\n        try:\n            f = float(y)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            b.append(f)\n\n    if not a or not b:\n        return True\n\n    na = len(a)\n    nb = len(b)\n    total = math.fsum(a) + math.fsum(b)\n\n    observed = abs(math.fsum(a) / na - math.fsum(b) / nb)\n    if observed == 0.0:\n        return True\n\n    pooled = a + b\n    rng = random.Random(0)\n    threshold = observed * (1.0 - 1e-9)\n    hits = 0\n\n    for _ in range(n_perm):\n        rng.shuffle(pooled)\n        sa = math.fsum(pooled[:na])\n        sb = total - sa\n        diff = abs(sa / na - sb / nb)\n        if diff >= threshold:\n            hits += 1\n\n    p_value = (hits + 1) / (n_perm + 1)\n    return bool(p_value > alpha)\n```",
+ "ttft_ms": 8286,
+ "type": "result",
+ "duration_ms": 10171,
+ "uuid": "c4cbde30-ba7a-4b57-aded-8483c5fd285d",
+ "ttft_stream_ms": 1234,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
