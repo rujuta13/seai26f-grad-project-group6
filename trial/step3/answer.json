@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 12430,
+ "duration_api_ms": 12418,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\n_ALPHA = 0.05\n_RESAMPLES = 10000\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the two samples do NOT differ beyond run-to-run noise, False if the difference is real.\n\n    Two-sided permutation test on the difference of means, at the 5% level.\n    Empty samples, or samples whose means are identical, count as not different.\n    \"\"\"\n    x = np.asarray(list(xs), dtype=float).ravel()\n    y = np.asarray(list(ys), dtype=float).ravel()\n    x = x[np.isfinite(x)]\n    y = y[np.isfinite(y)]\n    if len(x) == 0 or len(y) == 0:\n        return True\n\n    observed = abs(float(x.mean()) - float(y.mean()))\n    if observed == 0.0:\n        return True\n\n    n = len(x)\n    pooled = np.concatenate([x, y])\n    rng = np.random.default_rng(0)\n    threshold = observed - 1e-12 * max(1.0, observed)\n\n    count = 0\n    for _ in range(_RESAMPLES):\n        p = rng.permutation(pooled)\n        d = abs(float(p[:n].mean()) - float(p[n:].mean()))\n        if d >= threshold:\n            count += 1\n\n    p_value = (count + 1) / (_RESAMPLES + 1)\n    return p_value >= _ALPHA\n```",
+ "stop_reason": "end_turn",
+ "session_id": "2a2b77d1-d52d-42cf-9641-2c9500d9d6ff",
+ "total_cost_usd": 0.0011759,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3204,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1550,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3204,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1550,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3204,
+   "webSearchRequests": 0,
+   "costUSD": 0.0011759,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "acfa54e3-9738-41b2-8eb3-ff64522f8f0b"
+}
