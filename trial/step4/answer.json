@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 46372,
+ "duration_api_ms": 46361,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step4.py: streaming keep/discard decisions and drift warnings for nightly benchmarks.\n\nstream() keeps a row when no earlier row (training or streamed) is at least as good\non every goal and strictly better on one, i.e. the row is on the Pareto front of\neverything seen so far.\n\ndrift() warns at the first row where the last _WINDOW new rows sit significantly\nfurther from the training inputs than training rows sit from each other. The\ndistance is the nearest-neighbour distance in standardised input space, and the\nsignificance test is step3.same().\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _goal_matrix, _load, _to_value\nfrom step3 import same\n\n_WINDOW = 30      # number of recent streamed rows tested together for drift\n_CHUNK_D = 256    # chunk size for the pairwise distance computation\n\n\ndef _goal_vector(row, header, maximise, minimise):\n    \"\"\"Goal values of one row as a minimisation vector, in the same order as step1.\"\"\"\n    vals = [float(row[header[i]]) for i in minimise]\n    vals += [-float(row[header[i]]) for i in maximise]\n    return np.array(vals, dtype=float)\n\n\ndef _encode_train(rows, inputs):\n    \"\"\"Numeric encoding of training inputs plus the mappings needed to encode new rows.\"\"\"\n    n = len(rows)\n    X = np.zeros((n, len(inputs)), dtype=float)\n    specs = []\n    for j, col in enumerate(inputs):\n        vals = [_to_value(r[col]) for r in rows]\n        if all(isinstance(v, float) for v in vals):\n            X[:, j] = vals\n            specs.append((\"num\", float(np.median(vals))))\n        else:\n            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}\n            X[:, j] = [codes[str(v)] for v in vals]\n            specs.append((\"cat\", codes))\n    return X, specs\n\n\ndef _encode_row(row, header, inputs, specs):\n    \"\"\"Encode one new row with the mappings learned from the training data.\"\"\"\n    q = np.zeros(len(inputs), dtype=float)\n    for j, col in enumerate(inputs):\n        raw = row.get(header[col])\n        kind, info = specs[j]\n        if kind == \"num\":\n            v = _to_value(raw) if raw is not None else None\n            q[j] = v if isinstance(v, float) else info\n        else:\n            q[j] = info.get(str(raw), -1) if raw is not None else -1\n    return q\n\n\ndef _loo_nearest(Z):\n    \"\"\"Distance from each training row to its nearest other training row.\"\"\"\n    n = Z.shape[0]\n    out = np.empty(n, dtype=float)\n    for s in range(0, n, _CHUNK_D):\n        e = min(s + _CHUNK_D, n)\n        diff = Z[s:e, None, :] - Z[None, :, :]\n        d = np.sqrt((diff ** 2).sum(axis=2))\n        d[np.arange(e - s), np.arange(s, e)] = np.inf\n        out[s:e] = d.min(axis=1)\n    return out.tolist()\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or discard (False) each row, in arrival order.\n\n    A row is kept if no training row and no earlier streamed row is at least as\n    good on every goal and strictly better on at least one.\n    \"\"\"\n    header, train_rows = _load(train_csv)\n    maximise, minimise, _ = _classify(header)\n    known = _goal_matrix(train_rows, maximise, minimise)\n    if known.shape[1] == 0:\n        return [False] * len(rows)\n\n    decisions: list[bool] = []\n    for row in rows:\n        g = _goal_vector(row, header, maximise, minimise)\n        if known.shape[0] == 0:\n            dominated = False\n        else:\n            le = (known <= g).all(axis=1)   # known row is no worse on every goal\n            lt = (known < g).any(axis=1)    # and strictly better on some goal\n            dominated = bool((le & lt).any())\n        decisions.append(not dominated)\n        known = np.vstack([known, g[None, :]])\n    return decisions\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the first streamed row at which the new rows stop resembling train_csv.\n\n    Warns when the last _WINDOW new rows are significantly further from the\n    training inputs than training rows are from each other. Returns None if\n    no such warning is raised.\n    \"\"\"\n    header, train_rows = _load(train_csv)\n    _, _, inputs = _classify(header)\n    n = len(train_rows)\n    if n < 2 or not rows:\n        return None\n\n    X, specs = _encode_train(train_rows, inputs)\n    if inputs:\n        scaler = StandardScaler().fit(X)\n        Z = scaler.transform(X)\n    else:\n        scaler = None\n        Z = np.zeros((n, 0), dtype=float)\n    ref = _loo_nearest(Z)\n\n    new_dist: list[float] = []\n    for i, row in enumerate(rows):\n        if inputs:\n            q = _encode_row(row, header, inputs, specs)\n            zq = scaler.transform(q.reshape(1, -1))[0]\n        else:\n            zq = np.zeros(0, dtype=float)\n        d = float(np.sqrt(((Z - zq) ** 2).sum(axis=1)).min())\n        new_dist.append(d)\n        if len(new_dist) >= _WINDOW and not same(ref, new_dist[-_WINDOW:]):\n            return i\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5bd349eb-0154-49eb-88b2-ac53aee8ee40",
+ "total_cost_usd": 0.00386165,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 5142,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6437,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5142,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6437,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5142,
+   "webSearchRequests": 0,
+   "costUSD": 0.00386165,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "196e5d02-aba4-49d9-90ba-fd63d2dc390c"
+}
