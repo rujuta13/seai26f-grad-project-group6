@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8601,
+ "stop_reason": "end_turn",
+ "session_id": "cc04dde1-3bab-4956-869f-80550ea3891e",
+ "total_cost_usd": 0.0316332,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29605,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1666,
+  "output_tokens_details": {
+   "thinking_tokens": 954
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29605,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1666,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29605,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29605
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24804,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024879,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1666,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29605,
+   "webSearchRequests": 0,
+   "costUSD": 0.0067542,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\n\n_ALPHA = 0.05   # significance level: below this, the gap is treated as real\n_PERMS = 2000   # Monte Carlo permutations (p-value resolution ~ 1/2001)\n_SEED = 0       # fixed seed so the same inputs always give the same answer\n\n\ndef _clean(v):\n    \"\"\"Keep only finite numbers; skip anything that cannot be read as a float.\"\"\"\n    out = []\n    for x in v:\n        try:\n            f = float(x)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            out.append(f)\n    return out\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the two samples do NOT differ significantly (the gap is noise).\n\n    Used for both client questions: whether a campaign lifted purchases, and\n    whether families with teenagers shop differently. Two-sided permutation\n    test on the difference of means. Distribution-free, so it does not assume\n    normal values. Non-numeric and non-finite entries are ignored. Deterministic\n    via a fixed seed.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        # nothing to compare, so no evidence of a real difference\n        return True\n\n    na, nb = len(a), len(b)\n    ma = sum(a) / na\n    mb = sum(b) / nb\n    obs = abs(ma - mb)\n\n    # tolerance so floating-point round-off does not hide ties\n    scale = max(1.0, abs(ma), abs(mb))\n    tol = 1e-12 * scale\n    if obs <= tol:\n        return True\n\n    pooled = a + b\n    rng = random.Random(_SEED)\n    hits = 0\n    for _ in range(_PERMS):\n        rng.shuffle(pooled)\n        d = abs(sum(pooled[:na]) / na - sum(pooled[na:]) / nb)\n        if d >= obs - tol:\n            hits += 1\n\n    # add-one correction keeps the p-value away from exactly zero\n    p = (hits + 1) / (_PERMS + 1)\n    return p >= _ALPHA\n```",
+ "ttft_ms": 5154,
+ "type": "result",
+ "duration_ms": 7251,
+ "uuid": "eeef0faa-0348-46a0-b218-a367984a1d97",
+ "ttft_stream_ms": 1272,
+ "time_to_request_ms": 84,
+ "queued_turn_count": 0
+}
