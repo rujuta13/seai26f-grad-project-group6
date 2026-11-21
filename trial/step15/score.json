@@ -1,0 +1,16 @@
+{
+ "domain": "players",
+ "step": 15,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.23095951238583534,
+ "baseline": 0.1979853070788994,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "Skill moves",
+   "GK Reflexes",
+   "GK Diving"
+  ]
+ }
+}

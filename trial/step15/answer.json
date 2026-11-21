@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 19072,
+ "stop_reason": "end_turn",
+ "session_id": "074359f4-4701-48dd-91ed-3d6568abe0f1",
+ "total_cost_usd": 0.027938499999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25234,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3935,
+  "output_tokens_details": {
+   "thinking_tokens": 3069
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25234,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3935,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25234,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25234
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20839,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020923999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3935,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25234,
+   "webSearchRequests": 0,
+   "costUSD": 0.007014500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step15.py: blame, for the two client questions.\n\nQ1: why are some players weak from the spot (Penalties+)?\nQ2: what separates the physically strong players from the rest (Strength+)?\n\nstep5.blame ranks input columns against one overall score, which can hide a\ngoal such as Penalties+ or Strength+ when other goals pull the mean the other\nway. Here each goal is checked on its own: a row is bad on that goal when it\nfalls in the bottom BAD_QUANTILE of that goal's normalised values, with a\nmissing value counted as the worst. Each input column is blamed by its most\ntroublesome goal, and columns are ranked best first.\n\nReading, column splitting, the signed goal vector, normalisation, quantiles,\nbinning and the per-column blame score come from steps 1, 2, 4 and 5.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step1 import _columns, _read\nfrom step2 import _quantile\nfrom step4 import _objectives\nfrom step5 import BAD_QUANTILE, _column_blame, _scores\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Each goal is considered separately. For each goal, the rows at or below the\n    BAD_QUANTILE of that goal's normalised score are bad on that goal, and each\n    input column is scored by how much more often bad rows fall in its most\n    troublesome value or bin than the overall bad rate. A column's blame is the\n    largest of these scores over all goals. Ties keep the file's column order.\n    Every input column is returned.\n    \"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    if not inputs:\n        return []\n    if n == 0 or not goals:\n        return list(inputs)\n\n    obj = [_objectives(r, gmax, gmin) for r in rows]\n    worst = [0.0] * len(inputs)\n    for j in range(len(goals)):\n        single = [[o[j]] for o in obj]\n        score = _scores(single, 1)\n        cut = _quantile(score, BAD_QUANTILE)\n        bad = [s <= cut for s in score]\n        p0 = sum(bad) / n\n        for k, c in enumerate(inputs):\n            b = _column_blame(rows, c, bad, p0)\n            if b > worst[k]:\n                worst[k] = b\n\n    order = sorted(range(len(inputs)), key=lambda i: (-worst[i], i))\n    return [inputs[i] for i in order]\n```",
+ "ttft_ms": 15545,
+ "type": "result",
+ "duration_ms": 18087,
+ "uuid": "b361fe1a-da6b-4569-9706-9160b20c0a6b",
+ "ttft_stream_ms": 1930,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
