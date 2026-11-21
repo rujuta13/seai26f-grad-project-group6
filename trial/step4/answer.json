@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 29280,
+ "stop_reason": "end_turn",
+ "session_id": "79b715ee-0f99-4e1f-9bff-3f1b422a6929",
+ "total_cost_usd": 0.0084024,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 4676,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5974,
+  "output_tokens_details": {
+   "thinking_tokens": 4811
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4676,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5974,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4676,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 4676
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4400,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.0044800000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5974,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4676,
+   "webSearchRequests": 0,
+   "costUSD": 0.0039224,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\n\nimport step1\nimport step2\nimport step3\n\n_WINDOW = 25      # new rows per drift test block (non-overlapping)\n_REF_CAP = 200    # max training rows used as drift reference\n_REF_SEED = 0     # fixed seed so the same inputs always give the same answer\n\n\ndef _scores(row, goals):\n    \"\"\"Higher is better on every goal; missing values count as worst.\"\"\"\n    s = []\n    for name, sign in goals:\n        v = step1._to_num(row.get(name, \"\"))\n        s.append(sign * v if v is not None else -math.inf)\n    return tuple(s)\n\n\ndef _insert(front, s):\n    \"\"\"Add s to a Pareto front (list of score tuples).\n\n    Returns (new_front, dominated). If s is dominated by a member of the\n    front, the front is returned unchanged. Dominance is transitive, so a\n    point is dominated by some seen point iff it is dominated by the front.\n    \"\"\"\n    for p in front:\n        if step1._dominates(p, s):\n            return front, True\n    return [p for p in front if not step1._dominates(s, p)] + [s], False\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a streamed row if it is not dominated on the goals by any\n    training row or by any earlier streamed row.\n\n    Only train_csv and the rows already seen are used for each decision.\n    \"\"\"\n    trows, _inputs, goals = step1._load(train_csv)\n    if not goals:\n        return [False] * len(rows)\n\n    front = []\n    for r in trows:\n        front, _ = _insert(front, _scores(r, goals))\n\n    keep = []\n    for r in rows:\n        s = _scores(r, goals)\n        front, dominated = _insert(front, s)\n        keep.append(not dominated)\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the row at which new rows first look unlike train_csv, or None.\n\n    Works on input columns only. Each non-overlapping block of _WINDOW new\n    rows is summarised by its distance to the nearest training row. That\n    sample is compared with the leave-one-out nearest-neighbour distances of\n    the training rows, using a permutation test (step3.same). The first block\n    that differs significantly is flagged, and its last row index is returned.\n    Each decision uses only train_csv and rows up to that index.\n    \"\"\"\n    trows, inputs, _goals = step1._load(train_csv)\n    n = len(trows)\n    if n < 2 or not rows or not inputs:\n        return None\n\n    kinds = step2._prep(trows, inputs)\n    tparsed = [step2._parse(r, inputs, kinds) for r in trows]\n\n    # reference: leave-one-out nearest-neighbour distances within training\n    rng = random.Random(_REF_SEED)\n    idx = list(range(n))\n    if n > _REF_CAP:\n        idx = rng.sample(idx, _REF_CAP)\n    ref = []\n    for i in idx:\n        ref.append(min(\n            step2._dist(tparsed[i], tparsed[j], kinds)\n            for j in range(n) if j != i\n        ))\n\n    # stream the new rows in blocks\n    qd = []\n    for i, r in enumerate(rows):\n        q = step2._parse(r, inputs, kinds)\n        qd.append(min(step2._dist(q, t, kinds) for t in tparsed))\n        if len(qd) == _WINDOW:\n            if not step3.same(ref, qd):\n                return i\n            qd = []\n    return None\n```",
+ "ttft_ms": 24651,
+ "type": "result",
+ "duration_ms": 28472,
+ "uuid": "1687c5fd-6bd0-452f-9b49-58c68c93cd35",
+ "ttft_stream_ms": 1146,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
