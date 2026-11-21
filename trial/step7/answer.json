@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63728,
+ "stop_reason": "end_turn",
+ "session_id": "d38e9d7c-b8a5-4c03-830f-ae748d178721",
+ "total_cost_usd": 0.020614300000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12783,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14115,
+  "output_tokens_details": {
+   "thinking_tokens": 13249
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12783,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14115,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12783,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12783
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10930,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011000000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14115,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12783,
+   "webSearchRequests": 0,
+   "costUSD": 0.0096143,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step7.py: choose. Find the best flag set while benchmarking at most BUDGET builds.\"\nfrom ezr import Tbl, acquire, clone, csv, the, ydist\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row, labelling at most BUDGET rows.  BLIND_CSV has\n  every goal '?'; LABEL(i) gives row i's goals as a dict.  GOAL, if given,\n  optimises that one goal only.\"\"\"\n  if budget < 1: raise ValueError(\"budget must be at least 1\")\n  rows  = list(csv(str(blind_csv)))\n  if len(rows) < 2: raise ValueError(f\"no rows in {blind_csv}\")\n  names = rows[0]\n  goals = [n for n in names if n[-1] in \"+-\"]\n  keep  = None\n  if goal is not None:\n    want = goal.rstrip(\"+-\").lower()\n    hits = [n for n in goals if n[:-1].lower() == want]\n    if not hits: raise ValueError(f\"no goal named {goal!r}; goals are {goals}\")\n    keep  = hits[0]\n    # ezr skips any column whose name ends in X, so the other goals vanish\n    names = [n[:-1] + \"X\" if n in goals and n != keep else n for n in names]\n  tbl    = Tbl([names] + rows[1:])\n  pool   = tbl.rows\n  where  = {id(r): i for i, r in enumerate(pool)}  # row object -> file index\n  budget = min(budget, len(pool))\n  got, calls = {}, [0]\n\n  def labeller(row):\n    \"Ask LABEL for this row's goals, once per row, and never past BUDGET.\"\n    if calls[0] >= budget: raise RuntimeError(f\"more than {budget} labels asked\")\n    calls[0] += 1\n    i    = where[id(row)]\n    val  = label(i)\n    full = list(row)\n    for c in tbl.y:\n      key = c.txt if c.txt in val else c.txt[:-1]\n      full[c.at] = val[key]\n    got[i] = full\n    return full\n\n  saved = the.Start, the.Few\n  the.Start, the.Few = min(the.Start, budget), len(pool)  # sample the whole pool\n  try:\n    acquire(tbl, budget, labeller)\n  finally:\n    the.Start, the.Few = saved\n  lab = clone(tbl, list(got.values()))\n  return min(got, key=lambda i: ydist(lab, got[i]))\n```",
+ "ttft_ms": 60620,
+ "type": "result",
+ "duration_ms": 62973,
+ "uuid": "4184fea3-5c26-416a-9cb2-c327975db28a",
+ "ttft_stream_ms": 1482,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
