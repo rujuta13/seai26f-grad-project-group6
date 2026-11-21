@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 10727,
+ "stop_reason": "end_turn",
+ "session_id": "521de166-402b-48bb-b3f0-56c4837820a8",
+ "total_cost_usd": 0.022174,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20249,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2012,
+  "output_tokens_details": {
+   "thinking_tokens": 1741
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20249,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2012,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20249,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20249
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17048,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017118,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2012,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20249,
+   "webSearchRequests": 0,
+   "costUSD": 0.005056,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step17.py: choose. Find the best flag set while labelling at most BUDGET builds.\"\nfrom step7 import choose as _choose\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row of BLIND_CSV, where every goal cell is '?'.\n  LABEL(i) returns row i's goals as a dict, and may be called at most BUDGET\n  times (more raises RuntimeError).  GOAL, if given, optimises that one goal only.\"\"\"\n  if not isinstance(budget, int) or isinstance(budget, bool) or budget < 1:\n    raise ValueError(\"budget must be an integer of at least 1\")\n  return _choose(str(blind_csv), label, budget=budget, goal=goal)\n```",
+ "ttft_ms": 8871,
+ "type": "result",
+ "duration_ms": 9620,
+ "uuid": "98cea52f-a09c-44f4-8c0a-01c64140a007",
+ "ttft_stream_ms": 1298,
+ "time_to_request_ms": 66,
+ "queued_turn_count": 0
+}
