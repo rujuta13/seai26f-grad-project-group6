@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28537,
+ "stop_reason": "end_turn",
+ "session_id": "cd1efcea-5a63-42e7-86da-b0af253ff7b7",
+ "total_cost_usd": 0.032101500000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27879,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6259,
+  "output_tokens_details": {
+   "thinking_tokens": 4197
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27879,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6259,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27879,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27879
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23326,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023396,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6259,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27879,
+   "webSearchRequests": 0,
+   "costUSD": 0.008705500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step12.py\n\"\"\"Step 12: guess.  Before a scout is sent, guess each goal of a player from\nhis other numbers, with a range calibrated on the training data.\n\nThe estimate is the median goal value of the training rows nearest to the\nplayer.  The range is that estimate widened by the 90th percentile of how\nfar the same kind of guess missed on training rows that were held out of\ntheir own neighbourhood, so the range is only as narrow as the data allows.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nimport ezr\n\n_CAL   = 150     # train rows used to calibrate the range\n_COVER = 0.9     # the range should hold about this share of the time\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _full(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"Lay ROW out full-width, with '?' for anything missing; strings are cast.\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):                    # {column name: value}\n    for c in tbl.cols.values():\n      name = tbl.names[c.at]\n      if name in row: q[c.at] = row[name]\n  elif len(row) == len(tbl.names):             # already full-width\n    q = list(row)\n  else:                                        # positional, x-column order\n    for c, v in zip(tbl.x, row): q[c.at] = v\n  return [ezr.atom(v) if isinstance(v, str) else v for v in q]\n\n\ndef _enc(c: ezr.COL, v):\n  \"An input cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n  if isinstance(v, str) and v == \"?\": return None\n  if isinstance(c, ezr.Num):\n    if not isinstance(v, (int, float)): return None\n    return ezr.norm(c, v)\n  return v\n\n\ndef _goal(v) -> float | None:\n  \"A goal cell as a float, or None if it is unknown.\"\n  if isinstance(v, bool) or not isinstance(v, (int, float)): return None\n  return float(v)\n\n\ndef _dist(eq: list, e: list, sym: list[bool]) -> float:\n  \"Root mean square gap between two encoded input rows, as ezr.xdist.\"\n  s = 0.0\n  for j, (a, b) in enumerate(zip(eq, e)):\n    if a is None or b is None: g = 1.0\n    elif sym[j]:               g = 0.0 if a == b else 1.0\n    else:                      g = abs(a - b)\n    s += g * g\n  return math.sqrt(s / len(eq)) if eq else 0.0\n\n\ndef guess(train_csv: str, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"For each goal: (estimate, low, high).  ROW has its goal columns removed.\n  The estimate is the median goal value of the training rows nearest to ROW.\n  LOW and HIGH bracket it by the calibrated miss, clamped to the goal values\n  seen in training, so the range is never wider than the data allows.\"\"\"\n  tbl   = _load(train_csv)\n  rows  = tbl.rows\n  goals = list(tbl.y)\n  if not goals: return {}\n  if not rows:  return {c.txt: (0.0, 0.0, 0.0) for c in goals}\n\n  n   = len(rows)\n  k   = min(n, max(5, int(math.sqrt(n))))\n  sym = [not isinstance(c, ezr.Num) for c in tbl.x]\n  E   = [[_enc(c, r[c.at]) for c in tbl.x] for r in rows]\n  eq  = [_enc(c, _full(tbl, row)[c.at]) for c in tbl.x]\n\n  def near(e: list, skip: int | None = None) -> list[int]:\n    \"Indices of the K training rows nearest encoded row E, leaving out SKIP.\"\n    if not tbl.x:\n      order = [i for i in range(n) if i != skip]\n    else:\n      order = sorted((i for i in range(n) if i != skip),\n                     key=lambda i: (_dist(e, E[i], sym), i))\n    return order[:k]\n\n  qn   = near(eq)\n  rng  = random.Random(ezr.the.Seed)           # local rng: no global side effects\n  cal  = rng.sample(range(n), min(_CAL, n))\n  cnear = {i: near(E[i], skip=i) for i in cal} # held out of their own neighbourhood\n\n  out = {}\n  for c in goals:\n    gv = {}\n    for i, r in enumerate(rows):\n      v = _goal(r[c.at])\n      if v is not None: gv[i] = v\n    if not gv:\n      out[c.txt] = (0.0, 0.0, 0.0)\n      continue\n    vals_all = list(gv.values())\n\n    def estimate(idxs: list[int]) -> float:\n      \"Median goal value of the known goals among IDXS (all rows if none).\"\n      vs = [gv[i] for i in idxs if i in gv]\n      if not vs: vs = vals_all\n      return _quantile(vs, 0.5)\n\n    est   = estimate(qn)\n    resid = [abs(gv[i] - estimate(cnear[i])) for i in cal if i in gv]\n    half  = (_quantile(resid, _COVER) if resid\n             else (max(vals_all) - min(vals_all)) / 2)\n    lo    = max(min(vals_all), est - half)\n    hi    = min(max(vals_all), est + half)\n    out[c.txt] = (float(est), float(min(lo, est)), float(max(hi, est)))\n  return out\n```",
+ "ttft_ms": 21141,
+ "type": "result",
+ "duration_ms": 27439,
+ "uuid": "921782ca-f751-4f7b-ab9d-7295ba8a8082",
+ "ttft_stream_ms": 1888,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
