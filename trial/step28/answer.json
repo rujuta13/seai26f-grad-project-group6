@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 24073,
+ "stop_reason": "end_turn",
+ "session_id": "48b413eb-7b6a-40e3-ada0-b6f477e206a2",
+ "total_cost_usd": 0.0773749,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 72946,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5707,
+  "output_tokens_details": {
+   "thinking_tokens": 2542
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 72946,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5707,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 72946,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 72946
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 59877,
+   "outputTokens": 11,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.059932,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5707,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 72946,
+   "webSearchRequests": 0,
+   "costUSD": 0.0174429,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 28: fix. The smallest change to a customer's inputs that makes them good.\n\nThe client asks what nudge would bring a drifting customer back, and which product\noffer would turn a deal-only shopper into a regular one. Both come down to the same\nquestion: which input values to change, and how few.\n\nMethod\n  - \"Good\" follows the step21 best-customer standard. A customer's estimated goal\n    score (each goal min-max scaled over the training customers with complete goal\n    values, 0 = worst, 1 = best, averaged over goals) must reach the lowest score\n    among the customers step21.best returns.\n  - Goal estimates come from step22.guess, so the search changes only inputs the\n    model uses. Identifier-like numeric columns and many-level text columns are\n    never changed.\n  - Candidate values are real values seen in train_csv. For a numeric column these\n    are the nearest training values just below and just above the customer's\n    current value, plus an even spread of the column's distinct values. For a text\n    column they are its most common levels.\n  - Search is a beam search over change sets, by size. Every single change is tried,\n    then the BEAM best single changes are extended to pairs, and so on up to\n    MAX_CHANGES. The first size that reaches the good threshold wins. Among those,\n    the change set with the smallest total movement is returned. Text changes count\n    1 each; numeric changes count their size as a share of the column's training range.\n  - If nothing good is found within the limits, the change set with the highest\n    estimated score is returned.\n  - Columns named in `frozen` are never changed. A customer already estimated to be\n    good is returned unchanged.\n\nThe search runs on estimates, so a returned change set is a suggestion to test. The\nbeam search is not exhaustive, so it can miss a smaller fix.\n\"\"\"\nimport bisect\nimport os\nfrom collections import Counter\n\nfrom step1 import _load\nfrom step21 import _finite, best\nfrom step22 import _spec, _text, guess\n\nMAX_CHANGES = 4        # largest number of inputs changed in one fix\nBEAM = 8               # change sets kept per size when searching for larger fixes\nMAX_SPREAD = 8         # evenly spread distinct training values offered per numeric column\nMAX_LEVELS = 8         # most common text levels offered per text column\nEVAL_BUDGET = 20000    # cap on candidate evaluations, to keep runtime bounded\nEPS = 1e-12\n_CACHE = {}\n\n\ndef _spread_values(vals, limit):\n    \"\"\"At most `limit` values from an ascending list, evenly spread from first to last.\"\"\"\n    if len(vals) <= limit:\n        return list(vals)\n    idx = sorted({round(i * (len(vals) - 1) / (limit - 1)) for i in range(limit)})\n    return [vals[i] for i in idx]\n\n\ndef _vec_score(vec, lo, hi):\n    \"\"\"Step21-scale score of an oriented goal vector (higher is better), clamped to the\n    training range, averaged over goals. A constant goal contributes 0.\"\"\"\n    total = 0.0\n    for j, v in enumerate(vec):\n        span = hi[j] - lo[j]\n        if span > 0:\n            total += (min(max(v, lo[j]), hi[j]) - lo[j]) / span\n    return total / len(vec)\n\n\ndef _data(train_csv):\n    \"\"\"Cached training data: changeable columns, their candidate values, goal scale,\n    and the good-customer threshold (the lowest score among the step21 shortlist).\"\"\"\n    stamp = (train_csv, os.path.getmtime(train_csv))\n    hit = _CACHE.get(stamp)\n    if hit is not None:\n        return hit\n\n    rows, inputs, goals = _load(train_csv)\n    d = {\"goals\": goals, \"kind\": {}, \"dv\": {}, \"spread\": {}, \"span\": {},\n         \"levels\": {}, \"cols\": [], \"lo\": [], \"hi\": [], \"threshold\": None}\n\n    if rows and goals:\n        nums, cats = _spec(rows, inputs)\n\n        for c, _, _, _ in nums:\n            vals = sorted({x for x in (_finite(r.get(c)) for r in rows) if x is not None})\n            if len(vals) < 2:\n                continue\n            d[\"kind\"][c] = \"num\"\n            d[\"dv\"][c] = vals\n            d[\"span\"][c] = vals[-1] - vals[0]\n            d[\"spread\"][c] = _spread_values(vals, MAX_SPREAD)\n            d[\"cols\"].append(c)\n\n        for c, levels in cats:\n            counts = Counter(_text(r.get(c)) for r in rows)\n            ranked = sorted((lv for lv in levels if lv), key=lambda lv: (-counts[lv], lv))\n            if not ranked:\n                continue\n            d[\"kind\"][c] = \"cat\"\n            d[\"levels\"][c] = ranked[:MAX_LEVELS]\n            d[\"cols\"].append(c)\n\n        usable = {}\n        for i, r in enumerate(rows):\n            vec = []\n            for c, sign in goals:\n                x = _finite(r.get(c))\n                if x is None:\n                    break\n                vec.append(sign * x)\n            else:\n                usable[i] = vec\n\n        if usable:\n            g = len(goals)\n            lo = [min(v[j] for v in usable.values()) for j in range(g)]\n            hi = [max(v[j] for v in usable.values()) for j in range(g)]\n            d[\"lo\"], d[\"hi\"] = lo, hi\n            good = [i for i in best(train_csv) if i in usable]\n            if good:\n                d[\"threshold\"] = min(_vec_score(usable[i], lo, hi) for i in good)\n\n    _CACHE.clear()\n    _CACHE[stamp] = d\n    return d\n\n\ndef _alternatives(c, cur, d):\n    \"\"\"(value, movement) pairs for moving column c away from its current cell.\n    movement is the change as a share of the column's training range (1 for text\n    columns and for a missing current cell).\"\"\"\n    if d[\"kind\"][c] == \"num\":\n        dv = d[\"dv\"][c]\n        span = d[\"span\"][c]\n        x = _finite(cur)\n        cands = set(d[\"spread\"][c])\n        if x is not None:\n            i = bisect.bisect_left(dv, x)\n            if i > 0:\n                cands.add(dv[i - 1])          # nearest training value just below\n            j = bisect.bisect_right(dv, x)\n            if j < len(dv):\n                cands.add(dv[j])              # nearest training value just above\n            cands.discard(x)\n        out = []\n        for v in sorted(cands):\n            mv = 1.0 if x is None else abs(v - x) / span\n            out.append((v, mv))\n        return out\n\n    cur_t = _text(cur)\n    return [(lv, 1.0) for lv in d[\"levels\"][c] if lv != cur_t]\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the customer's inputs with as few values changed as possible so the\n    customer becomes good.\n\n    `row` is a customer with goals removed. Columns named in `frozen` are never changed.\n    If the row is already estimated to be good, it is returned unchanged. If no good\n    version is found within the search limits, the change set with the highest\n    estimated score is returned.\n    \"\"\"\n    d = _data(train_csv)\n    out = dict(row)\n    threshold = d[\"threshold\"]\n    if threshold is None or not d[\"cols\"]:\n        return out\n\n    frozen = set(frozen)\n\n    def score(cand):\n        est = guess(train_csv, cand)\n        vec = [sign * est[name][0] for name, sign in d[\"goals\"]]\n        return _vec_score(vec, d[\"lo\"], d[\"hi\"])\n\n    base = score(out)\n    if base >= threshold - EPS:\n        return out\n\n    opts = {}\n    for c in d[\"cols\"]:\n        if c in frozen:\n            continue\n        alts = _alternatives(c, out.get(c), d)\n        if alts:\n            opts[c] = alts\n    cols = list(opts)\n\n    evals = 0\n    seen = set()\n    best_any = (base, ())\n    good = []                      # (total movement, -score, changes) at the first good size\n    beam = [(base, ())]\n    for _depth in range(1, MAX_CHANGES + 1):\n        pool = []\n        for _, changes in beam:\n            used = {c for c, _, _ in changes}\n            for c in cols:\n                if c in used:\n                    continue\n                for v, mv in opts[c]:\n                    if evals >= EVAL_BUDGET:\n                        break\n                    new = changes + ((c, v, mv),)\n                    key = frozenset((cc, vv) for cc, vv, _ in new)\n                    if key in seen:\n                        continue\n                    seen.add(key)\n                    cand = dict(out)\n                    for cc, vv, _ in new:\n                        cand[cc] = vv\n                    s = score(cand)\n                    evals += 1\n                    pool.append((s, new))\n                    if s > best_any[0]:\n                        best_any = (s, new)\n                    if s >= threshold - EPS:\n                        good.append((sum(m for _, _, m in new), -s, new))\n        if good or not pool or evals >= EVAL_BUDGET:\n            break\n        pool.sort(key=lambda t: -t[0])\n        beam = pool[:BEAM]\n\n    if good:\n        chosen = min(good, key=lambda t: (t[0], t[1]))[2]\n    else:\n        chosen = best_any[1]\n\n    for c, v, _ in chosen:\n        out[c] = v\n    return out\n```",
+ "ttft_ms": 14001,
+ "type": "result",
+ "duration_ms": 22527,
+ "uuid": "bf277e42-bd0b-45e9-9815-150ce6a3f5e8",
+ "ttft_stream_ms": 2502,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
