@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 72997,
+ "stop_reason": "end_turn",
+ "session_id": "4fcc40f7-09f3-4ae1-ac24-ea24da0a08e1",
+ "total_cost_usd": 0.0371592,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28055,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16168,
+  "output_tokens_details": {
+   "thinking_tokens": 14621
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28055,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16168,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28055,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28055
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23394,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023464000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16168,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28055,
+   "webSearchRequests": 0,
+   "costUSD": 0.013695200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step15.py\n#!/usr/bin/env python3 -B\n\"Input columns to blame for bad rows (bad on the goals), via ezr.\"\nimport math\nimport ezr\n\ndef blame(train_csv) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n  A row is bad if its goals are in the worst quarter by goal distance (ydist).\n  Text columns count as inputs unless they are identifiers (too many distinct\n  values) or goals; the row id column 'num' is ignored. Each input column is\n  scored by its largest lift: how much more often bad rows fall on one side of\n  a candidate split than they fall in the table overall. Rows with an unknown\n  goal cell are ignored. Ties keep file order.\"\"\"\n\n  def cell(v):\n    \"One cell: '?' if blank, unknown, or not finite; otherwise its value.\"\n    if isinstance(v, str): v = v.strip()\n    if v in (\"\", \"?\"): return \"?\"\n    if isinstance(v, float) and not math.isfinite(v): return \"?\"\n    return v\n\n  src   = ezr.csv(train_csv)\n  first = next(src, None)\n  if first is None: return []\n  head  = [str(v).strip() or f\"col{at}\" for at, v in enumerate(first)]\n  width = len(head)\n  rows  = []\n  for r in src:\n    r = [cell(v) for v in r]\n    rows.append((r + [\"?\"] * width)[:width])\n  n = len(rows)\n\n  # classify each column: goal, numeric input, text input, or ignored\n  kinds = []\n  for at, name in enumerate(head):\n    vals = [r[at] for r in rows if r[at] != \"?\"]\n    goal = name[-1] in \"+-\"\n    if name == \"num\" or not vals:\n      kind = None\n    elif any(isinstance(v, (str, bool)) for v in vals):\n      distinct = len({str(v) for v in vals})\n      kind = None if goal or distinct > max(1, n // 2) else \"sym\"\n    else:\n      kind = \"goal\" if goal else \"num\"\n    kinds.append(kind)\n\n  # ezr names chosen so ezr reads each kind correctly; original names kept in head\n  names = []\n  for at, kind in enumerate(kinds):\n    names.append({\"goal\": f\"G{at}{head[at][-1]}\",\n                  \"num\":  f\"N{at}\",\n                  \"sym\":  f\"s{at}\"}.get(kind, f\"Z{at}X\"))\n  data = [[(str(v) if v != \"?\" else v) if kind == \"sym\" else v\n           for v, kind in zip(r, kinds)] for r in rows]\n\n  tbl   = ezr.Tbl([names] + data)\n  goals = [c for c in tbl.y if c.txt[-1] in \"+-\"]\n  xs    = tbl.x\n  if not goals or not xs: return []\n\n  def gydist(row) -> float | None:\n    \"Distance of ROW's goals from the ideal, or None if a goal cell is unknown.\"\n    if any(row[c.at] == \"?\" for c in goals): return None\n    return ezr.dist((abs(ezr.norm(c, row[c.at]) - c.goal) for c in goals),\n                    len(goals))\n\n  kept, ys = [], []\n  for r in data:\n    y = gydist(r)\n    if y is not None:\n      kept.append(r)\n      ys.append(y)\n  m = len(kept)\n  if m == 0: return [head[c.at] for c in xs]\n\n  k     = max(1, m // 4)                         # the worst quarter\n  order = sorted(range(m), key=lambda i: ys[i])\n  bad   = set(order[-k:])                        # highest ydist = worst\n  base  = len(bad) / m                           # bad rate overall\n  leaf  = max(1, ezr.the.Leaf)                   # min rows on a side\n\n  def score(col) -> float:\n    \"Largest lift in bad rate of any side of any candidate split of COL.\"\n    best = -1.0                                  # lift is always >= -1\n    for _, go in ezr.candidates(col, kept):\n      yes  = [i for i in range(m) if go(kept[i])]\n      seen = set(yes)\n      no   = [i for i in range(m) if i not in seen]\n      for side in (yes, no):\n        if len(side) >= leaf:\n          rate = sum(i in bad for i in side) / len(side)\n          best = max(best, rate - base)\n    return best\n\n  scored = [(score(c), c) for c in xs]\n  scored.sort(key=lambda p: -p[0])               # stable: ties keep file order\n  return [head[c.at] for _, c in scored]\n```",
+ "ttft_ms": 67696,
+ "type": "result",
+ "duration_ms": 71916,
+ "uuid": "f939dfe8-b209-46a0-b5e8-aa5c43551c22",
+ "ttft_stream_ms": 1349,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
