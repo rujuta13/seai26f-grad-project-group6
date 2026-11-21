@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4853,
+ "stop_reason": "end_turn",
+ "session_id": "a326829f-aabb-4b2d-acfc-e84952d15515",
+ "total_cost_usd": 0.0287678,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27478,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 754,
+  "output_tokens_details": {
+   "thinking_tokens": 494
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27478,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 754,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27478,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27478
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22830,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022895,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 754,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27478,
+   "webSearchRequests": 0,
+   "costUSD": 0.0058728,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step23.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep23.py: certify.  Did the last campaign really lift purchases, or is\nthat noise?  Do families with teenagers really shop differently, or does\nit just look that way?  same() answers both: True means the gap is noise,\nFalse means the difference is real.  Nothing new is needed, so this file\ndelegates to step13.same, which wraps step3 and ezr's Cliff's delta and\nKolmogorov-Smirnov tests, and treats an empty sample as noise.\n\"\"\"\nimport step13\n\ndef same(xs: list[float], ys: list[float]) -> bool:\n  \"True if XS and YS are NOT really different (the gap is noise), False if the difference is real.\"\n  return step13.same(xs, ys)\n```",
+ "ttft_ms": 2993,
+ "type": "result",
+ "duration_ms": 3671,
+ "uuid": "5a319f9d-2e20-408b-95ad-71f5363ed4a8",
+ "ttft_stream_ms": 875,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
