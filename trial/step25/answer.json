@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6283,
+ "stop_reason": "end_turn",
+ "session_id": "d89c2ed2-a64b-42a0-a804-a92ecef07069",
+ "total_cost_usd": 0.0287737,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27220,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1011,
+  "output_tokens_details": {
+   "thinking_tokens": 743
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27220,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1011,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27220,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27220
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22749,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022823999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1011,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27220,
+   "webSearchRequests": 0,
+   "costUSD": 0.0059497000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 25: which input columns are to blame for bad customers, for the client's two questions.\n\nblame() ranks every input (flag) column by how differently its values are\ndistributed among bad rows and good rows, where bad rows are the worst quarter\nby the normalised goal sum. It delegates to step5, which holds the\nimplementation. The ranking is over all goals together, so the top columns\nexplain what sets apart the weakest customers on the goals as a whole,\nincluding RESPONSE+ (campaign response) and COMPLAIN- (complaints).\n\"\"\"\n\nfrom step5 import blame as _blame_step5\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Return input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    return [str(c) for c in _blame_step5(train_csv)]\n```",
+ "ttft_ms": 4418,
+ "type": "result",
+ "duration_ms": 5165,
+ "uuid": "f3a244fa-064f-4124-b7c5-566be940dc20",
+ "ttft_stream_ms": 1120,
+ "time_to_request_ms": 100,
+ "queued_turn_count": 0
+}
