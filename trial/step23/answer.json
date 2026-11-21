@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6824,
+ "stop_reason": "end_turn",
+ "session_id": "17e41aae-cfba-489d-b32f-23103178bc69",
+ "total_cost_usd": 0.0295925,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28654,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 745,
+  "output_tokens_details": {
+   "thinking_tokens": 525
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28654,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 745,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28654,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28654
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23419,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023489,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 745,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28654,
+   "webSearchRequests": 0,
+   "costUSD": 0.0061035,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 23: certify. Is a difference between two groups real, or just noise?\n\nStandard library only. Reuses the two-sided permutation test from step3, which\ncompares the difference of means with random relabellings of the pooled values\nand needs no normality assumption. Serves both client questions:\n  - did the last campaign really lift purchases, or is that noise?\n  - do families with teenagers really shop differently, or does it just look\n    that way?\n\"\"\"\n\nfrom step3 import same as _same\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the gap between xs and ys is noise (they are not really\n    different), False if the difference is real.\"\"\"\n    return _same(xs, ys)\n```",
+ "ttft_ms": 4058,
+ "type": "result",
+ "duration_ms": 4660,
+ "uuid": "c45c028c-08a7-4a25-8f01-092919491896",
+ "ttft_stream_ms": 1627,
+ "time_to_request_ms": 91,
+ "queued_turn_count": 0
+}
