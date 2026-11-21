@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 56038,
+ "stop_reason": "end_turn",
+ "session_id": "1e60ec60-8ff9-46cf-821e-50dac235e870",
+ "total_cost_usd": 0.0486805,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 40679,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13375,
+  "output_tokens_details": {
+   "thinking_tokens": 10503
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 40679,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13375,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 40679,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 40679
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33787,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033857,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13375,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 40679,
+   "webSearchRequests": 0,
+   "costUSD": 0.0148235,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 17: choose. Find a good row while calling label() at most `budget` times.\n\nblind_csv has the inputs of every candidate build, with every goal cell set to '?'.\nlabel(i) benchmarks row i and returns its goals as a dict. The budget is spent in two\nphases:\n  1. Exploration: maximin (farthest-point) sampling over the encoded inputs, so the\n     first benchmarks cover the input space.\n  2. Adaptive search: each new row maximises (predicted score from the nearest\n     benchmarked rows) + KAPPA * (distance to the nearest benchmarked row), with\n     KAPPA cycling through exploit, exploit, explore.\n\nScores use the same scale as step1: each goal is min-max scaled over the benchmarked\nrows (0 = worst, 1 = best) and averaged. If `goal` names one goal, only that goal is\noptimised. The returned index is the benchmarked row with the highest score.\n\nInput encoding: numeric columns are min-max scaled. Identifier-like numeric columns\n(almost one distinct value per row) and text columns with many levels (names, urls,\nteams, nations) are skipped, so the distances stay meaningful and fast to compute.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load\n\nSEED = 1              # fixed seed so results are reproducible\nINIT_FRAC = 0.5       # share of the budget spent on the exploration phase\nK_NEAR = 3            # benchmarked neighbours used to predict an unbenchmarked row's score\nKAPPA = (0.0, 0.0, 0.5)  # exploit, exploit, explore cycle for the adaptive phase\nEPS = 1e-9            # keeps neighbour weights finite when a distance is zero\nMAX_LEVELS = 25       # text columns with more distinct values are skipped\nNUMERIC_FRAC = 0.9    # a column is numeric if this share of its cells parse as numbers\nID_FRAC = 0.9         # a numeric column with more distinct values than this share is an id\n\n\ndef _finite(v):\n    \"\"\"The cell as a finite float, or None if it is missing, non-numeric or non-finite.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v.strip()\n    return \"\" if v is None else str(v).strip()\n\n\ndef _goal_value(g, name):\n    \"\"\"A goal cell from a label() result as a finite float, or None if unusable.\"\"\"\n    try:\n        v = g.get(name)\n    except AttributeError:\n        return None\n    return _finite(v)\n\n\ndef _features(rows, inputs):\n    \"\"\"Encode input cells as rows of floats in [0, 1]. Constant features are dropped.\n    Returns one list per row (empty lists if nothing usable is left).\"\"\"\n    n = len(rows)\n    cols = []\n    for c in inputs:\n        raw = [r.get(c) for r in rows]\n        vals = [_finite(v) for v in raw]\n        present = [x for x in vals if x is not None]\n        if present and len(present) >= NUMERIC_FRAC * n:\n            if n >= 20 and len(set(present)) > ID_FRAC * n:\n                continue  # identifier-like numeric column (ids, ranks)\n            med = sorted(present)[len(present) // 2]\n            cols.append([x if x is not None else med for x in vals])\n            continue\n        texts = [_text(v) for v in raw]\n        levels = sorted(set(texts))\n        if len(levels) > MAX_LEVELS:\n            continue  # identifier-like text (names, urls, teams, nations)\n        index = {lv: j for j, lv in enumerate(levels)}\n        block = [[0.0] * n for _ in levels]\n        for i, t in enumerate(texts):\n            block[index[t]][i] = 1.0\n        cols.extend(block)\n\n    kept = []\n    for col in cols:\n        lo, hi = min(col), max(col)\n        if hi > lo:\n            span = hi - lo\n            kept.append([(x - lo) / span for x in col])\n    if not kept:\n        return [[] for _ in range(n)]\n    return [list(t) for t in zip(*kept)]\n\n\ndef _scores(labelled, goals):\n    \"\"\"Score each benchmarked row with complete goal values, on the scale of step1.\n    Returns {index: score in [0, 1]}; empty if no benchmarked row is usable.\"\"\"\n    oriented = {}\n    for i, g in labelled.items():\n        vec = []\n        for name, sign in goals:\n            x = _goal_value(g, name)\n            if x is None:\n                break\n            vec.append(sign * x)\n        else:\n            oriented[i] = vec\n    if not oriented:\n        return {}\n\n    k = len(goals)\n    lo = [min(v[j] for v in oriented.values()) for j in range(k)]\n    hi = [max(v[j] for v in oriented.values()) for j in range(k)]\n    scores = {}\n    for i, vec in oriented.items():\n        total = 0.0\n        for j in range(k):\n            span = hi[j] - lo[j]\n            if span > 0:\n                total += (vec[j] - lo[j]) / span\n        scores[i] = total / k\n    return scores\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found while calling label() at most `budget` times.\n\n    goal: optional goal column name (e.g. 'Penalties+'). If given, only that goal is\n    optimised. Otherwise all goals are combined as in step1.\n    \"\"\"\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n\n    rows, inputs, goals = _load(blind_csv)\n    if not rows:\n        raise ValueError(\"no candidate builds in blind_csv\")\n\n    if goal is not None:\n        names = [c for c, _ in goals]\n        if goal not in names:\n            raise ValueError(f\"{goal!r} is not a goal column of {blind_csv}\")\n        goals = [(c, s) for c, s in goals if c == goal]\n\n    if not goals:\n        # Nothing can be measured or optimised, so there is no basis for a choice.\n        return 0\n\n    n = len(rows)\n    budget = min(budget, n)   # cannot benchmark more distinct rows than exist\n\n    X = _features(rows, inputs)\n    D = len(X[0]) if X and X[0] else 0\n    scale = math.sqrt(D) if D > 0 else 1.0\n\n    labelled = {}\n    near = [math.inf] * n     # distance from each row to its nearest benchmarked row\n\n    def run(i):\n        if len(labelled) >= budget:\n            raise RuntimeError(\"benchmark budget exhausted\")\n        labelled[i] = label(i)\n\n    def add(i):\n        run(i)\n        xi = X[i]\n        for j in range(n):\n            d = math.dist(X[j], xi)\n            if d < near[j]:\n                near[j] = d\n\n    rng = random.Random(SEED)\n\n    # Phase 1: exploration by maximin (farthest-point) sampling.\n    n_init = max(1, min(budget, int(round(budget * INIT_FRAC))))\n    add(rng.randrange(n))\n    while len(labelled) < n_init:\n        pick = max((i for i in range(n) if i not in labelled),\n                   key=lambda i: (near[i], -i))\n        add(pick)\n\n    # Phase 2: adaptive search.\n    step = 0\n    while len(labelled) < budget:\n        kappa = KAPPA[step % len(KAPPA)]\n        step += 1\n\n        scores = _scores(labelled, goals)\n        scored = list(scores)\n\n        pick, pick_val = None, -math.inf\n        for i in range(n):\n            if i in labelled:\n                continue\n            if scored:\n                nb = sorted((math.dist(X[i], X[j]), j) for j in scored)[:K_NEAR]\n                wsum = 0.0\n                acc = 0.0\n                for d, j in nb:\n                    w = 1.0 / (d + EPS)\n                    wsum += w\n                    acc += w * scores[j]\n                pred = acc / wsum\n            else:\n                pred = 0.0\n            val = pred + kappa * (near[i] / scale)\n            if val > pick_val:\n                pick, pick_val = i, val\n        add(pick)\n\n    # Final choice: best benchmarked row under the final normalisation.\n    scores = _scores(labelled, goals)\n    if scores:\n        return max(scores, key=lambda i: (scores[i], -i))\n    return min(labelled)\n```",
+ "ttft_ms": 46416,
+ "type": "result",
+ "duration_ms": 54748,
+ "uuid": "233cf78b-803f-4956-8527-b086cda7b4d4",
+ "ttft_stream_ms": 1189,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
