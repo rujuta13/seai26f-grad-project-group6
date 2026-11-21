@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 52215,
+ "stop_reason": "end_turn",
+ "session_id": "78ef3254-c5c6-4d9a-828f-2f7294deee20",
+ "total_cost_usd": 0.07823450000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 69889,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13317,
+  "output_tokens_details": {
+   "thinking_tokens": 9149
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 69889,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13317,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 69889,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 69889
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 57513,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.057598,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13317,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 69889,
+   "webSearchRequests": 0,
+   "costUSD": 0.020636500000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step28.py\n\"\"\"Step 28: fix.  Find the fewest input changes that turn a drifting or\nunresponsive customer into a good one, without changing the frozen inputs.\n\nCustomers are read as in step21: identifier and text columns are left out,\ngoals are the numeric columns named with a trailing \"+\" or \"-\", and every\nother kept column is an input.  A customer is good when its goals, guessed\nfrom the nearest training customers as in step2, fall in the best quarter\nof the training customers.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nfrom itertools import combinations, product\nimport ezr\n\n_GOOD_Q    = 0.25   # best quarter of training customers counts as good\n_MAX_VALS  = 5      # candidate values per input, spread evenly by rank\n_PAIR_COLS = 12     # two-change search only over the columns that help most\n_STEPS     = 20     # most greedy passes when no small change set works\n_DROP      = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable number (not text, not missing, not a bool).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast, blanks and None become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str): return ezr.atom(v) if v.strip() else \"?\"\n  return v\n\n\ndef _sortkey(v) -> tuple:\n  \"Sort numbers before strings, so mixed cells never compare across types.\"\n  return (isinstance(v, str), v)\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _prepare(train_csv: str):\n  \"\"\"Load TRAIN_CSV: (names, rows, goals, inputs, kept).  GOALS is a list of\n  (position, Num) for numeric goals; INPUTS is a list of (position, Num), with\n  Num None for a symbolic input; KEPT lists every usable column position.\"\"\"\n  raw = list(ezr.csv(train_csv))\n  if not raw: return None\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  kept = [at for at, nm in enumerate(names)\n          if nm and nm not in _DROP and not nm.endswith(\"X\")]\n  goals, inputs = [], []\n  for at in kept:\n    nm      = names[at]\n    numeric = _is_num(rows, at)\n    if nm[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return names, rows, goals, inputs, kept\n\n\ndef _full(names: list, kept: list, inputs: list, row) -> list:\n  \"Lay ROW out full-width in header order, '?' where missing; cells are cast.\"\n  q = [\"?\"] * len(names)\n  if isinstance(row, dict):                    # {column name: value}\n    stems = {str(k).strip().rstrip(\"+-!\"): v for k, v in row.items()}\n    for at, nm in enumerate(names):\n      stem = nm.rstrip(\"+-!\")\n      if nm in row:           q[at] = row[nm]\n      elif stem in stems:     q[at] = stems[stem]\n  else:\n    seq = list(row)\n    if len(seq) == len(names):      targets = list(range(len(names)))\n    elif len(seq) == len(inputs):   targets = [at for at, _ in inputs]\n    else:                           targets = kept\n    for at, v in zip(targets, seq): q[at] = v\n  return [_clean(v) for v in q]\n\n\ndef _levels(rows: list, at: int, numeric: bool) -> list:\n  \"Candidate values for column AT: its distinct known values, spread evenly by rank.\"\n  seen = {r[at] for r in rows\n          if r[at] != \"?\" and (not numeric or _num(r[at]))}\n  out  = sorted(seen, key=_sortkey)\n  if len(out) > _MAX_VALS:\n    out = [out[round(t * (len(out) - 1) / (_MAX_VALS - 1))]\n           for t in range(_MAX_VALS)]\n  return out\n\n\ndef _enc(m, v):\n  \"A cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n  if isinstance(v, str) and v == \"?\": return None\n  if m is None: return v\n  return ezr.norm(m, v) if _num(v) else None\n\n\ndef _g2(sym: bool, a, b) -> float:\n  \"Squared gap between two encoded cells, as ezr.xdist; unknown is far.\"\n  if a is None or b is None: g = 1.0\n  elif sym:                  g = 0.0 if a == b else 1.0\n  else:                      g = abs(a - b)\n  return g * g\n\n\ndef _ydist(goals: list, row: list) -> float:\n  \"How far ROW's goals, taken together, are from the ideal; a missing goal is worst.\"\n  gaps = [abs(ezr.norm(m, row[at]) - m.goal) if _num(row[at]) else 1.0\n          for at, m in goals]\n  return ezr.dist(gaps, len(gaps)) if gaps else 0.0\n\n\ndef fix(train_csv: str, row, frozen=()) -> dict:\n  \"\"\"The inputs of ROW (a bad customer, goals removed), changed as little as\n  possible so that its predicted goals fall in the best quarter of\n  TRAIN_CSV.  Columns named in FROZEN never change.  Changes are searched\n  exhaustively for one and for two inputs (two over the columns that help\n  most alone), then greedily; if no good customer is reached, the closest\n  one found is returned.\"\"\"\n  data = _prepare(train_csv)\n  if data is None: return {}\n  names, rows, goals, inputs, kept = data\n  base = _full(names, kept, inputs, row)\n  if not inputs: return {}\n  if not rows or not goals:\n    return {names[at]: base[at] for at, _ in inputs}\n\n  if frozen is None: frozen = ()\n  if isinstance(frozen, str): frozen = (frozen,)\n  pinned = set()\n  for f in frozen:\n    s = str(f).strip()\n    pinned |= {s, s.rstrip(\"+-!\")}\n  movable = [j for j, (at, _) in enumerate(inputs)\n             if names[at] not in pinned\n             and names[at].rstrip(\"+-!\") not in pinned]\n\n  n    = len(rows)\n  k    = min(n, max(5, int(math.sqrt(n))))\n  p    = len(inputs)\n  sym  = [m is None for _, m in inputs]\n  E    = [[_enc(m, r[at]) for at, m in inputs] for r in rows]\n  bq   = [_enc(m, base[at]) for at, m in inputs]\n  vals = [_levels(rows, at, m is not None) for at, m in inputs]\n  enc  = [[_enc(m, v) for v in vals[j]]\n          for j, (_, m) in enumerate(inputs)]\n  opts = {j: [t for t, v in enumerate(vals[j])\n              if v != base[inputs[j][0]]]\n          for j in movable}\n\n  # Squared distance from every training row to the bad row, column by\n  # column, so that a candidate change costs one list per candidate value.\n  base_sq  = [[_g2(sym[j], bq[j], E[i][j]) for i in range(n)]\n              for j in range(p)]\n  base_tot = [sum(base_sq[j][i] for j in range(p)) for i in range(n)]\n  delta    = {}\n  for j in movable:\n    for t in opts[j]:\n      cand = enc[j][t]\n      delta[(j, t)] = [_g2(sym[j], cand, E[i][j]) - base_sq[j][i]\n                       for i in range(n)]\n\n  gall = [[r[at] for r in rows if _num(r[at])] for at, _ in goals]\n  cut  = _quantile([_ydist(goals, r) for r in rows], _GOOD_Q)\n\n  def answer(changes: dict) -> dict:\n    \"The inputs of the bad row, with CHANGES (input position -> value index) applied.\"\n    return {names[at]: vals[j][changes[j]] if j in changes else base[at]\n            for j, (at, _) in enumerate(inputs)}\n\n  def predict(changes: dict) -> float:\n    \"Predicted distance from the ideal, with CHANGES applied to the bad row.\"\n    tot = list(base_tot)\n    for j, t in changes.items():\n      d   = delta[(j, t)]\n      tot = [a + b for a, b in zip(tot, d)]\n    order = sorted(range(n), key=lambda i: (tot[i], i))[:k]\n    gaps  = []\n    for (at, m), allv in zip(goals, gall):\n      vs = [rows[i][at] for i in order if _num(rows[i][at])] or allv\n      if not vs:\n        gaps.append(1.0)\n        continue\n      est = _quantile(vs, 0.5)\n      gaps.append(abs(ezr.norm(m, est) - m.goal))\n    return ezr.dist(gaps, len(gaps))\n\n  best_seen = [math.inf, {}]\n\n  def score(changes: dict) -> float:\n    \"predict, remembering the closest candidate seen so far.\"\n    y = predict(changes)\n    if y < best_seen[0]: best_seen[0], best_seen[1] = y, dict(changes)\n    return y\n\n  # No change needed.\n  if score({}) <= cut: return answer({})\n\n  # One change: try every candidate value of every movable input.\n  best1, col_best = None, {}\n  for j in movable:\n    for t in opts[j]:\n      y = score({j: t})\n      col_best[j] = min(col_best.get(j, math.inf), y)\n      if best1 is None or y < best1[0]: best1 = (y, {j: t})\n  if best1 is not None and best1[0] <= cut: return answer(best1[1])\n\n  # Two changes: only among the columns that help most on their own.\n  top   = sorted(col_best, key=lambda j: (col_best[j], j))[:_PAIR_COLS]\n  best2 = None\n  for a, b in combinations(sorted(top), 2):\n    for ta, tb in product(opts[a], opts[b]):\n      ch = {a: ta, b: tb}\n      y  = score(ch)\n      if best2 is None or y < best2[0]: best2 = (y, ch)\n  if best2 is not None and best2[0] <= cut: return answer(best2[1])\n\n  # Greedy: keep taking the single change that helps most.\n  cur, cur_y = {}, predict({})\n  for _ in range(_STEPS):\n    if cur_y <= cut: break\n    step = None\n    for j in movable:\n      for t in opts[j]:\n        trial = dict(cur)\n        trial[j] = t\n        y = score(trial)\n        if step is None or y < step[0]: step = (y, trial)\n    if step is None or step[0] >= cur_y: break\n    cur_y, cur = step\n  if cur_y <= cut: return answer(cur)\n  return answer(best_seen[1])\n```",
+ "ttft_ms": 39379,
+ "type": "result",
+ "duration_ms": 50658,
+ "uuid": "871d35a7-e070-4e40-a264-15a72f6ecec7",
+ "ttft_stream_ms": 1895,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
