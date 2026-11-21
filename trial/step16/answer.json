@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 54061,
+ "stop_reason": "end_turn",
+ "session_id": "aba09384-b565-4eff-a3be-b113a0a405b2",
+ "total_cost_usd": 0.0432139,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 34041,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14859,
+  "output_tokens_details": {
+   "thinking_tokens": 10871
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 34041,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14859,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 34041,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 34041
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 28901,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.028976,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14859,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 34041,
+   "webSearchRequests": 0,
+   "costUSD": 0.014237900000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 16: justify the recommendation and the rating in plain words.\n\nexplain(train_csv) names the recommended player (the top-ranked row from\nstep1.best) and states, goal by goal, how many training players it beats.\nIt then lists the input settings that are much more common among the top\nplayers than among all players, each with the counts behind it.\n\nwhy(train_csv, row) rates one player against the training players, goals\nincluded, and names the goals the player is weakest and strongest on, with\nthe shares behind each claim.\n\nEvery figure is a count or a share computed from the training CSV, so a\nskeptical reader can check it by hand. These are associations in the data,\nnot proof that a setting causes a result.\n\"\"\"\nimport math\n\nfrom step1 import _load, best\n\n_TOP_FRACTION = 0.05   # share of players treated as \"top\", as in step1.best\n_MAX_LEVELS = 8        # numeric inputs with more distinct values are skipped\n_MIN_GAP = 0.20        # report a setting if it is this much more common among top players\n_MIN_TOP_COUNT = 2     # a setting must appear in at least this many top players\n_MAX_REASONS = 6\n_FEW_TOP = 10          # warn when fewer top players than this are available\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _level(v):\n    \"\"\"Comparable key for an input cell: finite float, non-blank string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _fmt(v):\n    return f\"{v:g}\" if isinstance(v, float) else str(v)\n\n\ndef _goal_spec(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal values with signs applied so higher is better, or None if any is missing.\"\"\"\n    vec = []\n    for c, sg in goals:\n        f = _finite(row.get(c))\n        if f is None:\n            return None\n        vec.append(sg * f)\n    return vec\n\n\ndef _ranges(vecs):\n    g = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(g)]\n    hi = [max(v[j] for v in vecs) for j in range(g)]\n    return lo, hi\n\n\ndef _norm(vec, lo, hi):\n    \"\"\"Scale each goal to 0..1 over the training range (0 worst, 1 best), clamped.\"\"\"\n    out = []\n    for j, x in enumerate(vec):\n        span = hi[j] - lo[j]\n        t = 1.0 if span == 0 else (x - lo[j]) / span\n        out.append(min(1.0, max(0.0, t)))\n    return out\n\n\ndef _dominates(a, b):\n    \"\"\"True if a is at least as good as b on every goal and strictly better on one.\"\"\"\n    strict = False\n    for x, y in zip(a, b):\n        if x < y:\n            return False\n        if x > y:\n            strict = True\n    return strict\n\n\ndef _name(row):\n    \"\"\"The player's Name cell if usable, else ''.\"\"\"\n    v = row.get(\"Name\")\n    return v.strip() if isinstance(v, str) else \"\"\n\n\ndef _goal_label(c, sg):\n    direction = \"higher is better\" if sg > 0 else \"lower is better\"\n    return f\"{c[:-1]} ({direction})\"\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for what makes players good.\n\n    Names the recommended player (the top-ranked row from step1.best, or the\n    highest mean goal score if step1.best returns nothing), states how many\n    training players it beats on each goal, and lists the input settings that\n    are at least _MIN_GAP more common among the top players than among all\n    players, with the counts needed to recheck each one.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"There are no training players, so no recommendation can be made.\"\n    goals = _goal_spec(header)\n    if not goals:\n        return (\"The file has no goal columns ('+' or '-'), \"\n                \"so players cannot be judged good or bad.\")\n\n    vecs = {}\n    for i, r in enumerate(rows):\n        v = _oriented(r, goals)\n        if v is not None:\n            vecs[i] = v\n    if not vecs:\n        return \"No player has numeric values for every goal, so nothing can be ranked.\"\n\n    ids = sorted(vecs)\n    n = len(ids)\n    lo, hi = _ranges([vecs[i] for i in ids])\n    score = {i: sum(_norm(vecs[i], lo, hi)) / len(goals) for i in ids}\n\n    top = [i for i in best(train_csv) if i in vecs]\n    if not top:\n        k = max(1, int(_TOP_FRACTION * n))\n        top = sorted(ids, key=lambda i: (-score[i], i))[:k]\n    rec = top[0]\n    rec_row = rows[rec]\n\n    def who(i):\n        nm = _name(rows[i])\n        return f\"{nm} (training row {i})\" if nm else f\"training row {i}\"\n\n    lines = [\n        f\"Recommended player: {who(rec)}, the top-ranked of {n} players \"\n        f\"with complete goal values.\"\n    ]\n\n    lines.append(\"Goal results of the recommended player:\")\n    for j, (c, sg) in enumerate(goals):\n        x = vecs[rec][j]\n        beaten = sum(1 for i in ids if vecs[i][j] < x)\n        lines.append(\n            f\"- {_goal_label(c, sg)}: {_fmt(_finite(rec_row.get(c)))}, better than \"\n            f\"{beaten} of {n} players ({beaten / n:.0%}).\"\n        )\n\n    findings = []\n    for pos, c in enumerate(header):\n        if not _is_input(c):\n            continue\n        cell = {i: _level(rows[i].get(c)) for i in ids}\n        present = [i for i in ids if cell[i] is not None]\n        top_present = [i for i in top if cell[i] is not None]\n        if not present or not top_present:\n            continue\n        levels = {cell[i] for i in present}\n        if all(isinstance(v, float) for v in levels) and len(levels) > _MAX_LEVELS:\n            continue\n        for v in levels:\n            n_top = sum(1 for i in top_present if cell[i] == v)\n            if n_top < _MIN_TOP_COUNT:\n                continue\n            n_all = sum(1 for i in present if cell[i] == v)\n            p_top = n_top / len(top_present)\n            p_all = n_all / len(present)\n            if p_top - p_all >= _MIN_GAP:\n                findings.append({\n                    \"gap\": p_top - p_all,\n                    \"pos\": pos,\n                    \"col\": c,\n                    \"val\": v,\n                    \"n_top\": n_top,\n                    \"n_top_all\": len(top_present),\n                    \"p_top\": p_top,\n                    \"n_all\": n_all,\n                    \"n_present\": len(present),\n                    \"p_all\": p_all,\n                    \"has\": cell[rec] == v,\n                })\n    findings.sort(key=lambda f: (-f[\"gap\"], f[\"pos\"], _fmt(f[\"val\"])))\n\n    if findings:\n        lines.append(\n            \"Settings much more common among the top players than among all players:\"\n        )\n        for f in findings[:_MAX_REASONS]:\n            status = \"has this setting\" if f[\"has\"] else \"does not have this setting\"\n            lines.append(\n                f\"- {f['col']} = {_fmt(f['val'])}: {f['n_top']} of {f['n_top_all']} \"\n                f\"top players ({f['p_top']:.0%}) vs {f['n_all']} of {f['n_present']} \"\n                f\"players ({f['p_all']:.0%}); the recommended player {status}.\"\n            )\n    else:\n        lines.append(\n            \"No single setting is much more common among the top players \"\n            \"than among all players.\"\n        )\n\n    if len(top) < _FEW_TOP:\n        lines.append(\n            f\"Only {len(top)} top player(s) were available, so these shares are rough.\"\n        )\n    lines.append(\n        \"These are associations in the training data, not proof that a setting \"\n        \"causes a better result. Each figure above can be recounted from the \"\n        \"training file.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this player (goals included) is good or bad.\n\n    The player's mean normalised goal score (each goal scaled over the training\n    players, 0 worst to 1 best) is compared with the training players' scores.\n    The player is rated 'good' if at least half the training players score no\n    higher, and 'bad' otherwise. The second sentence names the goals the player\n    is weakest and strongest on, with the share of training players it beats\n    on each.\n    \"\"\"\n    header, rows = _load(train_csv)\n    goals = _goal_spec(header)\n    subject = _name(row) or \"This player\"\n    if not goals:\n        return \"This file has no goal columns, so the player cannot be rated.\"\n\n    train = []\n    for r in rows:\n        v = _oriented(r, goals)\n        if v is not None:\n            train.append(v)\n    if not train:\n        return (\"No training player has numeric values for every goal, \"\n                \"so the player cannot be rated.\")\n\n    rv = _oriented(row, goals)\n    if rv is None:\n        missing = [c for c, _ in goals if _finite(row.get(c)) is None]\n        return (f\"{subject} cannot be rated because goal values are missing for: \"\n                + \", \".join(missing) + \".\")\n\n    lo, hi = _ranges(train)\n    score = sum(_norm(rv, lo, hi)) / len(goals)\n    train_scores = [sum(_norm(v, lo, hi)) / len(goals) for v in train]\n    at_most = sum(1 for s in train_scores if s <= score) / len(train_scores)\n    verdict = \"good\" if at_most >= 0.5 else \"bad\"\n\n    below = []\n    for j, (c, _) in enumerate(goals):\n        share = sum(1 for v in train if v[j] < rv[j]) / len(train)\n        below.append((share, c))\n    weak_share, weak_col = min(below, key=lambda t: t[0])\n    strong_share, strong_col = max(below, key=lambda t: t[0])\n\n    def describe(c, share):\n        raw = _fmt(_finite(row.get(c)))\n        return f\"{c[:-1]} ({raw}, better than {share:.0%} of training players)\"\n\n    beaten_by = sum(1 for v in train if _dominates(v, rv))\n    if beaten_by == 0:\n        beat_text = \"no training player is at least as good on every goal and better on one\"\n    else:\n        beat_text = (f\"{beaten_by} of {len(train)} training players are at least as good \"\n                     \"on every goal and better on one\")\n\n    sentence1 = (\n        f\"{subject} is rated {verdict}: on all goals combined, at least as good as \"\n        f\"{at_most:.0%} of the {len(train)} training players \"\n        f\"(score {score:.2f}, where 1 is best on every goal and 0 is worst).\"\n    )\n    sentence2 = (\n        f\"It is weakest on {describe(weak_col, weak_share)} and strongest on \"\n        f\"{describe(strong_col, strong_share)}, and {beat_text}.\"\n    )\n    return sentence1 + \" \" + sentence2\n```",
+ "ttft_ms": 42358,
+ "type": "result",
+ "duration_ms": 52817,
+ "uuid": "a3398e78-5790-4f56-9753-06c64b4fa886",
+ "ttft_stream_ms": 1172,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
