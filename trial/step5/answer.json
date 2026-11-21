@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 18067,
+ "duration_api_ms": 18054,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _read, _columns, _to_float_column\n\n_MIN_GROUP = 5\n\n\ndef _badness(rows, goals):\n    \"\"\"Per-row badness: higher means worse on the goals (z-scored, oriented).\"\"\"\n    n = len(rows)\n    cols = []\n    for name, sign in goals:\n        y = sign * _to_float_column(rows, name)\n        fin = np.isfinite(y)\n        if not np.any(fin):\n            cols.append(np.zeros(n))\n            continue\n        mu = float(y[fin].mean())\n        sd = float(y[fin].std())\n        if sd <= 0.0:\n            sd = 1.0\n        z = np.zeros(n)\n        z[fin] = (y[fin] - mu) / sd\n        cols.append(z)\n    Z = np.column_stack(cols)\n    # Oriented goals are larger-is-better, so badness is the negated mean.\n    return -Z.mean(axis=1)\n\n\ndef _score(values, bad):\n    \"\"\"Blame score for one input column: how much worse rows get when it takes a value.\"\"\"\n    n = len(bad)\n    uniq = np.unique(values)\n    if len(uniq) <= 1:\n        return 0.0\n\n    if set(uniq.tolist()) <= {0.0, 1.0}:\n        # Binary pass flag: blame it when enabling it makes builds worse.\n        on = values == 1.0\n        off = ~on\n        if on.sum() < _MIN_GROUP or off.sum() < _MIN_GROUP:\n            return 0.0\n        return float(bad[on].mean() - bad[off].mean())\n\n    # Categorical or multi-valued: take the value whose rows are worst\n    # relative to the rest, among values with enough support.\n    best = None\n    for v in uniq:\n        m = values == v\n        k = int(m.sum())\n        if k < _MIN_GROUP or n - k < _MIN_GROUP:\n            continue\n        d = float(bad[m].mean() - bad[~m].mean())\n        if best is None or d > best:\n            best = d\n    return best if best is not None else 0.0\n\n\ndef blame(train_csv) -> list[str]:\n    fieldnames, rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    if not inputs:\n        return []\n    if not rows or not goals:\n        return list(inputs)\n\n    bad = _badness(rows, goals)\n    scores = []\n    for c in inputs:\n        values = _to_float_column(rows, c)\n        scores.append(_score(values, bad))\n\n    order = sorted(range(len(inputs)), key=lambda j: (-scores[j], j))\n    return [inputs[j] for j in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d7323e9a-b798-4a15-a2b9-906107b7b1a0",
+ "total_cost_usd": 0.002515525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 5397,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3681,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5397,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3681,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5397,
+   "webSearchRequests": 0,
+   "costUSD": 0.002515525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "853edf7f-d219-4260-ad51-ba01d004c9de"
+}
