@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 24543,
+ "stop_reason": "end_turn",
+ "session_id": "979bbb12-b7b4-4bd6-a4f5-e4b364aa7aed",
+ "total_cost_usd": 0.0266459,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22961,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5411,
+  "output_tokens_details": {
+   "thinking_tokens": 4661
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22961,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5411,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22961,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22961
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19283,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019348,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5411,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22961,
+   "webSearchRequests": 0,
+   "costUSD": 0.0072979,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py\nimport ezr\nimport step4\nimport step8\nimport step10\n\ndef _income(test: ezr.TBL) -> int:\n  \"Index of the row with the highest INCOME: the 'mail the richest' rule. Goals are never read.\"\n  if \"INCOME\" not in test.names: raise ValueError(\"race: no INCOME column to rank by\")\n  at   = test.names.index(\"INCOME\")\n  vals = [(r[at], i) for i, r in enumerate(test.rows) if r[at] != \"?\"]\n  if not vals: raise ValueError(\"race: no INCOME values to rank by\")\n  return max(vals, key=lambda t: (t[0], -t[1]))[1]   # ties: earlier row wins\n\ndef _guesser(train_csv: str, test: ezr.TBL) -> int:\n  \"Index of the test row whose goals the response guesser (step2.guess) estimates best. No labels used.\"\n  tbl, score = step4._scorer(train_csv)\n  goal_at    = {c.at for c in tbl.y}\n  best, pick = None, 0\n  for i, r in enumerate(test.rows):\n    full = [\"?\" if at in goal_at else v for at, v in enumerate(r)]   # hide the goals\n    s    = step8._est_score(train_csv, tbl, score, full)\n    if best is None or s > best: best, pick = s, i                  # ties: earlier row wins\n  return pick\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Each method picks one row of TEST_CSV; score it by wins on test (100 = best, 0 = average). 'ours' is the targeting tuner; 'income' mails the highest earners; 'guesser' and 'linear' are the response-guessing rivals.\"\n  test = ezr.Tbl(ezr.csv(test_csv))\n  if not test.rows: raise ValueError(f\"no rows in {test_csv}\")\n  scores = step10.race(train_csv, test_csv)          # ours, random, grid, linear\n  score  = ezr.wins(test)\n  scores[\"income\"]  = float(score(test.rows[_income(test)]))\n  scores[\"guesser\"] = float(score(test.rows[_guesser(train_csv, test)]))\n  return scores\n```",
+ "ttft_ms": 21460,
+ "type": "result",
+ "duration_ms": 23457,
+ "uuid": "a904062c-8ad6-4afc-b0e6-469e9295657e",
+ "ttft_stream_ms": 1222,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
