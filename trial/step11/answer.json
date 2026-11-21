@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6167,
+ "stop_reason": "end_turn",
+ "session_id": "bcb11a91-772e-4088-996a-d1880674e25c",
+ "total_cost_usd": 0.023110699999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21550,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 847,
+  "output_tokens_details": {
+   "thinking_tokens": 613
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21550,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 847,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21550,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21550
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18312,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018376999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 847,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21550,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047337,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 11: the client's two requests as named entry points.\n\nfamilies() sorts builds into types by k-means clustering over the input (flag)\ncolumns only. best() returns the row indices of the builds that are not\nPareto-dominated on the goals, capped at 5% of rows. Both delegate to step1,\nwhich holds the implementations.\n\"\"\"\n\nimport step1\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"Return one family (cluster) label per data row of train_csv, in file order.\"\"\"\n    return step1.families(train_csv)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Return sorted row indices of the unusually good rows, at most 5% of rows.\"\"\"\n    return step1.best(train_csv)\n```",
+ "ttft_ms": 4278,
+ "type": "result",
+ "duration_ms": 5076,
+ "uuid": "c4fd6f6b-af75-4e4f-93c6-aa31a76ea3b4",
+ "ttft_stream_ms": 1278,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
