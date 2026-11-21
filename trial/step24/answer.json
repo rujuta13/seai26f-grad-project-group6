@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 114116,
+ "stop_reason": "end_turn",
+ "session_id": "63b941b6-5686-421a-b315-f36ffde2f503",
+ "total_cost_usd": 0.071755,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 56419,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 27568,
+  "output_tokens_details": {
+   "thinking_tokens": 23281
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 56419,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 27568,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 56419,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 56419
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 46612,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.046687,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 27568,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 56419,
+   "webSearchRequests": 0,
+   "costUSD": 0.025068,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step24.py\n\"\"\"Step 24: flow.  Welcome offers for new sign-ups as they arrive, and a\nwarning when this month's sign-ups stop looking like the usual customers.\n\nA sign-up's goals (purchases, visits, response, complaints) are not known\nwhen it arrives, so stream() decides from its input columns alone.  It\npredicts each goal from the nearest customers it already knows, and keeps\nthe sign-up if that prediction is in the best quarter seen so far.  drift()\nalso reads only input columns.\n\nIdentifier and text columns are left out, as in steps 11 and 16.  Goals are\nthe numeric columns named with a trailing \"+\" or \"-\"; every other kept column\nis an input.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport bisect\nimport math\nimport random\nimport ezr\n\n_GOOD_Q = 0.25   # best quarter of customers counts as good\n_KEEP_Q = 0.25   # keep a sign-up if its predicted goals are in the best quarter seen\n_SAMPLE = 100    # training customers used as the novelty reference\n_WIN    = 30     # sign-ups per drift block\n_MIN    = 10     # smallest trailing block worth testing\n_CLIFF  = 0.33   # strict Cliff's delta threshold (a medium effect)\n_KS     = 1.63   # Kolmogorov-Smirnov critical value at about the 99% level\n_SHARE  = 0.4    # share of numeric inputs that must shift for a block to differ\n_DROP   = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable finite number (not text, not missing, not a bool).\"\n  if isinstance(v, bool) or not isinstance(v, (int, float)): return False\n  return not isinstance(v, float) or math.isfinite(v)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast; blanks, '?' and non-finite numbers are unknown.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    if s in (\"\", \"?\"): return \"?\"\n    v = ezr.atom(s)\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _load(path: str):\n  \"Read PATH: (header names, full-width rows with cleaned cells), or None if empty.\"\n  raw = list(ezr.csv(path))\n  if not raw: return None\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  return names, rows\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _layout(names: list, rows: list):\n  \"\"\"(goals, inputs, kept).  GOALS are (position, Num) for numeric goals;\n  INPUTS are (position, Num) or (position, None) for symbolic inputs; KEPT\n  lists every usable column position, goals included.\"\"\"\n  goals, inputs, kept = [], [], []\n  for at, nm in enumerate(names):\n    if not nm or nm in _DROP or nm.endswith(\"X\"): continue\n    kept.append(at)\n    numeric = _is_num(rows, at)\n    if nm[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return goals, inputs, kept\n\n\ndef _enc(m, v):\n  \"An input cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n  if m is None: return None if v == \"?\" else v\n  return ezr.norm(m, v) if _num(v) else None\n\n\ndef _gap(sym: bool, a, b) -> float:\n  \"Gap between two encoded cells of one input; unknown is far.\"\n  if a is None or b is None: return 1.0\n  if sym: return 0.0 if a == b else 1.0\n  return abs(a - b)\n\n\ndef _dist(sym: list[bool], a: list, b: list) -> float:\n  \"Root mean square gap between two encoded input rows, as ezr.xdist.\"\n  if not sym: return 0.0\n  return math.sqrt(sum(_gap(f, x, y) ** 2\n                       for f, x, y in zip(sym, a, b)) / len(sym))\n\n\ndef _ydist(goals: list, vals: list) -> float:\n  \"RMS distance of goal values VALS (aligned with GOALS) from their ideal; unknown is worst.\"\n  gaps = [abs(ezr.norm(m, v) - m.goal) if _num(v) else 1.0\n          for (_, m), v in zip(goals, vals)]\n  return ezr.dist(gaps, len(gaps)) if gaps else 0.0\n\n\ndef _pool(goals: list, G: list) -> list[float]:\n  \"Sorted goal distances of the fully known rows of G (every row, if none is fully known).\"\n  full = [g for g in G if all(_num(v) for v in g)] or G\n  return sorted(_ydist(goals, g) for g in full)\n\n\ndef _same(xs, ys) -> bool:\n  \"True if XS and YS look alike at strict thresholds; cliffs and ks must both agree.\"\n  xs, ys = sorted(xs), sorted(ys)\n  if not xs or not ys: return True            # no evidence of a shift\n  return ezr.cliffs(xs, ys, d=_CLIFF) and ezr.ks(xs, ys, a=_KS)\n\n\ndef _setup(train_csv: str):\n  \"What the training customers look like: layout, encoded inputs and raw goal cells.\"\n  loaded = _load(train_csv)\n  if loaded is None: return None\n  names, rows = loaded\n  if not rows: return None\n  goals, inputs, kept = _layout(names, rows)\n  sym = [m is None for _, m in inputs]\n  E   = [[_enc(m, r[at]) for at, m in inputs] for r in rows]\n  G   = [[r[at] for at, _ in goals] for r in rows]\n  return ezr.o(names=names, kept=kept, goals=goals, inputs=inputs,\n               sym=sym, E=E, G=G)\n\n\ndef _full(M, row) -> list:\n  \"Lay ROW out full-width in header order, '?' where missing; cells are cleaned.\"\n  names = M.names\n  q     = [\"?\"] * len(names)\n  if isinstance(row, dict):                    # {column name: value}\n    stems = {str(k).strip().rstrip(\"+-!\"): v for k, v in row.items()}\n    for at, nm in enumerate(names):\n      stem = nm.rstrip(\"+-!\")\n      if nm in row:           q[at] = row[nm]\n      elif stem in stems:     q[at] = stems[stem]\n  else:\n    seq = list(row)\n    if len(seq) == len(names):      targets = range(len(names))\n    elif len(seq) == len(M.kept):   targets = M.kept\n    else:                           targets = [at for at, _ in M.inputs]\n    for at, v in zip(targets, seq): q[at] = v\n  return [_clean(v) for v in q]\n\n\ndef _predict(M, kE: list, kG: list, e: list) -> list:\n  \"Median of each goal among the nearest known customers to encoded inputs E; '?' if none know it.\"\n  n     = len(kE)\n  k     = min(n, max(5, int(math.sqrt(n))))\n  order = sorted(range(n), key=lambda i: (_dist(M.sym, e, kE[i]), i))[:k]\n  est   = []\n  for j in range(len(M.goals)):\n    vs = [kG[i][j] for i in order if _num(kG[i][j])]\n    if not vs: vs = [g[j] for g in kG if _num(g[j])]\n    est.append(_quantile(vs, 0.5) if vs else \"?\")\n  return est\n\n\ndef stream(train_csv: str, rows) -> list[bool]:\n  \"\"\"For each row in ROWS, in order: True if its predicted goals are in the\n  best quarter seen so far, else False.  The decision reads only the row's\n  input columns, since its goals are not yet known.  Its goal cells are\n  learned from only after the decision, as they are for the rows before it.\"\"\"\n  rows = list(rows)\n  M    = _setup(train_csv)\n  if M is None or not M.goals: return [False] * len(rows)\n  kE   = [list(e) for e in M.E]\n  kG   = [list(g) for g in M.G]\n  pool = _pool(M.goals, kG)                       # what \"good\" looks like\n  keep = []\n  for raw in rows:\n    q   = _full(M, raw)\n    e   = [_enc(m, q[at]) for at, m in M.inputs]\n    cut = pool[int(_KEEP_Q * (len(pool) - 1))]    # decide before learning\n    est = _predict(M, kE, kG, e)\n    keep.append(_ydist(M.goals, est) <= cut)\n    g = [q[at] for at, _ in M.goals]              # learn from it afterwards\n    kE.append(e)\n    kG.append(g)\n    if all(_num(v) for v in g):\n      bisect.insort(pool, _ydist(M.goals, g))\n  return keep\n\n\ndef drift(train_csv: str, rows) -> int | None:\n  \"\"\"Index into ROWS of the row at which the sign-ups first stop looking like\n  TRAIN_CSV, or None.  Only input columns are read.  Rows are tested in blocks\n  of _WIN.  A block differs if its novelty (distance to the nearest training\n  customer) differs from the training customers' own novelty, or if at least\n  _SHARE of its numeric inputs shift.  Warn at the end of the second differing\n  block in a row, so a single noisy block does not raise an alarm.\"\"\"\n  rows = list(rows)\n  M    = _setup(train_csv)\n  if M is None or not rows or not M.inputs: return None\n  E, sym, n = M.E, M.sym, len(M.E)\n  num_at    = [j for j, s in enumerate(sym) if not s]\n\n  # Training customers' own novelty: each sampled one's nearest other customer.\n  rng   = random.Random(ezr.the.Seed)\n  ref_f = []\n  for i in rng.sample(range(n), min(_SAMPLE, n)):\n    d = [_dist(sym, E[i], E[j]) for j in range(n) if j != i]\n    if d: ref_f.append(min(d))\n  if not ref_f: ref_f = [0.0]\n  col_ref = {j: sorted(x for x in (E[i][j] for i in range(n)) if x is not None)\n             for j in num_at}\n\n  Q, f = [], []\n  for raw in rows:\n    q = _full(M, raw)\n    e = [_enc(m, q[at]) for at, m in M.inputs]\n    Q.append(e)\n    f.append(min(_dist(sym, e, t) for t in E))\n\n  need = max(3, math.ceil(_SHARE * len(num_at)))\n  run  = 0\n  for lo in range(0, len(rows), _WIN):\n    hi = min(lo + _WIN, len(rows))\n    if hi - lo < _MIN: break\n    shifted = 0\n    for j in num_at:\n      xs = [Q[i][j] for i in range(lo, hi) if Q[i][j] is not None]\n      if not _same(xs, col_ref[j]): shifted += 1\n    differs = (not _same(f[lo:hi], ref_f)) or shifted >= need\n    run = run + 1 if differs else 0\n    if run >= 2: return hi - 1\n  return None\n```",
+ "ttft_ms": 100961,
+ "type": "result",
+ "duration_ms": 112765,
+ "uuid": "f0ef2315-6c0d-4124-87d9-b204b6d88b6f",
+ "ttft_stream_ms": 1600,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
