@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 10354,
+ "stop_reason": "end_turn",
+ "session_id": "1abb0dac-50a6-4966-b639-b92a0dcc82ce",
+ "total_cost_usd": 0.0068951,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5217,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2025,
+  "output_tokens_details": {
+   "thinking_tokens": 1463
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5217,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2025,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5217,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5217
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4754,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.004839,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2025,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5217,
+   "webSearchRequests": 0,
+   "costUSD": 0.0020561,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step3.py - client question 4: is a difference real or just noise?\n\nsame(xs, ys) decides whether two lists of measurements (e.g. run times)\ndiffer by more than run-to-run noise.\n\nIt runs a two-sided permutation test on the difference of means. If the\ntwo groups came from the same distribution, shuffling the group labels\nwould often produce a gap at least as large as the observed one. When\nthat p-value is at least ALPHA, the gap is called noise. The test makes no\ndistributional assumption, so it suits skewed run-time data.\n\nSEED is reused from step1 so results are reproducible.\n\"\"\"\nimport random\n\nfrom step1 import SEED\n\nALPHA = 0.05\nPERMUTATIONS = 2000\n\n\ndef same(xs, ys):\n    \"\"\"True if the gap between xs and ys is noise, False if it is real.\"\"\"\n    xs = [float(x) for x in xs]\n    ys = [float(y) for y in ys]\n    if not xs or not ys:\n        return True  # no evidence of any difference\n\n    nx, ny = len(xs), len(ys)\n    total = sum(xs) + sum(ys)\n    observed = abs(sum(xs) / nx - sum(ys) / ny)\n    if observed == 0:\n        return True\n\n    rng = random.Random(SEED)\n    pool = xs + ys\n    hits = 0\n    for _ in range(PERMUTATIONS):\n        rng.shuffle(pool)\n        s = sum(pool[:nx])\n        gap = abs(s / nx - (total - s) / ny)\n        if gap >= observed:\n            hits += 1\n\n    p_value = (hits + 1) / (PERMUTATIONS + 1)\n    return p_value >= ALPHA\n```",
+ "ttft_ms": 7785,
+ "type": "result",
+ "duration_ms": 9486,
+ "uuid": "483a68e8-d7d4-422d-8222-f5200aa6b9c3",
+ "ttft_stream_ms": 1372,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
