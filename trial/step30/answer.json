@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 34271,
+ "stop_reason": "end_turn",
+ "session_id": "b31969ca-ad0e-45bc-8e4a-c0d66ac9ebad",
+ "total_cost_usd": 0.029875399999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25036,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8150,
+  "output_tokens_details": {
+   "thinking_tokens": 6574
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25036,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8150,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25036,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25036
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20728,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020793,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8150,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25036,
+   "webSearchRequests": 0,
+   "costUSD": 0.0090824,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step30.py: race. Does our targeting beat simply mailing the highest-income customers, and does our response guesser beat an off-the-shelf model?\"\nimport os, random, tempfile\nfrom ezr import Tbl, csv, the, wins\nfrom step7 import choose\nfrom step10 import BUDGET, _oracle, _random, _hill, _score_guess\nfrom step20 import _fit_one\nfrom step22 import guess\n\nGOAL   = \"RESPONSE\"  # the goal the response guesser must get right\nINCOME = \"INCOME\"    # the input the simple rival ranks customers by\n\ndef _col(names, want: str) -> int:\n  \"Index of the column named WANT, ignoring case and any goal sign.\"\n  hits = [i for i, n in enumerate(names) if n.rstrip(\"+-\").upper() == want]\n  if not hits: raise ValueError(f\"no {want} column in {names}\")\n  return hits[0]\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Scores, higher is better, keyed by method.\n  Targeting (one pick from TEST_CSV, scored by wins: 100 = best row,\n  0 = an average one): 'ours' (step7.choose, same label budget as the\n  rivals), 'top_income' (the customer with the highest INCOME), 'random'\n  and 'hillclimb' (same label budget, as in step10).\n  Response guess (RESPONSE of every TEST_CSV row, scored by\n  1/(1 + mean error in train sds)): 'guess_ours' (step22.guess) and\n  'guess_linreg' (off-the-shelf ridge regression).\"\"\"\n  random.seed(the.Seed)\n  rng     = random.Random(the.Seed)\n  raw     = list(csv(str(test_csv)))\n  if len(raw) < 2: raise ValueError(f\"no rows in {test_csv}\")\n  names   = raw[0]\n  test    = Tbl(raw)\n  rows    = test.rows\n  goals   = [n for n in names if n[-1] in \"+-\"]\n  goal_at = {n: names.index(n) for n in goals}\n  score   = wins(test)\n  res     = {}\n\n  # ours: targeting by step7.choose on a blind copy of TEST, goals as '?'\n  def ask(i) -> dict:\n    return {g: rows[i][goal_at[g]] for g in goals}\n  with tempfile.TemporaryDirectory() as d:\n    blind = os.path.join(d, \"blind.csv\")\n    with open(blind, \"w\", encoding=\"utf-8\") as f:\n      f.write(\",\".join(names) + \"\\n\")\n      for r in rows:\n        f.write(\",\".join(\"?\" if n in goal_at else str(v)\n                         for n, v in zip(names, r)) + \"\\n\")\n    res[\"ours\"] = float(score(rows[choose(blind, ask, budget=BUDGET)]))\n\n  # the client's plain rival: mail the single highest-income customer\n  inc = _col(names, INCOME)\n  def income(i) -> float:\n    v = rows[i][inc]\n    return v if isinstance(v, (int, float)) else float(\"-inf\")\n  res[\"top_income\"] = float(score(rows[max(range(len(rows)), key=income)]))\n\n  # standard rivals with the same label budget\n  res[\"random\"]    = float(score(rows[_random(test, _oracle(test, BUDGET),\n                                              BUDGET, rng)]))\n  res[\"hillclimb\"] = float(score(rows[_hill(test, _oracle(test, BUDGET),\n                                             BUDGET, rng)]))\n\n  # response guesser: ours vs an off-the-shelf ridge regression, trained on TRAIN\n  tr   = Tbl(csv(str(train_csv)))\n  resp = next((c for c in tr.y if c.txt.rstrip(\"+-\").upper() == GOAL), None)\n  if resp is None: raise ValueError(f\"no {GOAL} goal in {tr.names}\")\n  pname = resp.txt\n  sd    = {pname: resp.sd or 1.0}\n  pat   = {pname: _col(names, GOAL)}\n\n  ours = []\n  for r in rows:\n    x   = {n: v for n, v in zip(names, r) if n[-1] not in \"+-\"}\n    est = guess(str(train_csv), x)\n    ours.append({pname: est[pname][0]})\n  res[\"guess_ours\"] = float(_score_guess(ours, rows, pat, sd))\n\n  predict = _fit_one(tr, resp)\n  res[\"guess_linreg\"] = float(_score_guess([{pname: predict(r)} for r in rows],\n                                           rows, pat, sd))\n  return res\n```",
+ "ttft_ms": 28669,
+ "type": "result",
+ "duration_ms": 32875,
+ "uuid": "b1261ce1-2230-43b7-9ec3-f8b68cb3e874",
+ "ttft_stream_ms": 1218,
+ "time_to_request_ms": 89,
+ "queued_turn_count": 0
+}
