@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 29723,
+ "stop_reason": "end_turn",
+ "session_id": "219675fe-b031-4773-a78b-ee2e09b9307e",
+ "total_cost_usd": 0.053449300000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 48723,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6311,
+  "output_tokens_details": {
+   "thinking_tokens": 5595
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 48723,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6311,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 48723,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 48723
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 40479,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.040549,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6311,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 48723,
+   "webSearchRequests": 0,
+   "costUSD": 0.0129003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step27.py\nimport ezr\nimport step17\n\nALIAS = {                                # client words -> goal base names\n  \"store visits\":    \"numstorepurchases\",\n  \"store\":           \"numstorepurchases\",\n  \"store purchases\": \"numstorepurchases\",\n  \"web orders\":      \"numwebpurchases\",\n  \"web\":             \"numwebpurchases\",\n  \"web purchases\":   \"numwebpurchases\",\n  \"catalog orders\":  \"numcatalogpurchases\",\n}\n\ndef _goal_name(blind_csv, goal) -> str | None:\n  \"The header name of the one goal that GOAL refers to, or None if GOAL is None.\"\n  if goal is None: return None\n  rows = ezr.csv(blind_csv)\n  hdr  = next(rows, None)\n  if hdr is None: raise ValueError(\"choose: no rows to choose from\")\n  hdr   = [str(s) for s in hdr]\n  goals = [s.rstrip(\"+-\") for s in hdr if s[-1:] in (\"+\", \"-\")]\n  if not goals: raise ValueError(\"choose: the file has no goal columns\")\n  g     = \" \".join(str(goal).replace(\"_\", \" \").lower().split())\n  base  = ALIAS.get(g, g.replace(\" \", \"\"))\n  for name in goals:\n    if name.lower() == base: return name\n  hits = [name for name in goals if base and base in name.lower()]\n  if len(hits) == 1: return hits[0]\n  if not hits: raise ValueError(f\"choose: no goal named {goal!r}\")\n  raise ValueError(f\"choose: {goal!r} matches more than one goal: \"\n                   f\"{', '.join(hits)}\")\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row in BLIND_CSV (goals all '?'), calling LABEL\n  at most BUDGET times. If GOAL names one goal, optimise only that one.\n  GOAL may be a column name or a client phrase such as 'store visits'.\"\"\"\n  return step17.choose(blind_csv, label, budget=budget,\n                       goal=_goal_name(blind_csv, goal))\n```",
+ "ttft_ms": 26175,
+ "type": "result",
+ "duration_ms": 28119,
+ "uuid": "d95bce3f-47f6-4e64-b6ec-092575703af2",
+ "ttft_stream_ms": 1541,
+ "time_to_request_ms": 100,
+ "queued_turn_count": 0
+}
