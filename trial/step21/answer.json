@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 53313,
+ "stop_reason": "end_turn",
+ "session_id": "5c608d6b-590f-437a-8bbc-946666329f5e",
+ "total_cost_usd": 0.0591191,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 51202,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12931,
+  "output_tokens_details": {
+   "thinking_tokens": 10398
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 51202,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12931,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 51202,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 51202
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 42328,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.042413,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12931,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 51202,
+   "webSearchRequests": 0,
+   "costUSD": 0.0167061,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step21.py\n\"\"\"Step 21: remember.  Group customers into the kinds of shopper they really\nare, and find the best customers: busy across channels, loyal, no complaints.\n\nIdentifier and text columns are left out, as in steps 11 and 16.  Goals are\nthe numeric columns named with a trailing \"+\" (higher is better) or \"-\"\n(lower is better); every other kept column is an input.  A column is numeric\nif most of its known cells are numbers; text cells in a numeric column count\nas unknown.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nfrom collections import Counter\nimport ezr\n\n_K      = 5                                   # how many shopper kinds to look for\n_ROUNDS = 20                                  # most passes of the family search\n_CUT    = 0.05                                # best-on-all-goals: at most this share\n_DROP   = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable number (not text, not missing, not a bool).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast, blanks and non-finite numbers become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    v = ezr.atom(s) if s else \"?\"\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\n\ndef _load(train_csv: str):\n  \"Read TRAIN_CSV: (header names, full-width rows with '?' where missing).\"\n  raw = list(ezr.csv(train_csv))\n  if not raw: return None\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  return names, rows\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _prepare(train_csv: str):\n  \"\"\"Load TRAIN_CSV: (names, rows, goals, inputs).  GOALS are (position, Num)\n  for numeric goals; INPUTS are (position, Num) or (position, None) when\n  the input is symbolic.\"\"\"\n  loaded = _load(train_csv)\n  if loaded is None: return None\n  names, rows = loaded\n  goals, inputs = [], []\n  for at, name in enumerate(names):\n    if not name or name in _DROP or name.endswith(\"X\"): continue\n    numeric = _is_num(rows, at)\n    if name[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return names, rows, goals, inputs\n\n\ndef _enc(m, v):\n  \"An input cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n  if isinstance(v, str) and v == \"?\": return None\n  if m is None: return v\n  return ezr.norm(m, v) if _num(v) else None\n\n\ndef _dist(sym: list[bool], a: list, b: list) -> float:\n  \"Root mean square gap between two encoded input rows, as ezr.xdist.\"\n  if not sym: return 0.0\n  s = 0.0\n  for f, x, y in zip(sym, a, b):\n    if x is None or y is None: g = 1.0\n    elif f:                    g = 0.0 if x == y else 1.0\n    else:                      g = abs(x - y)\n    s += g * g\n  return math.sqrt(s / len(sym))\n\n\ndef _centre(members: list[list], sym: list[bool]) -> list:\n  \"The middle of encoded rows: mean for numbers, most common for symbols; None if unknown.\"\n  out = []\n  for j, f in enumerate(sym):\n    vs = [m[j] for m in members if m[j] is not None]\n    if not vs:   out.append(None)\n    elif f:      out.append(Counter(vs).most_common(1)[0][0])\n    else:        out.append(sum(vs) / len(vs))\n  return out\n\n\ndef _gap(m: ezr.Num, v) -> float:\n  \"Distance of one goal cell from its ideal (0 is best); a missing goal is the worst, 1.\"\n  return abs(ezr.norm(m, v) - m.goal) if _num(v) else 1.0\n\n\ndef families(train_csv: str) -> list[int]:\n  \"One family label per data row of TRAIN_CSV, in file order.\"\n  data = _prepare(train_csv)\n  if data is None: return []\n  _names, rows, _goals, inputs = data\n  n = len(rows)\n  if n == 0: return []\n  if not inputs: return [0] * n\n  sym   = [m is None for _, m in inputs]\n  E     = [[_enc(m, r[at]) for at, m in inputs] for r in rows]\n  k     = min(_K, n)\n  rng   = random.Random(ezr.the.Seed)        # local rng: no global side effects\n  cents = [E[i] for i in rng.sample(range(n), k)]\n  labels = None\n  for _ in range(_ROUNDS):\n    new = [min(range(k), key=lambda j: (_dist(sym, e, cents[j]), j))\n           for e in E]\n    if new == labels: break                  # assignments are stable\n    labels = new\n    for j in range(k):\n      members = [e for e, l in zip(E, labels) if l == j]\n      if members:                            # keep old centre if empty\n        cents[j] = _centre(members, sym)\n  return labels\n\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  data = _prepare(train_csv)\n  if data is None: return []\n  _names, rows, goals, _inputs = data\n  n   = len(rows)\n  cap = int(_CUT * n)\n  if cap <= 0 or not goals: return []\n\n  # Per goal: distance from the ideal, smaller is better; unknown is worst.\n  G   = [[_gap(m, r[at]) for at, m in goals] for r in rows]\n  rms = [math.sqrt(sum(g * g for g in gs) / len(gs)) for gs in G]\n\n  # Lexicographic order puts any dominating row before the rows it dominates,\n  # so each row needs checking only against the front found so far.\n  order = sorted(range(n), key=lambda i: (G[i], i))\n  front: list[int] = []\n  for i in order:\n    gi = G[i]\n    if not any(all(a <= b for a, b in zip(G[j], gi)) and G[j] != gi\n               for j in front):\n      front.append(i)\n\n  # Keep the closest to the ideal, capped at 5%; return in file order.\n  front.sort(key=lambda i: (rms[i], i))\n  return sorted(front[:cap])\n```",
+ "ttft_ms": 45086,
+ "type": "result",
+ "duration_ms": 51926,
+ "uuid": "1be652cf-36c3-4aab-8ea4-98d6b8f1787d",
+ "ttft_stream_ms": 1580,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
