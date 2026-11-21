@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 39010,
+ "stop_reason": "end_turn",
+ "session_id": "1031b29b-fc78-4363-a137-b93639e5721a",
+ "total_cost_usd": 0.0169916,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11567,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9328,
+  "output_tokens_details": {
+   "thinking_tokens": 7640
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11567,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9328,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11567,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11567
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9949,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010014,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9328,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11567,
+   "webSearchRequests": 0,
+   "costUSD": 0.006977599999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\nimport statistics\nimport ezr\nimport step2\nimport step3\nimport step4\nimport step5\n\ndef _split(tbl, score) -> tuple[list, list]:\n  \"Good rows beat the train average on the goals; bad rows do worse.\"\n  ws   = [score(r) for r in tbl.rows]\n  good = [r for r, w in zip(tbl.rows, ws) if w > 0]\n  bad  = [r for r, w in zip(tbl.rows, ws) if w < 0]\n  return good, bad\n\ndef _contrast(c, gv: list, bv: list) -> str:\n  \"One checkable sentence: how input C differs between good and bad rows.\"\n  if not gv or not bv:\n    return f\"{c.txt}: missing in one group, so no comparison.\"\n  if type(c) is ezr.Sym:\n    vals = set(gv) | set(bv)\n    fg = lambda v: gv.count(v) / len(gv)\n    fb = lambda v: bv.count(v) / len(bv)\n    v  = max(vals, key=lambda v: abs(fg(v) - fb(v)))\n    return (f\"{c.txt}={v} is in {100*fg(v):.0f}% of good builds \"\n            f\"and {100*fb(v):.0f}% of bad ones.\")\n  mg, mb = statistics.median(gv), statistics.median(bv)\n  real   = not step3.same(gv, bv)      # same() True means noise\n  return (f\"{c.txt}: median {mg:.2f} in good builds vs {mb:.2f} in bad ones \"\n          + (\"(a real difference).\" if real else \"(within noise).\"))\n\ndef explain(train_csv: str) -> str:\n  \"Plain reasons, checkable by hand, for what makes rows good.\"\n  tbl, score = step4._scorer(train_csv)\n  good, bad  = _split(tbl, score)\n  out = [f\"{len(good)} of {len(tbl.rows)} builds are good: closer to the \"\n         \"ideal on the goals than the average build.\"]\n  if not good or not bad:\n    out.append(\"Good and bad rows do not both exist, so no contrast is possible.\")\n    return \"\\n\".join(out)\n\n  # goals: a sanity check that the good/bad split means what it says\n  for c in tbl.y:\n    gv = [r[c.at] for r in good if r[c.at] != \"?\"]\n    bv = [r[c.at] for r in bad  if r[c.at] != \"?\"]\n    if gv and bv:\n      want = \"lower\" if c.goal == 0 else \"higher\"\n      out.append(f\"{c.txt}: good builds average {statistics.mean(gv):.2f}, \"\n                 f\"bad builds average {statistics.mean(bv):.2f} \"\n                 f\"({want} is better).\")\n\n  # inputs: the three columns most to blame, with the evidence for each\n  by_name = {tbl.names[c.at]: c for c in tbl.x}\n  for name in step5.blame(train_csv)[:3]:\n    c  = by_name[name]\n    gv = [r[c.at] for r in good if r[c.at] != \"?\"]\n    bv = [r[c.at] for r in bad  if r[c.at] != \"?\"]\n    out.append(\"- \" + _contrast(c, gv, bv))\n\n  # a tree on the inputs: the first split it chooses, and what each side scores\n  root = ezr.tree(tbl, tbl.rows)\n  if root.kids:\n    yes, no = root.kids\n    op = \"=\" if type(tbl.cols[root.at]) is ezr.Sym else \"<=\"\n    out.append(f\"A tree on the inputs first splits on \"\n               f\"{tbl.names[root.at]} {op} {ezr.say(root.v)}: rows where that \"\n               f\"holds have mean ydist {100*yes.mu:.0f} (0 is ideal), the rest \"\n               f\"{100*no.mu:.0f}.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: is ROW (goals included) good or bad, and why.\"\n  tbl, score = step4._scorer(train_csv)\n  full    = step2._row(tbl, row)\n  missing = [c.txt for c in tbl.y if full[c.at] == \"?\"]\n  if missing:\n    return (f\"This row cannot be rated: its goal value(s) \"\n            f\"{', '.join(missing)} are missing.\")\n  s       = score(full)\n  verdict = \"good\" if s > 0 else \"bad\" if s < 0 else \"average\"\n  parts = []\n  for c in tbl.y:\n    v      = full[c.at]\n    better = v < c.mu if c.goal == 0 else v > c.mu\n    parts.append(f\"{c.txt} is {ezr.say(v)}, \"\n                 f\"{'better' if better else 'worse'} than the train average \"\n                 f\"of {ezr.say(c.mu)}\")\n  return (f\"This row is {verdict} (score {s:.0f}, where 0 is an average build \"\n          f\"and 100 the best): \" + \"; and \".join(parts) + \".\")\n```",
+ "ttft_ms": 33491,
+ "type": "result",
+ "duration_ms": 38288,
+ "uuid": "b54a8176-a3c1-4fd3-ba71-282dd581c46b",
+ "ttft_stream_ms": 1214,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
