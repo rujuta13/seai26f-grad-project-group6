@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4056,
+ "stop_reason": "end_turn",
+ "session_id": "f1ab7c72-5304-4986-9a72-6791c17c250b",
+ "total_cost_usd": 0.0245786,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 23497,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 348,
+  "output_tokens_details": {
+   "thinking_tokens": 119
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23497,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 348,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 23497,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 23497
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19640,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019705,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 348,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23497,
+   "webSearchRequests": 0,
+   "costUSD": 0.0048736000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step23.py\n\"\"\"\nstep23: certify, for the client.  Two asks: did the last campaign really\nlift purchases, or is that noise?  Do families with teenagers really shop\ndifferently, or does it just look that way?  Both are two-sample questions,\nso this reuses step3.same (ezr's cliffs and ks) rather than rewriting them.\n\"\"\"\nimport step3\n\n\ndef same(xs, ys) -> bool:\n  \"\"\"True if XS and YS are NOT really different (the gap is noise),\n  False if the difference is real.  Both are lists of numbers, e.g. purchase\n  counts before and after a campaign, or for families with and without teens.\"\"\"\n  return step3.same(xs, ys)\n```",
+ "ttft_ms": 1914,
+ "type": "result",
+ "duration_ms": 2640,
+ "uuid": "5f391b76-7fc6-4da4-8f9d-f20fd90fb72e",
+ "ttft_stream_ms": 1318,
+ "time_to_request_ms": 85,
+ "queued_turn_count": 0
+}
