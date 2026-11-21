@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37636,
+ "stop_reason": "end_turn",
+ "session_id": "c8a9a5d1-9006-435e-97d4-d51a14599a83",
+ "total_cost_usd": 0.026558900000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21506,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8229,
+  "output_tokens_details": {
+   "thinking_tokens": 6782
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21506,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8229,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21506,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21506
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18048,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018143000000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8229,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21506,
+   "webSearchRequests": 0,
+   "costUSD": 0.0084159,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step11.py: remember. Player types (families), and the players who are strong and good from the spot.\n\"step11.py: remember. Player types (families), and the players who are strong and good from the spot.\"\nimport math\nimport random\nimport ezr\n\nK      = 5    # how many player types: a handful\nROUNDS = 20   # max refinement rounds for the types\n\ndef _load(train_csv):\n  \"The table, its input columns, and each row as one entry per input: 0..1 for nums, the symbol for syms, None if unknown.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  cs  = list(tbl.x)\n  vs  = [[None if r[c.at] == \"?\" else\n          r[c.at] if type(c) is ezr.Sym else ezr.norm(c, r[c.at])\n          for c in cs] for r in tbl.rows]\n  return tbl, cs, vs\n\ndef _gap2(cs, a, b):\n  \"Squared distance between two entry-lists A and B, column by column; unknown is far.\"\n  total = 0\n  for c, x, y in zip(cs, a, b):\n    if x is None or y is None: g = 1\n    elif type(c) is ezr.Sym:   g = 0 if x == y else 1\n    else:                      g = abs(x - y)\n    total += g * g\n  return total\n\ndef _centre(cs, members):\n  \"A centroid of MEMBERS: the mean for numbers, the most common for symbols; None where none is known.\"\n  out = []\n  for j, c in enumerate(cs):\n    xs = [m[j] for m in members if m[j] is not None]\n    if not xs: out.append(None)\n    elif type(c) is ezr.Sym:\n      counts = {}\n      for x in xs: counts[x] = counts.get(x, 0) + 1\n      out.append(max(counts, key=counts.get))\n    else:\n      out.append(sum(xs) / len(xs))\n  return out\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl, cs, vs = _load(train_csv)\n  n = len(vs)\n  if n == 0: return []\n  k   = min(K, n)\n  rng = random.Random(ezr.the.Seed)\n  # farthest-first seeds: start from a random row, then keep adding\n  # the row furthest from every seed chosen so far\n  seeds = [vs[rng.randrange(n)]]\n  far   = [_gap2(cs, v, seeds[0]) for v in vs]\n  while len(seeds) < k:\n    i = max(range(n), key=lambda j: far[j])\n    seeds.append(vs[i])\n    far = [min(g, _gap2(cs, v, vs[i])) for g, v in zip(far, vs)]\n  # k-means style: assign each row to its nearest seed, then replace\n  # each seed by its cluster's centroid\n  labels = None\n  for _ in range(ROUNDS):\n    new = [min(range(k), key=lambda c: _gap2(cs, v, seeds[c])) for v in vs]\n    if new == labels: break\n    labels = new\n    for c in range(k):\n      members = [v for v, l in zip(vs, labels) if l == c]\n      if members: seeds[c] = _centre(cs, members)\n  return labels\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  if not tbl.y: raise ValueError(\"no goal columns (names ending in + or -)\")\n  rows = tbl.rows\n  cap  = len(rows) * 5 // 100          # at most 5%, in whole rows\n\n  def ydist_or_inf(r):\n    \"How far ROW's goals are from ideal; infinite if any goal is unknown.\"\n    if any(r[c.at] == \"?\" for c in tbl.y): return math.inf\n    return ezr.ydist(tbl, r)\n\n  ys     = [ydist_or_inf(r) for r in rows]\n  ranked = sorted(range(len(rows)), key=lambda i: ys[i])\n  known  = [i for i in ranked if ys[i] < math.inf]   # rows with unknown goals cannot be called good\n  return known[:cap]\n```",
+ "ttft_ms": 32549,
+ "type": "result",
+ "duration_ms": 36497,
+ "uuid": "52d47e5b-baff-4501-a9fe-e5462e7c70ca",
+ "ttft_stream_ms": 1539,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
