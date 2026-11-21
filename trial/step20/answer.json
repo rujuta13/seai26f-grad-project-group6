@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 12680,
+ "stop_reason": "end_turn",
+ "session_id": "10b59462-506f-469d-ab01-0ff06a5cccbc",
+ "total_cost_usd": 0.024496200000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22325,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2384,
+  "output_tokens_details": {
+   "thinking_tokens": 1736
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22325,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2384,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22325,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22325
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18779,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018839,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2384,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22325,
+   "webSearchRequests": 0,
+   "costUSD": 0.0056572,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py\n\"\"\"\nstep20: race.  Our shortlist against a simple \"top overall rating\" list, and\nour penalty guesser against an off-the-shelf model, all on the same test rows\nand the same yardstick (ezr.wins of each method's one pick).\n\nMethods, as returned by step10.race:\n  ours        our tuner: step7.choose, labelling at most the.Stop rows.\n  random      random search with the same label budget.\n  ours_guess  our guesser: step4's predicted ydist, no labels.\n  knn         off-the-shelf stand-in: k-nearest-neighbour regression.\nAdded here:\n  overall     the \"top overall rating\" list: the test row with the highest\n              OVR. OVR is an input column, so no labels are needed.\n\nReuses step10 (race) and ezr (Tbl, csv, wins).\n\"\"\"\nimport ezr\nimport step10\n\n\ndef _overall(test) -> int:\n  \"Index of the test row with the highest OVR; non-numeric OVR counts as lowest.\"\n  if \"OVR\" not in test.names:\n    raise ValueError(\"race: test_csv has no OVR column\")\n  at = test.names.index(\"OVR\")\n\n  def key(i):\n    v = test.rows[i][at]\n    return v if isinstance(v, (int, float)) else float(\"-inf\")\n\n  return max(range(len(test.rows)), key=key)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"Each method's pick on TEST_CSV, scored by ezr.wins. Higher is better. Includes 'ours'.\"\n  scores = step10.race(train_csv, test_csv)\n  test   = ezr.Tbl(ezr.csv(test_csv))\n  score  = ezr.wins(test)\n  scores[\"overall\"] = float(score(test.rows[_overall(test)]))\n  if \"ours\" not in scores:\n    raise RuntimeError(\"race: step10.race returned no 'ours' score\")\n  return scores\n```",
+ "ttft_ms": 9527,
+ "type": "result",
+ "duration_ms": 11600,
+ "uuid": "8769f9ca-0394-4c42-adf5-c1c82987366d",
+ "ttft_stream_ms": 1604,
+ "time_to_request_ms": 82,
+ "queued_turn_count": 0
+}
