@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5719,
+ "stop_reason": "end_turn",
+ "session_id": "73ba0ab8-4ae7-4c5c-a10e-19bc1aa4559e",
+ "total_cost_usd": 0.029723299999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28258,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 881,
+  "output_tokens_details": {
+   "thinking_tokens": 490
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28258,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 881,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28258,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28258
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23551,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023631,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 881,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28258,
+   "webSearchRequests": 0,
+   "costUSD": 0.006092299999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 28: fix a bad customer by changing as few flags as possible.\n\nfix() takes a customer's flag settings (goal columns removed) and returns the\nsame inputs with as few values changed as the training data predicts are needed\nto make the customer good. The search is delegated to step8.fix, which holds the\nimplementation. Columns named in `frozen` keep their original values, and the\nresult contains only input columns.\n\"\"\"\n\nfrom step8 import fix as _fix_step8\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs with as few values changed as possible so it is predicted good.\n\n    `row` is a bad row with goal columns removed. Columns named in `frozen`\n    are never changed. If the row is already predicted good, it is returned\n    unchanged.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    frozen = tuple(frozen)\n\n    result = dict(_fix_step8(train_csv, dict(row), frozen=frozen))\n\n    # Safety net: frozen columns must keep their original values.\n    for c in frozen:\n        if c in row and c in result:\n            result[c] = row[c]\n    return result\n```",
+ "ttft_ms": 3416,
+ "type": "result",
+ "duration_ms": 4459,
+ "uuid": "558323d1-df4f-489a-8c88-91e0fd1bdc40",
+ "ttft_stream_ms": 1314,
+ "time_to_request_ms": 61,
+ "queued_turn_count": 0
+}
