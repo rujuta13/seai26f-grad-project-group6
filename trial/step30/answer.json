@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 26111,
+ "stop_reason": "end_turn",
+ "session_id": "35b0029c-b137-420a-8040-2cbf6187902a",
+ "total_cost_usd": 0.0370779,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 33131,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6735,
+  "output_tokens_details": {
+   "thinking_tokens": 4444
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33131,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6735,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 33131,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 33131
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26999,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.027083999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6735,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33131,
+   "webSearchRequests": 0,
+   "costUSD": 0.0099939,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step30.py - client question 30: race.\n\nrace(train_csv, test_csv) compares our methods with standard rivals on test_csv.\n\nTargeting race. Each method may benchmark up to BUDGET test customers, then\nreturns the one it judges best. The score is that chosen row's quality on the\ntest set, in [0, 1], where 1 is the best test row and 0 the worst. Quality is\nthe step7 min-max mean over all goals, computed over every test row.\n  ours           step7.choose (our targeting search)\n  top_income     benchmark the BUDGET highest-INCOME rows, then pick the best\n                 of them on the goals (the \"mail the highest-income\n                 customers\" rival)\n  random_search  BUDGET rows drawn uniformly at random (mean over REPEATS seeds)\n\nResponse race. Each method predicts RESPONSE+ of every test row from train_csv\nalone. Score = 1 - MAE / training range of RESPONSE, so higher is better and\n1 means exact predictions.\n  ours_response_guesser  step2.guess (median of nearest training neighbours)\n  linear_regression      ridge regression on standardised flags (step10)\n\nReused from earlier steps: SEED (step1), _load (step1), _model and guess\n(step2), _scores and choose (step7), BUDGET, REPEATS, _blind_copy and\n_fit_linear (step10).\n\"\"\"\nimport os\nimport random\nimport tempfile\n\nfrom step1 import SEED, _load\nfrom step2 import _model, guess\nfrom step7 import _scores, choose\nfrom step10 import BUDGET, REPEATS, _blind_copy, _fit_linear\n\n\ndef _goal_pos(goal_cols, base):\n    \"\"\"Position of the goal whose name, without its suffix, is `base`.\"\"\"\n    for g, (name, _) in enumerate(goal_cols):\n        if name.rstrip(\"+-\") == base:\n            return g\n    raise ValueError(f\"no {base} goal column\")\n\n\ndef _targeting(test_csv):\n    \"\"\"Quality in [0, 1] of the row each targeting method picks on test_csv.\"\"\"\n    input_cols, goal_cols, X, Y = _load(test_csv)\n    n = len(Y)\n    if n == 0:\n        raise ValueError(\"test file has no data rows\")\n    if \"INCOME\" not in input_cols:\n        raise ValueError(\"test file has no INCOME input column\")\n    budget = min(BUDGET, n)\n    t_inc = input_cols.index(\"INCOME\")\n\n    # quality of every test row over the whole test set (oracle view)\n    truth = _scores({i: Y[i] for i in range(n)})\n\n    def label_for(i):\n        return {name: sign * Y[i][g] for g, (name, sign) in enumerate(goal_cols)}\n\n    def pick_best(bench):\n        # choice is made only from benchmarked rows, scaled over those rows\n        sc = _scores(bench)\n        return max(bench, key=lambda i: (sc[i], -i))\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _blind_copy(test_csv, blind)\n        ours_idx = choose(blind, label_for, budget=budget)\n\n    # rival: benchmark the highest-income rows, then pick the best of them\n    by_income = sorted(range(n), key=lambda i: (-X[i][t_inc], i))[:budget]\n    income_idx = pick_best({i: Y[i] for i in by_income})\n\n    # rival: uniform random sample of the budget, repeated over seeds\n    rand_scores = []\n    for r in range(REPEATS):\n        rng = random.Random(SEED + r)\n        sample = rng.sample(range(n), budget)\n        rand_scores.append(truth[pick_best({i: Y[i] for i in sample})])\n\n    return {\n        \"ours\": truth[ours_idx],\n        \"top_income\": truth[income_idx],\n        \"random_search\": sum(rand_scores) / len(rand_scores),\n    }\n\n\ndef _response(train_csv, test_csv):\n    \"\"\"Prediction quality in (-inf, 1] of the response guesser and of a ridge\n    regression, both predicting RESPONSE from train_csv alone.\"\"\"\n    input_cols, train_goals, means, stds, Z, goal_vals = _model(train_csv)\n    if not Z:\n        raise ValueError(\"training file has no data rows\")\n    tin, test_goals, TX, TY = _load(test_csv)\n    if tin != input_cols:\n        raise ValueError(\"test and train input columns differ\")\n\n    gt = _goal_pos(train_goals, \"RESPONSE\")\n    gs = _goal_pos(test_goals, \"RESPONSE\")\n    train_name = train_goals[gt][0]\n\n    n = len(TY)\n    if n == 0:\n        raise ValueError(\"test file has no data rows\")\n\n    # true raw response values of the test rows\n    sign_s = test_goals[gs][1]\n    truth = [sign_s * TY[i][gs] for i in range(n)]\n\n    # training range of the response goal, used to normalise errors\n    vals = [goal_vals[i][gt] for i in range(len(goal_vals))]\n    span = max(vals) - min(vals)\n    if span <= 0:\n        span = 1.0\n\n    # ours: step2 guesser (median of nearest training neighbours)\n    ours_err = 0.0\n    for i in range(n):\n        row = {c: TX[i][t] for t, c in enumerate(tin)}\n        est = guess(train_csv, row)\n        ours_err += abs(est[train_name][0] - truth[i])\n\n    # rival: ridge regression on standardised flags\n    y = [goal_vals[i][gt] for i in range(len(Z))]\n    ybar, w = _fit_linear(Z, y)\n    lin_err = 0.0\n    for i in range(n):\n        z = [(TX[i][t] - means[t]) / stds[t] for t in range(len(tin))]\n        pred = ybar + sum(a * b for a, b in zip(w, z))\n        lin_err += abs(pred - truth[i])\n\n    def score(err):\n        return 1.0 - (err / n) / span\n\n    return {\n        \"ours_response_guesser\": score(ours_err),\n        \"linear_regression\": score(lin_err),\n    }\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare our targeting search and response guesser with standard rivals\n    on test_csv. Returns {method: score}, higher is better, including \"ours\".\n\n    Targeting scores (\"ours\", \"top_income\", \"random_search\") lie in [0, 1].\n    Response scores are 1 minus the mean absolute error divided by the\n    training range of RESPONSE, so 1 means exact.\n    \"\"\"\n    result = _targeting(test_csv)\n    result.update(_response(train_csv, test_csv))\n    return {k: float(v) for k, v in result.items()}\n```",
+ "ttft_ms": 18661,
+ "type": "result",
+ "duration_ms": 24792,
+ "uuid": "64997973-c0f7-443d-91d5-1806174d3c82",
+ "ttft_stream_ms": 1402,
+ "time_to_request_ms": 89,
+ "queued_turn_count": 0
+}
