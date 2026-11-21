@@ -1,0 +1,9 @@
+{
+ "ok": false,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "error": "timed out after 900s"
+ }
+}

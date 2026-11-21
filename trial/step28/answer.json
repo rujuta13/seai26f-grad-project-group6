@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5518,
+ "stop_reason": "end_turn",
+ "session_id": "521177f6-4303-4d76-bff0-da0c9b86e468",
+ "total_cost_usd": 0.0266935,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25544,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 555,
+  "output_tokens_details": {
+   "thinking_tokens": 244
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25544,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 555,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25544,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25544
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21232,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.021307,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 555,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25544,
+   "webSearchRequests": 0,
+   "costUSD": 0.0053865,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step28.py\n\"\"\"\nstep28: fix, for the client.  Two asks:\n  1. \"This customer is drifting away: what's the smallest nudge that\n     brings them back?\"  Call fix on the customer's row (goals removed),\n     with the inputs the company cannot change (age, education, marital\n     status, and so on) in frozen.\n  2. \"Which product offer would turn a deal-only shopper into a regular\n     one?\"  Call fix on that shopper's row, freezing every input except\n     the product-spend columns that an offer can move.\nBoth reuse step8's fix unchanged.\n\"\"\"\nimport step8\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"The same row's inputs, with as few values changed as possible so that\n  it is predicted good. ROW is a bad row with its goals removed. Columns\n  named in FROZEN never change.\"\"\"\n  return step8.fix(train_csv, row, frozen=frozen)\n```",
+ "ttft_ms": 3275,
+ "type": "result",
+ "duration_ms": 4252,
+ "uuid": "1dba4dd9-ef0c-4cb5-a4d6-82281f4ca95f",
+ "ttft_stream_ms": 1970,
+ "time_to_request_ms": 86,
+ "queued_turn_count": 0
+}
