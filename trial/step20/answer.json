@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 48137,
+ "stop_reason": "end_turn",
+ "session_id": "9c1822e0-14c3-4557-b35f-670456d0885b",
+ "total_cost_usd": 0.038818,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 32029,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11546,
+  "output_tokens_details": {
+   "thinking_tokens": 9258
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32029,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11546,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 32029,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 32029
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26559,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026639,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11546,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32029,
+   "webSearchRequests": 0,
+   "costUSD": 0.012179,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step20.py: race our shortlist and penalty guesser against simple rivals.\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every key.\n\nShortlist race. test_csv is the pool of candidate players, with goals hidden\nuntil a player is scouted. Each method may scout at most SHORTLIST_BUDGET players.\n  - ours: step17.choose (step7's search), averaged over SEEDS.\n  - top_rating: the client's \"top overall rating\" list. Scouts go down the\n    players sorted by OVR, highest first, and keep the best one seen.\n  The score of a chosen player is its goal quality over the test pool (step10's\n  normalised goal sum, 1 = best on every goal).\n\nPenalty guesser race. Models are trained on train_csv and tested on test_csv\nfor the Penalties+ goal only.\n  - penalty_guess_ours: step12.guess, the calibrated nearest-neighbour median.\n  - penalty_guess_linear: ordinary least squares on the numeric attributes, an\n    off-the-shelf model. Missing attributes are filled with training means.\n  The score is R^2 on test_csv (1 = perfect, 0 = no better than the test mean).\n\nReuses step7 and step17 (search), step10 (benchmark wrapper, quality, least\nsquares, R^2), step12 (guesser) and step1 (loading). Standard library only.\n\"\"\"\nimport math\nimport os\nimport tempfile\n\nimport step7\nimport step10\nfrom step1 import _load, _columns\nfrom step12 import guess\nfrom step17 import choose\n\nSHORTLIST_BUDGET = 30        # players the scouts may benchmark per method\nSEEDS = (1, 2, 3, 4, 5)      # search seeds for our method (the rival is deterministic)\nRATING_COL = \"OVR\"           # the client's \"overall rating\"\nPENALTY = \"Penalties\"        # goal name without its +/- suffix\n\n\ndef _ours(blind, label, seed, budget):\n    \"\"\"step17.choose (step7's search) with its random seed set to `seed`.\"\"\"\n    old = step7.SEED\n    step7.SEED = seed\n    try:\n        return choose(blind, label, budget=budget)\n    finally:\n        step7.SEED = old\n\n\ndef _rating(row):\n    \"\"\"The overall rating of a row, or -inf if it is missing or not finite.\"\"\"\n    v = row.get(RATING_COL)\n    if isinstance(v, float) and math.isfinite(v):\n        return v\n    return -math.inf\n\n\ndef _race_shortlist(cols, rows, goals, budget):\n    names = [c for c, _ in goals]\n    g = len(goals)\n    q = step10._quality([step10._oriented(r, goals) for r in rows], g)\n\n    def label(i):\n        return {c: rows[i][c] for c in names}\n\n    # Ours: average the chosen player's quality over the seeds.\n    ours_total = 0.0\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        step10._write_blind(cols, rows, set(names), blind)\n        for seed in SEEDS:\n            ours_total += q[_ours(blind, label, seed, budget)]\n\n    # Rival: scout down the list sorted by rating, highest first, and keep the\n    # best player seen.\n    order = sorted(range(len(rows)), key=lambda i: (-_rating(rows[i]), i))\n    bench = step10._Bench(label, goals, budget)\n    for i in order[:budget]:\n        bench(i)\n    top = step10._chosen_quality(bench.seen, q, g)\n\n    return {\"ours\": ours_total / len(SEEDS), \"top_rating\": top}\n\n\ndef _penalty_goal(goal_names):\n    \"\"\"The name of the penalty goal column, or None if there is none.\"\"\"\n    for c in goal_names:\n        if c == PENALTY or c[:-1] == PENALTY:\n            return c\n    return None\n\n\ndef _race_penalty(train_csv, rows, goal):\n    tcols, trows = _load(train_csv)\n    inputs, maxi, mini = _columns(tcols, trows)\n    if goal not in set(maxi + mini):\n        raise ValueError(f\"{train_csv} has no {goal} goal column\")\n    if not trows:\n        raise ValueError(f\"{train_csv} has no rows\")\n\n    # Training means fill attributes missing from a test row for the linear model.\n    means = {c: sum(r[c] for r in trows) / len(trows) for c in inputs}\n\n    pts = [([1.0] + [float(r[c]) for c in inputs], float(r[goal]))\n           for r in trows\n           if isinstance(r[goal], float) and math.isfinite(r[goal])]\n    if not pts:\n        raise ValueError(f\"{train_csv} has no finite {goal} values\")\n    w = step10._fit_one([x for x, _ in pts], [y for _, y in pts])\n\n    ours_pairs, lin_pairs = [], []\n    for r in rows:\n        y = r.get(goal)\n        if not (isinstance(y, float) and math.isfinite(y)):\n            continue\n        flags = {c: r.get(c) for c in inputs}\n        est = guess(train_csv, flags)[goal][0]\n        x = [1.0] + [float(r[c]) if isinstance(r.get(c), float) else means[c]\n                     for c in inputs]\n        ours_pairs.append((y, est))\n        lin_pairs.append((y, step10._predict(w, x)))\n\n    return {\"penalty_guess_ours\": step10._r2(ours_pairs),\n            \"penalty_guess_linear\": step10._r2(lin_pairs)}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score our shortlist (\"ours\") against the top-rating list (\"top_rating\"),\n    and our penalty guesser against an off-the-shelf linear model on Penalties+.\n\n    Shortlist scores lie in [0, 1]; guesser scores are R^2 (at most 1).\n    Higher is better for every key. If test_csv has no penalty goal, only the\n    shortlist keys are returned.\n    \"\"\"\n    cols, rows = _load(test_csv)\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals or not rows:\n        raise ValueError(f\"{test_csv} needs goal columns and rows\")\n\n    budget = min(SHORTLIST_BUDGET, len(rows))\n    out = _race_shortlist(cols, rows, goals, budget)\n\n    penalty = _penalty_goal([c for c, _ in goals])\n    if penalty is not None:\n        out.update(_race_penalty(train_csv, rows, penalty))\n\n    return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 40327,
+ "type": "result",
+ "duration_ms": 46849,
+ "uuid": "1e17566c-ef25-4b7c-b571-f6f7f497d02d",
+ "ttft_stream_ms": 1212,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
