@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37634,
+ "stop_reason": "end_turn",
+ "session_id": "ff9e2a3b-c8f2-4a54-bee7-1135571515f2",
+ "total_cost_usd": 0.022556800000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17648,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8076,
+  "output_tokens_details": {
+   "thinking_tokens": 6795
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17648,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8076,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17648,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17648
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14909,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014989,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8076,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17648,
+   "webSearchRequests": 0,
+   "costUSD": 0.0075677999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step9.py\nimport ezr\n\nBAD_Z = 2.0   # a number within this many sds of its column's mean looks normal\nSPAN  = 4.0   # each further sd adds to suspicion, up to a cap of 1\n\ndef _is_num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _align(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"\"\"Align ROW to TBL's columns. ROW is a dict by column name, or a list\n  either over every column or over the non-goal columns. Blank is '?';\n  strings are read as atoms, so '12' becomes 12 and 'abc' stays text.\"\"\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name)) for at, name in enumerate(tbl.names)]\n  elif len(row) == len(tbl.names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(tbl.names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs:\n    if v is None: continue\n    if isinstance(v, str):\n      s = v.strip()\n      v = \"?\" if s in (\"\", \"?\") else ezr.atom(s)\n    q[at] = v\n  return q\n\ndef _fit(tbl: ezr.TBL, q: ezr.ROW) -> ezr.ROW:\n  \"Q with any non-number in a number column blanked to '?', so distances can be taken.\"\n  out = list(q)\n  for at, col in tbl.cols.items():\n    if type(col) is ezr.Num and not _is_num(q[at]): out[at] = \"?\"\n  return out\n\ndef _surprise(col: ezr.COL, v) -> float:\n  \"How odd one cell V is for its column COL: 0 is normal, 1 is a likely glitch.\"\n  if col.n == 0: return 0.0                  # training says nothing about this column\n  if type(col) is ezr.Sym:\n    return 0.0 if v in col.has else 1.0      # a symbol never seen: maybe a typo\n  if not _is_num(v): return 1.0              # a number column holding text\n  if col.sd == 0:                            # training is constant here\n    return 0.0 if v == col.mu else 1.0\n  z = abs(v - col.mu) / col.sd\n  return min(1.0, max(0.0, z - BAD_Z) / SPAN)\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS (goals included): higher means more\n  likely a glitch, a typo, or unlike anything in TRAIN_CSV. Each score is the\n  worst cell, plus the mean cell, plus the distance to the nearest training\n  row over the input columns.\"\"\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  if not tbl.rows:\n    return [1.0] * len(rows)                 # nothing to compare with: all unlike it\n  known = [_fit(tbl, r) for r in tbl.rows]\n  out: list[float] = []\n  for row in rows:\n    q     = _align(tbl, row)\n    cells = [_surprise(col, q[at]) for at, col in tbl.cols.items()\n             if q[at] != \"?\"]\n    top   = max(cells, default=0.0)\n    mean  = sum(cells) / len(cells) if cells else 0.0\n    qf    = _fit(tbl, q)\n    near  = (min(ezr.xdist(tbl, qf, s) for s in known)\n             if tbl.x else 0.0)              # no input columns: nothing to be far from\n    out.append(top + mean + near)\n  return out\n```",
+ "ttft_ms": 32852,
+ "type": "result",
+ "duration_ms": 36613,
+ "uuid": "f134cadf-95ff-4576-b03b-abc72c43e9a7",
+ "ttft_stream_ms": 1283,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
