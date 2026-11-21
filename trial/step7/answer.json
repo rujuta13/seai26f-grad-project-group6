@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 59751,
+ "stop_reason": "end_turn",
+ "session_id": "c45f7b03-06bc-4841-9b11-72726ecade8d",
+ "total_cost_usd": 0.021149,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13739,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13290,
+  "output_tokens_details": {
+   "thinking_tokens": 12075
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13739,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13290,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13739,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13739
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11686,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011756,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13290,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13739,
+   "webSearchRequests": 0,
+   "costUSD": 0.009392999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step7.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep7.py: choose.  Find the best flag set while benchmarking at most BUDGET\nbuilds.  The blind table has every goal cell set to '?'; label(i) reveals\nthe goals of row i.  choose() spends its budget with ezr.acquire (label\nbuilds near the best so far, far from the rest), then returns the best\nlabelled row.  With GOAL set, only that goal counts: the other goal columns\nare renamed to 'X' (skipped) in a private copy of the table, so ezr sees\none goal and every distance and cut uses only it.\n\"\"\"\nimport ezr\n\ndef _goal_at(names: list, key: str) -> int | None:\n  \"Column index of the goal named KEY, with or without its +, -, ! suffix.\"\n  for at, s in enumerate(names):\n    if s[-1] in \"+-!\" and key in (s, s[:-1]): return at\n  return None\n\ndef choose(blind_csv: str, label, budget: int = 30,\n           goal: str | None = None) -> int:\n  \"Index of the best row found, labelling at most BUDGET rows via LABEL.\"\n  if budget < 1: raise ValueError(\"budget must be at least 1\")\n  src   = list(ezr.csv(blind_csv))\n  names = src[0]\n  goals = [at for at, s in enumerate(names) if s[-1] in \"+-!\"]\n  if not goals: raise ValueError(f\"no goal columns in {names}\")\n  if goal is None:\n    want, keep = goals, names\n  else:\n    target = _goal_at(names, goal)\n    if target is None: raise ValueError(f\"no goal named {goal!r} in {names}\")\n    want = [target]\n    keep = [s[:-1] + \"X\" if at in goals and at != target else s\n            for at, s in enumerate(names)]\n  tbl = ezr.Tbl([keep] + src[1:])\n  if not tbl.rows: raise ValueError(\"no rows to choose from\")\n\n  index = {id(r): i for i, r in enumerate(tbl.rows)}  # row object -> index\n  back  = {}                                          # labelled row -> index\n  spent = [0]\n\n  def oracle(row):\n    \"Reveal the goals of ROW by calling the client's LABEL, once per row.\"\n    if spent[0] >= budget: raise RuntimeError(f\"budget of {budget} labels spent\")\n    spent[0] += 1\n    i      = index[id(row)]\n    got    = label(i)\n    filled = list(row)\n    for key, v in got.items():\n      at = _goal_at(names, key)\n      if at is None: raise KeyError(f\"label({i}) gave unknown goal {key!r}\")\n      filled[at] = ezr.atom(v) if isinstance(v, str) else v\n    for at in want:\n      if filled[at] == \"?\": raise KeyError(f\"label({i}) gave no value for {names[at]}\")\n    back[id(filled)] = i\n    return filled\n\n  old_start, old_few = ezr.the.Start, ezr.the.Few\n  ezr.the.Start = min(old_start, budget, len(tbl.rows))  # never exceed budget\n  ezr.the.Few   = len(tbl.rows)                          # consider every row\n  try:\n    labelled = ezr.acquire(tbl, budget, oracle)\n  finally:\n    ezr.the.Start, ezr.the.Few = old_start, old_few\n\n  scorer = ezr.Tbl([keep] + labelled)   # normalises over what we labelled\n  best   = min(labelled, key=lambda r: ezr.ydist(scorer, r))\n  return back[id(best)]\n```",
+ "ttft_ms": 55566,
+ "type": "result",
+ "duration_ms": 58952,
+ "uuid": "9b754473-9e73-41c6-b825-cbc11fa1858b",
+ "ttft_stream_ms": 1259,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
