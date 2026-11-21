@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 58358,
+ "stop_reason": "end_turn",
+ "session_id": "5c46be1f-3e88-4993-8b08-fd9cbdd7f8c9",
+ "total_cost_usd": 0.0212291,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13652,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13439,
+  "output_tokens_details": {
+   "thinking_tokens": 12279
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13652,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13439,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13652,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13652
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11704,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011779000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13439,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13652,
+   "webSearchRequests": 0,
+   "costUSD": 0.0094501,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step7.py\n\"\"\"\nstep7: choose.  Find the best flag set while labelling at most BUDGET\nbuilds.  The pool arrives blind (every goal cell '?'); label(i) reveals\nthe goals of row i.  Reuses ezr's table, clone, acquire, and ydist.\nWith GOAL named, only that goal counts: the other goals are renamed to\nend in X, which makes ezr skip them.\n\"\"\"\nimport ezr\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"Index of the best row, labelling at most BUDGET rows. GOAL, if given, is the only goal.\"\n  if budget < 1:\n    raise ValueError(\"choose: budget must be at least 1\")\n  raw   = list(ezr.csv(blind_csv))\n  full  = [str(s) for s in raw[0]]            # header names, as written\n  data  = raw[1:]\n  if not data:\n    raise ValueError(\"choose: no rows to choose from\")\n  goals = [at for at, s in enumerate(full) if s.endswith((\"+\", \"-\", \"!\"))]\n\n  pick = None\n  if goal is not None:\n    hits = [at for at in goals if goal in (full[at], full[at][:-1])]\n    if not hits:\n      raise ValueError(f\"choose: no goal named {goal!r}\")\n    pick = hits[0]\n  # Other goals end in X, so ezr skips them: only PICK drives ydist.\n  names = ([s if (at == pick or at not in goals) else s[:-1] + \"X\"\n            for at, s in enumerate(full)]\n           if pick is not None else full)\n\n  tbl   = ezr.Tbl(iter([names] + data))\n  where = {id(r): i for i, r in enumerate(tbl.rows)}   # row object -> index\n\n  def cell(v):\n    \"Strings become ATOMs; numbers pass through.\"\n    return ezr.atom(v) if isinstance(v, str) else v\n\n  def read(got, name):\n    \"The value of one goal in GOT, by full name or without its sign.\"\n    for key in (name, name[:-1]):\n      if key in got: return got[key]\n    raise KeyError(f\"choose: label gave no value for {name!r}\")\n\n  calls = 0\n  made  = {}                                   # id(labelled row) -> (i, row)\n\n  def oracle(row):\n    \"Label ROW's source index, and return ROW with its goal cells filled.\"\n    nonlocal calls\n    if calls >= budget:\n      raise RuntimeError(f\"choose: label budget of {budget} exceeded\")\n    calls += 1\n    i   = where[id(row)]\n    got = label(i)\n    out = list(row)\n    for at in goals:\n      out[at] = cell(read(got, full[at]))\n    made[id(out)] = (i, out)\n    return out\n\n  old_start, old_few = ezr.the.Start, ezr.the.Few\n  ezr.the.Start = max(1, min(ezr.the.Start, budget))  # never over budget\n  ezr.the.Few   = len(data)                           # every row is a candidate\n  try:\n    got = ezr.acquire(tbl, cap=budget, label=oracle)\n  finally:\n    ezr.the.Start, ezr.the.Few = old_start, old_few  # always put `the` back\n\n  lab  = ezr.clone(tbl, got)                   # stats from labelled rows only\n  best = min(got, key=lambda r: ezr.ydist(lab, r))\n  return made[id(best)][0]\n```",
+ "ttft_ms": 53922,
+ "type": "result",
+ "duration_ms": 57304,
+ "uuid": "bf8f3957-4d0a-45ff-8459-55cc56d2b8ee",
+ "ttft_stream_ms": 1321,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
