@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5590,
+ "stop_reason": "end_turn",
+ "session_id": "07483324-ad91-4ee7-8991-805011a6e90f",
+ "total_cost_usd": 0.036613400000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 35751,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 710,
+  "output_tokens_details": {
+   "thinking_tokens": 235
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 35751,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 710,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 35751,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 35751
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29038,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029108000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 710,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 35751,
+   "webSearchRequests": 0,
+   "costUSD": 0.0075054,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step27.py: choose, for the two client questions.\n\nQ1: \"Find the best customers to target while test-mailing only 50 people.\"\n    No single goal is named, so the search optimises all goals together\n    (goal=None), by Pareto fronts as in step1.best. Call with budget=50.\n\nQ2: \"If I care most about store visits rather than web orders, who should I\n    target instead?\"\n    Call with goal=\"NUMSTOREPURCHASES+\" (or the bare name \"NUMSTOREPURCHASES\").\n    Only that goal is then optimised.\n\nThe search, the label budget and the leader rule come from step7.choose, which\nraises RuntimeError if label is called more than budget times.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step7 import choose as _choose\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, calling label at most `budget` times.\n\n    blind_csv: a MOOT csv whose goal cells are all '?'.\n    label(i): returns the goals of row i as a dict {goal column: value}.\n    budget: the most label calls allowed. Going over raises RuntimeError.\n    goal: optional goal column name (or its name without the trailing + or -).\n          When given, only that goal is optimised. When None, all goals are\n          optimised together by Pareto fronts.\n    \"\"\"\n    return int(_choose(blind_csv, label, budget=budget, goal=goal))\n```",
+ "ttft_ms": 2448,
+ "type": "result",
+ "duration_ms": 3752,
+ "uuid": "fd6fde5a-426f-4ed2-8749-3154f2ebd359",
+ "ttft_stream_ms": 1246,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
