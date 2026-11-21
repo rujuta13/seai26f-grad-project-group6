@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 82194,
+ "stop_reason": "end_turn",
+ "session_id": "6aabbdee-13dc-4950-85bc-14d9aaf8d68d",
+ "total_cost_usd": 0.045533199999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 35005,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 18840,
+  "output_tokens_details": {
+   "thinking_tokens": 16501
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 35005,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 18840,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 35005,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 35005
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29022,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029112,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 18840,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 35005,
+   "webSearchRequests": 0,
+   "costUSD": 0.0164212,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step19.py\n#!/usr/bin/env python3 -B\n\"Flag player records that look like data-entry mistakes, or are so unlike the rest that their ratings deserve a second look, via ezr.\"\nimport math\nimport ezr\n\nGOAL_SCALE = 3.0                  # a value this many sds from the training mean scores 1\nZ_CAP      = 10.0                 # sds beyond this count as this many, so one cell cannot dominate\nTEXT_SCORE = Z_CAP / GOAL_SCALE   # a word, or nan/inf, where a number belongs\n\n_cache: dict[str, tuple] = {}     # train_csv -> (head, kinds, cols, seen, xs, flags, enc)\n\ndef _num(v) -> bool:\n  \"True for an int or float, but not a bool.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _cell(v):\n  \"V as one cell: '?' if blank or unknown; otherwise its atom (a typo stays text).\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    v = v.strip()\n    return \"?\" if v in (\"\", \"?\") else ezr.atom(v)\n  return v\n\ndef _kinds(head: list, rows: list) -> list:\n  \"How each column is read: 'goal', 'num', 'sym', or None (ignored).\"\n  n     = len(rows)\n  kinds = []\n  for at, name in enumerate(head):\n    vals = [r[at] for r in rows if r[at] != \"?\"]\n    nums = [v for v in vals if _num(v) and math.isfinite(v)]\n    if name == \"num\" or name[-1:] == \"X\" or not vals:\n      kind = None                                  # row id, ignored column, or empty\n    elif name[-1] in \"+-\":\n      kind = \"goal\" if nums else None\n    elif len(nums) * 2 >= len(vals):\n      kind = \"num\"                                 # mostly numbers: text cells are typos\n    elif len({str(v) for v in vals}) > max(1, n // 2):\n      kind = None                                  # an identifier: no signal\n    else:\n      kind = \"sym\"\n    kinds.append(kind)\n  return kinds\n\ndef _enc(kind, col, v):\n  \"V as used for distances: None if unknown, a symbol as is, a number scaled 0..1 by ezr.norm.\"\n  if v == \"?\": return None\n  if kind == \"sym\": return v\n  if not _num(v) or not math.isfinite(v): return None\n  return ezr.norm(col, v)\n\ndef _load(train_csv: str) -> tuple:\n  \"Read TRAIN_CSV once; return its header, column kinds, number stats, symbol sets, input columns, and scaled training rows.\"\n  if train_csv not in _cache:\n    src   = ezr.csv(train_csv)\n    first = next(src, None)\n    head  = ([] if first is None\n             else [str(v).strip() or f\"col{at}\" for at, v in enumerate(first)])\n    width = len(head)\n    rows  = []\n    for r in src:\n      r = [_cell(v) for v in r]\n      rows.append((r + [\"?\"] * width)[:width])\n    kinds = _kinds(head, rows)\n    cols, seen = {}, {}\n    for at, kind in enumerate(kinds):\n      if kind in (\"goal\", \"num\"):\n        cols[at] = ezr.Num(head[at], at)\n        for r in rows:\n          if _num(r[at]) and math.isfinite(r[at]): ezr.add(cols[at], r[at])\n      elif kind == \"sym\":\n        seen[at] = {r[at] for r in rows if r[at] != \"?\"}\n    xs    = [at for at, kind in enumerate(kinds) if kind in (\"num\", \"sym\")]\n    flags = [kinds[at] == \"sym\" for at in xs]\n    enc   = [[_enc(kinds[at], cols.get(at), r[at]) for at in xs] for r in rows]\n    _cache[train_csv] = (head, kinds, cols, seen, xs, flags, enc)\n  return _cache[train_csv]\n\ndef _align(head: list, row: dict) -> list:\n  \"ROW's cells aligned with HEAD; a missing or blank cell is '?'.\"\n  return [_cell(row.get(name, \"?\")) for name in head]\n\ndef _unusual(kind, col, seen, v) -> float:\n  \"How unlike the training values of one column V is: 0 is typical, higher is stranger.\"\n  if v == \"?\": return 0.0                          # unknown is not, by itself, a glitch\n  if kind == \"sym\": return 0.0 if v in seen else 1.0\n  if not _num(v) or not math.isfinite(v): return TEXT_SCORE\n  if col.n == 0: return 0.0                        # nothing to compare with\n  if col.sd > 0: z = abs(v - col.mu) / col.sd\n  else:          z = 0.0 if v == col.mu else Z_CAP\n  return min(z, Z_CAP) / GOAL_SCALE\n\ndef _joint(flags: list, enc: list, q: list) -> float:\n  \"Distance from the scaled inputs Q to the nearest training row ENC, over the input columns.\"\n  if not enc: return 1.0                           # no training rows: unlike anything\n  if not flags: return 0.0                         # no inputs: nothing to be unlike\n  m, best = len(flags), math.inf\n  for t in enc:\n    total = 0.0\n    for sym, a, b in zip(flags, q, t):\n      if a is None or b is None: g = 1.0           # unknown = far, as in ezr\n      elif sym: g = 0.0 if a == b else 1.0\n      else:     g = abs(a - b)\n      total += g * g\n    best = min(best, math.sqrt(total / m))\n    if best == 0.0: break\n  return best\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS, goals included: higher means more likely\n  a glitch, a typo, or unlike anything in TRAIN_CSV. Each row's score is the largest of:\n  its distance to the nearest training row over the input columns; and its most\n  unusual cell in any input or goal column (a symbol never seen in training, a number\n  far from the training mean, or text or nan/inf where a number belongs). Unknown\n  cells ('?') never raise a score by themselves.\"\"\"\n  head, kinds, cols, seen, xs, flags, enc = _load(train_csv)\n  out = []\n  for row in rows:\n    vals    = _align(head, row)\n    s_cell  = max((_unusual(kinds[at], cols.get(at), seen.get(at), vals[at])\n                   for at in range(len(head)) if kinds[at] is not None),\n                  default=0.0)\n    q       = [_enc(kinds[at], cols.get(at), vals[at]) for at in xs]\n    s_joint = _joint(flags, enc, q)\n    out.append(float(max(s_joint, s_cell)))\n  return out\n```",
+ "ttft_ms": 74542,
+ "type": "result",
+ "duration_ms": 81012,
+ "uuid": "58717665-c9f2-4b95-b2f9-672e9df60f4d",
+ "ttft_stream_ms": 1236,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
