@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8677,
+ "stop_reason": "end_turn",
+ "session_id": "271d5422-9598-436e-9550-7b6170ac443a",
+ "total_cost_usd": 0.022733,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21034,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1480,
+  "output_tokens_details": {
+   "thinking_tokens": 1134
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21034,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1480,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21034,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21034
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17721,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017786,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1480,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21034,
+   "webSearchRequests": 0,
+   "costUSD": 0.004947,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step14.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep14.py: flow.  Scouting reports arrive one at a time.  stream() keeps a\nreport if its goals are within the best 5% of the training builds (step4's\nkeep rule).  drift() warns at the first report where the recent WINDOW goal\nvalues stop looking like the training goal values, by both Cliff's delta\nand KS (step4's drift rule).  Each decision uses only train_csv and the\nrows that came before it.  Nothing new is needed, so this file delegates to\nstep4.\n\"\"\"\nfrom collections.abc import Iterable\nimport step4\n\ndef stream(train_csv: str, rows: Iterable) -> list[bool]:\n  \"Keep (True) each arriving row whose goals are within the training best 5%.\"\n  return step4.stream(train_csv, rows)\n\ndef drift(train_csv: str, rows: Iterable) -> int | None:\n  \"Index of the first row where recent goal values stop looking like training.\"\n  return step4.drift(train_csv, rows)\n```",
+ "ttft_ms": 6477,
+ "type": "result",
+ "duration_ms": 7666,
+ "uuid": "27bde368-3788-43db-8c35-32af17ea487e",
+ "ttft_stream_ms": 1171,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
