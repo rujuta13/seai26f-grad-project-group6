@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7160,
+ "stop_reason": "end_turn",
+ "session_id": "fb3782a7-7aaa-4942-a2ff-db423653c9ae",
+ "total_cost_usd": 0.0373157,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 36205,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1241,
+  "output_tokens_details": {
+   "thinking_tokens": 814
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 36205,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1241,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 36205,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 36205
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29379,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029453999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1241,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 36205,
+   "webSearchRequests": 0,
+   "costUSD": 0.007861700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step28.py: fix, for the two client questions.\n\nQ1: \"This customer is drifting away: what's the smallest nudge that brings them back?\"\nQ2: \"Which product offer would turn a deal-only shopper into a regular one?\"\n\nBoth questions ask for the fewest input values to change so that a bad row\nbecomes good. That is step18.fix, which delegates to step8.fix: a beam search\nover single-value changes, with goals guessed from the nearest training rows and\nrated with the same score and top-quarter cutoff as step6.why. Columns named in\n`frozen` never change. Nothing new is computed here, so this module only fixes\nthe argument and return shape.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step18 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Input values for the bad row `row`, with as few values changed as possible\n    so that it is rated good. Returns a dict over every input column.\n\n    row: a row's input cells. Goal cells are ignored, and missing cells are\n         filled with training defaults.\n    frozen: input column names that must not change. A single name or an\n            iterable of names is accepted. Names that are not input columns\n            raise ValueError.\n    \"\"\"\n    return dict(_fix(train_csv, row, frozen=frozen))\n```",
+ "ttft_ms": 4546,
+ "type": "result",
+ "duration_ms": 5754,
+ "uuid": "6426a239-c335-451d-a1c7-878f74a8f774",
+ "ttft_stream_ms": 1254,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
