@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21289,
+ "stop_reason": "end_turn",
+ "session_id": "d98175e1-a822-4dcc-9a4b-35bd3d659913",
+ "total_cost_usd": 0.0246993,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21573,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4747,
+  "output_tokens_details": {
+   "thinking_tokens": 3276
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21573,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4747,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21573,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21573
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17941,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018011,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4747,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21573,
+   "webSearchRequests": 0,
+   "costUSD": 0.0066883,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step12.py - client question 12: guess.\n\nguess(train_csv, row) estimates every goal of a player (flag set) that has not\nbeen benchmarked, and gives a range the true value should fall in.\n\nEstimate: step2.guess, the median goal value of the K nearest training flag\nsets.\n\nRange: step2's low..high only shows how much those nearest neighbours disagree.\nIt does not show how far a median guess tends to be from the truth. So the\nrange is calibrated on the training data. For a sample of training rows, each\ngoal is guessed from all other rows (leave-one-out), and the 10th and 90th\npercentiles of the errors (true minus guessed) give the typical error band.\nFor a new row, that band is added to the estimate, and the result is widened\nif step2's neighbour range is wider. The interval is clipped to the range of\ngoal values seen in training. For training-like rows it should contain the\ntrue value about 80% of the time. A narrow interval means a confident guess;\na wide one means the guess is shaky.\n\nReused from earlier steps:\n  step1: SEED, _sqdist\n  step2: K_NEIGHBOURS, _model, _quantile, guess (as _guess_neighbours)\n\"\"\"\nimport heapq\nimport random\nimport statistics\n\nfrom step1 import SEED, _sqdist\nfrom step2 import K_NEIGHBOURS, _model, _quantile\nfrom step2 import guess as _guess_neighbours\n\nCAL_ROWS = 400\nCOVER_LOW = 0.10\nCOVER_HIGH = 0.90\n\n_BANDS = {}  # train_csv -> per goal: (err_low, err_high, goal_min, goal_max)\n\n\ndef _calibrate(train_csv):\n    \"\"\"Typical leave-one-out error band and training range of each goal.\"\"\"\n    if train_csv in _BANDS:\n        return _BANDS[train_csv]\n\n    input_cols, goal_cols, means, stds, Z, goal_vals = _model(train_csv)\n    n, m = len(Z), len(goal_cols)\n\n    goal_min = [min(goal_vals[i][g] for i in range(n)) for g in range(m)]\n    goal_max = [max(goal_vals[i][g] for i in range(n)) for g in range(m)]\n\n    k = min(K_NEIGHBOURS, n - 1)\n    errs = [[] for _ in range(m)]\n    if k >= 1:\n        rng = random.Random(SEED)\n        idx = rng.sample(range(n), min(CAL_ROWS, n))\n        for i in idx:\n            heads = heapq.nsmallest(\n                k, ((_sqdist(Z[i], Z[j]), j) for j in range(n) if j != i))\n            nbrs = [j for _, j in heads]\n            for g in range(m):\n                est = statistics.median([goal_vals[j][g] for j in nbrs])\n                errs[g].append(goal_vals[i][g] - est)\n\n    bands = []\n    for g in range(m):\n        if errs[g]:\n            e = sorted(errs[g])\n            e_low = _quantile(e, COVER_LOW)\n            e_high = _quantile(e, COVER_HIGH)\n        else:\n            e_low = e_high = 0.0\n        bands.append((e_low, e_high, goal_min[g], goal_max[g]))\n\n    _BANDS[train_csv] = bands\n    return bands\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of a flag set and a range the true value should\n    fall in (about 80% coverage on training-like rows).\n\n    `row` maps input column names to values (goal columns removed).\n    Returns {goal: (estimate, low, high)} for every goal column.\n    \"\"\"\n    base = _guess_neighbours(train_csv, row)\n    input_cols, goal_cols, means, stds, Z, goal_vals = _model(train_csv)\n    bands = _calibrate(train_csv)\n\n    result = {}\n    for g, (name, _) in enumerate(goal_cols):\n        est, n_low, n_high = base[name]\n        e_low, e_high, g_min, g_max = bands[g]\n\n        low = min(est + e_low, n_low, est)\n        high = max(est + e_high, n_high, est)\n\n        # a goal cannot leave the range seen in training\n        low = max(low, g_min)\n        high = min(high, g_max)\n\n        result[name] = (float(est), float(low), float(high))\n    return result\n```",
+ "ttft_ms": 15846,
+ "type": "result",
+ "duration_ms": 20266,
+ "uuid": "9438924b-3d7f-4054-9af7-64cb483adf3a",
+ "ttft_stream_ms": 1461,
+ "time_to_request_ms": 104,
+ "queued_turn_count": 0
+}
