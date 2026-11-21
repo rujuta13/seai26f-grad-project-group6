@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 27818,
+ "stop_reason": "end_turn",
+ "session_id": "77e4d860-9672-48c3-9657-a2782f5fe605",
+ "total_cost_usd": 0.0643485,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 58979,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6599,
+  "output_tokens_details": {
+   "thinking_tokens": 4821
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 58979,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6599,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 58979,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 58979
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 49188,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.049253000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6599,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 58979,
+   "webSearchRequests": 0,
+   "costUSD": 0.015095500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 30: race our customer targeting and response guesser against simple rivals on test_csv.\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every key.\nA method whose score cannot be computed is reported as -inf.\n\nTargeting race. The test customers form a blind pool, and each method may label\nat most _BUDGET of them. The score is the chosen customer's mean goal score over\nthe complete test customers, each goal scaled over those customers (0 worst, 1 best).\n  \"ours\"                step27.choose (scout-limited targeting search)\n  \"top_income\"          label the _BUDGET customers with the highest INCOME and keep\n                        the best labelled one (the \"mail our richest customers\" rival)\n  \"random_search\"       label random customers, keep the best labelled one\n  \"off_the_shelf_model\" ridge-guided labelling, as in step10\n\nResponse guesser race. Only the RESPONSE goal is predicted, on test rows where it\nis finite. The score is minus the mean absolute error, scaled by the RESPONSE\nrange in train_csv.\n  \"response_guesser_neg_mae\"  step22.guess median estimate (\"ours\")\n  \"response_ridge_neg_mae\"    ridge regression fitted on train_csv\n\"\"\"\nimport math\nimport os\nimport tempfile\n\nfrom step1 import _load\nfrom step10 import (\n    _BUDGET,\n    _Encoder,\n    _best_of,\n    _combined,\n    _complete,\n    _finite,\n    _goal_specs,\n    _is_input,\n    _model_search,\n    _neg_mae,\n    _random_search,\n    _ridge_preds,\n    _spans,\n    _write_blind,\n)\nfrom step22 import guess as _guess22\nfrom step27 import choose as _choose27\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores (higher is better) for our targeting and response guesser and the rivals.\n\n    Keys: \"ours\", \"top_income\", \"random_search\", \"off_the_shelf_model\"\n    (targeting race, score = mean goal score of the chosen customer) and\n    \"response_guesser_neg_mae\", \"response_ridge_neg_mae\" (RESPONSE prediction\n    race, score = minus the mean scaled absolute error).\n    \"\"\"\n    header, train = _load(train_csv)\n    theader, test = _load(test_csv)\n    specs = _goal_specs(theader)\n    train_inputs = [c for c in header if _is_input(c)]\n    test_inputs = [c for c in theader if _is_input(c)]\n    goal_names = [c for c, _ in _goal_specs(header)]\n\n    scores = {\n        \"ours\": -math.inf,\n        \"top_income\": -math.inf,\n        \"random_search\": -math.inf,\n        \"off_the_shelf_model\": -math.inf,\n        \"response_guesser_neg_mae\": -math.inf,\n        \"response_ridge_neg_mae\": -math.inf,\n    }\n\n    # Targeting race on the complete test customers.\n    keep, vecs = _complete(test, specs)\n    pool = [test[i] for i in keep]\n    n = len(pool)\n    if n > 0 and specs:\n        pool_score = _combined(vecs)\n        budget = min(_BUDGET, n)\n        goal_cols = [c for c, _ in specs]\n\n        def label(i):\n            return {c: pool[i][c] for c in goal_cols}\n\n        with tempfile.TemporaryDirectory() as tmp:\n            blind = os.path.join(tmp, \"blind.csv\")\n            _write_blind(blind, theader, pool)\n            ours = _choose27(blind, label, budget=budget)\n        scores[\"ours\"] = float(pool_score[ours])\n\n        if \"INCOME\" in theader:\n            inc = [\n                f if f is not None else -math.inf\n                for f in (_finite(r.get(\"INCOME\")) for r in pool)\n            ]\n            ranked = sorted(range(n), key=lambda i: (-inc[i], i))\n            scores[\"top_income\"] = float(\n                pool_score[_best_of(ranked[:budget], vecs)]\n            )\n\n        scores[\"random_search\"] = float(\n            pool_score[_random_search(n, vecs, budget)]\n        )\n\n        enc = _Encoder(pool, test_inputs)\n        X = [enc.encode(r) for r in pool]\n        scores[\"off_the_shelf_model\"] = float(\n            pool_score[_model_search(X, vecs, budget)]\n        )\n\n    # Response guesser race: predict RESPONSE for every test customer from train.\n    resp = [c for c in goal_names if c[:-1] == \"RESPONSE\"]\n    if resp and train and test:\n        goal = resp[0]\n        spans = _spans(train, [goal])\n\n        g_preds = []\n        for r in test:\n            row = {c: r[c] for c in train_inputs if c in r}\n            est = _guess22(train_csv, row)\n            g_preds.append([est[goal][0] if goal in est else None])\n        scores[\"response_guesser_neg_mae\"] = float(\n            _neg_mae(g_preds, test, [goal], spans)\n        )\n\n        r_preds = _ridge_preds(train, test, train_inputs, [goal])\n        scores[\"response_ridge_neg_mae\"] = float(\n            _neg_mae(r_preds, test, [goal], spans)\n        )\n\n    return scores\n```",
+ "ttft_ms": 21469,
+ "type": "result",
+ "duration_ms": 26398,
+ "uuid": "c5b6e32d-10bc-457e-90db-a3db49f38c1a",
+ "ttft_stream_ms": 1315,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
