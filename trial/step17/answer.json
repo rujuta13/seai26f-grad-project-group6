@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 35626,
+ "stop_reason": "end_turn",
+ "session_id": "c356a03d-4ae2-44a1-b019-ffe982a2a962",
+ "total_cost_usd": 0.0387169,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 32966,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8859,
+  "output_tokens_details": {
+   "thinking_tokens": 6869
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32966,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8859,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 32966,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 32966
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 27629,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.027694,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8859,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32966,
+   "webSearchRequests": 0,
+   "costUSD": 0.0110229,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step17.py\n\"Step 17: choose. Find the best build while labelling at most BUDGET builds, optionally optimising only the goal named GOAL.\"\nimport math\nimport random\nimport ezr\n\nSTART = 4            # builds labelled at random before any guided choice\nSEED  = 1234567891   # fixed seed, so results repeat\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best row found. BLIND_CSV has every goal cell '?'.\n  LABEL(i) returns row I's goals as a dict (goal name -> value) and may be\n  called at most BUDGET times. If GOAL names one goal, only that goal is\n  optimised.\"\"\"\n  tbl  = ezr.Tbl(ezr.csv(blind_csv))\n  rows = tbl.rows\n  if not rows: raise ValueError(\"choose: no rows to choose from\")\n  if (not isinstance(budget, int) or isinstance(budget, bool)\n      or budget < 1):\n    raise ValueError(\"choose: budget must be a whole number of at least 1\")\n\n  def isnum(v) -> bool:\n    \"True for a usable finite number.\"\n    return (isinstance(v, (int, float)) and not isinstance(v, bool)\n            and math.isfinite(v))\n\n  def atom(v):\n    \"Strings become atoms; other values pass through.\"\n    return ezr.atom(v) if isinstance(v, str) else v\n\n  def name(s: str) -> str:\n    \"A goal name without its +, - or ! suffix.\"\n    return s[:-1] if s[-1:] in (\"+\", \"-\", \"!\") else s\n\n  # which goals to optimise\n  ys = [c for c in tbl.y if type(c) is ezr.Num]\n  if goal is not None:\n    want  = str(goal).strip()\n    tests = (lambda c: c.txt == want,\n             lambda c: c.txt.lower() == want.lower(),\n             lambda c: name(c.txt).lower() == name(want).lower(),\n             lambda c: name(c.txt).lower().startswith(name(want).lower()))\n    hits = []\n    for test in tests:\n      hits = [c for c in tbl.y if test(c)]\n      if hits: break\n    if len(hits) != 1:\n      raise ValueError(f\"choose: goal {goal!r} must name exactly one goal\")\n    ys = [c for c in hits if type(c) is ezr.Num]\n    if not ys: raise ValueError(f\"choose: goal {goal!r} is not numeric\")\n  if not ys: raise ValueError(\"choose: no numeric goal to optimise\")\n\n  # input columns that help distance: numbers, and symbols that repeat\n  # (a symbol where every value is distinct is an identifier, like a url)\n  cols = [c for c in tbl.x if type(c) is ezr.Num or len(c.has) < c.n]\n\n  def gap(c, a, b) -> float:\n    \"Distance between two cells of column C; unknown is far.\"\n    if type(c) is ezr.Num:\n      if not (isnum(a) and isnum(b)): return 1.0\n      return abs(ezr.norm(c, a) - ezr.norm(c, b))\n    if a == \"?\" or b == \"?\": return 1.0\n    return 0.0 if a == b else 1.0\n\n  near: dict[int, list[float]] = {}\n\n  def gaps(b: int) -> list[float]:\n    \"Input distance from row B to every row (cached).\"\n    if b not in near:\n      near[b] = [math.sqrt(sum(gap(c, r[c.at], rows[b][c.at]) ** 2\n                               for c in cols) / max(1, len(cols)))\n                 for r in rows]\n    return near[b]\n\n  known: dict[int, dict] = {}\n  spent = 0\n\n  def ask(i: int) -> None:\n    \"Label row I, if not yet labelled, within the budget.\"\n    nonlocal spent\n    if i in known: return\n    if spent >= budget: raise RuntimeError(\"choose: budget exhausted\")\n    spent += 1\n    vals = label(i)\n    known[i] = {c.txt: atom(vals.get(c.txt, \"?\")) for c in ys}\n\n  def scores() -> dict[int, float]:\n    \"Each labelled row's distance from the ideal, over the chosen goals.\"\n    norms = {}\n    for c in ys:\n      num = ezr.Num(c.txt, c.at)\n      for vals in known.values():\n        v = vals[c.txt]\n        if isnum(v): ezr.add(num, v)\n      norms[c.txt] = num\n    out = {}\n    for i, vals in known.items():\n      sq, n = 0.0, 0\n      for c in ys:\n        v = vals[c.txt]\n        if not isnum(v): continue\n        sq += (ezr.norm(norms[c.txt], v) - c.goal) ** 2\n        n  += 1\n      out[i] = math.sqrt(sq / n) if n else math.inf\n    return out\n\n  def lure(z: int, best: list, rest: list) -> float:\n    \"Closer to the best labelled rows than to the rest: lower is better.\"\n    nb = min(gaps(b)[z] for b in best)\n    return nb - min(gaps(b)[z] for b in rest) if rest else nb\n\n  budget = min(budget, len(rows))\n  order  = random.Random(SEED).sample(range(len(rows)), len(rows))\n  for i in order[:min(START, budget)]: ask(i)\n\n  while spent < budget:\n    sc     = scores()\n    ranked = sorted(known, key=lambda i: (sc[i], i))\n    k      = max(1, int(math.sqrt(len(ranked))))\n    best, rest = ranked[:k], ranked[k:]\n    pick = min((z for z in range(len(rows)) if z not in known),\n               key=lambda z: (lure(z, best, rest), z))\n    ask(pick)\n\n  sc = scores()\n  return min(known, key=lambda i: (sc[i], i))\n```",
+ "ttft_ms": 29040,
+ "type": "result",
+ "duration_ms": 34319,
+ "uuid": "5d4c68b2-3298-4718-9705-8ea84a4cfb39",
+ "ttft_stream_ms": 1439,
+ "time_to_request_ms": 78,
+ "queued_turn_count": 0
+}
