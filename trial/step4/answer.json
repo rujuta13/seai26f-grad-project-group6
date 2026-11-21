@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49612,
+ "stop_reason": "end_turn",
+ "session_id": "520a427a-7bae-4e0b-bd4f-06148972e8b6",
+ "total_cost_usd": 0.0113639,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5246,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10717,
+  "output_tokens_details": {
+   "thinking_tokens": 8701
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5246,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10717,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5246,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5246
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 4881,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.004956,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10717,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5246,
+   "webSearchRequests": 0,
+   "costUSD": 0.0064079,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 4: streaming flow control for nightly benchmark results.\n\nstream() keeps each incoming row that is not Pareto-dominated (on the goals)\nby the training rows or by the rows that arrived before it.\n\ndrift() compares each incoming row's input-space neighbourhood distance with\nthe training set. It warns when most rows in a sliding window are far from\nthe training data, which is the same notion of \"far\" that step2 uses.\n\"\"\"\n\nimport heapq\nimport math\nfrom collections import deque\n\nfrom step1 import _load, _split_columns\n\nK = 15\nFAR_THRESHOLD = 0.25\nWINDOW = 20\nWINDOW_FRAC = 0.5\nREF_SAMPLE = 150\n\n\ndef _as_float(value):\n    if isinstance(value, float):\n        return value\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return None\n\n\ndef _dominates(a, b):\n    \"\"\"True if a Pareto-dominates b (all dimensions minimised).\"\"\"\n    return all(x <= y for x, y in zip(a, b)) and any(x < y for x, y in zip(a, b))\n\n\ndef _goal_vector(row, maximise, minimise):\n    \"\"\"Minimisation vector for a row, or None if any goal is missing or non-finite.\"\"\"\n    vec = []\n    for c in maximise:\n        v = _as_float(row.get(c))\n        if v is None or not math.isfinite(v):\n            return None\n        vec.append(-v)\n    for c in minimise:\n        v = _as_float(row.get(c))\n        if v is None or not math.isfinite(v):\n            return None\n        vec.append(v)\n    return vec\n\n\ndef stream(train_csv, rows):\n    \"\"\"Return one keep flag per incoming row.\n\n    A row is kept (True) when no training row and no earlier incoming row\n    Pareto-dominates it on the goals ('+' maximised, '-' minimised). Goals\n    are normalised with the training ranges. Each row is judged using only\n    train_csv and the rows before it.\n    \"\"\"\n    columns, train = _load(train_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    if not (maximise or minimise):\n        return [False] * len(rows)\n\n    ref = []\n    for r in train:\n        g = _goal_vector(r, maximise, minimise)\n        if g is not None:\n            ref.append(g)\n    if not ref:\n        return [False] * len(rows)\n\n    m = len(ref[0])\n    lo = [min(g[j] for g in ref) for j in range(m)]\n    hi = [max(g[j] for g in ref) for j in range(m)]\n\n    def norm(g):\n        return [\n            (g[j] - lo[j]) / (hi[j] - lo[j]) if hi[j] > lo[j] else 0.0\n            for j in range(m)\n        ]\n\n    seen = [norm(g) for g in ref]\n    out = []\n    for row in rows:\n        g = _goal_vector(row, maximise, minimise)\n        if g is None:\n            out.append(False)\n            continue\n        x = norm(g)\n        keep = not any(_dominates(s, x) for s in seen)\n        out.append(keep)\n        seen.append(x)\n    return out\n\n\ndef _spec(rows, inputs):\n    spec = {}\n    for c in inputs:\n        vals = [r.get(c) for r in rows]\n        if vals and all(isinstance(v, float) for v in vals):\n            spec[c] = (\"num\", min(vals), max(vals))\n        else:\n            spec[c] = (\"cat\", None, None)\n    return spec\n\n\ndef _distance(a, b, inputs, spec):\n    \"\"\"Sum of per-column differences; numeric columns are scaled to [0, 1].\"\"\"\n    d = 0.0\n    for c in inputs:\n        kind, lo, hi = spec[c]\n        x = a.get(c)\n        y = b.get(c)\n        if kind == \"num\":\n            fx = _as_float(x)\n            fy = _as_float(y)\n            if fx is None or fy is None:\n                d += 1.0\n            else:\n                span = hi - lo\n                d += abs(fx - fy) / span if span > 0 else 0.0\n        else:\n            d += 0.0 if str(x) == str(y) else 1.0\n    return d\n\n\ndef drift(train_csv, rows):\n    \"\"\"Return the index into rows of the first drift warning, or None.\n\n    Each row gets a score: the mean normalised distance to its K nearest\n    training rows. A row is \"far\" when that score exceeds FAR_THRESHOLD.\n    Training rows are scored leave-one-out to estimate the baseline far rate.\n    A warning is raised at the first index where the far rate over the last\n    WINDOW rows exceeds max(WINDOW_FRAC, baseline + 0.25). Only rows up to\n    the current index are used.\n    \"\"\"\n    columns, train = _load(train_csv)\n    _, _, inputs = _split_columns(columns)\n    n = len(train)\n    if n == 0 or not rows:\n        return None\n\n    spec = _spec(train, inputs)\n    width = max(1, len(inputs))\n\n    def score(row, exclude, k):\n        dists = [\n            _distance(t, row, inputs, spec)\n            for j, t in enumerate(train)\n            if j != exclude\n        ]\n        if not dists or k <= 0:\n            return 0.0\n        near = heapq.nsmallest(min(k, len(dists)), dists)\n        return sum(near) / (len(near) * width)\n\n    stride = max(1, n // REF_SAMPLE)\n    ref = [score(train[i], i, min(K, n - 1)) for i in range(0, n, stride)]\n    base = sum(1 for s in ref if s > FAR_THRESHOLD) / len(ref)\n    thresh = max(WINDOW_FRAC, base + 0.25)\n\n    window = deque(maxlen=WINDOW)\n    for i, row in enumerate(rows):\n        window.append(score(row, None, min(K, n)) > FAR_THRESHOLD)\n        if len(window) == WINDOW and sum(window) / WINDOW > thresh:\n            return i\n    return None\n```",
+ "ttft_ms": 42746,
+ "type": "result",
+ "duration_ms": 48899,
+ "uuid": "dd9725f3-29d6-42c0-aa27-e894a43354ba",
+ "ttft_stream_ms": 1174,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
