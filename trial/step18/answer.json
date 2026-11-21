@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4076,
+ "stop_reason": "end_turn",
+ "session_id": "cd02d048-009b-47bd-886e-c506a2216cd3",
+ "total_cost_usd": 0.0205697,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19275,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 543,
+  "output_tokens_details": {
+   "thinking_tokens": 444
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19275,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 543,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19275,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19275
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16373,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016443,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 543,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19275,
+   "webSearchRequests": 0,
+   "costUSD": 0.0041267000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step18.py\nimport step8\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"Inputs of ROW, changed as few as possible so that it becomes good. Columns named in FROZEN never change.\"\n  return step8.fix(train_csv, row, frozen)\n```",
+ "ttft_ms": 2854,
+ "type": "result",
+ "duration_ms": 3159,
+ "uuid": "1a66ce84-154c-4764-924b-4d5aa67fd333",
+ "ttft_stream_ms": 1006,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
