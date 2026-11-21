@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 18107,
+ "duration_api_ms": 18095,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.neighbors import NearestNeighbors\n\nfrom step1 import _read, _columns, _to_float_column\n\n\ndef _encode_inputs(rows, inputs):\n    \"\"\"Build per-column encoders from training rows, returning (matrix, encode_row).\"\"\"\n    specs = []  # per input column: (\"num\", None) or (\"cat\", mapping dict)\n    cols = []\n    for c in inputs:\n        values = [r[c] for r in rows]\n        try:\n            col = np.array([float(v) for v in values], dtype=float)\n            specs.append((\"num\", None))\n        except (TypeError, ValueError):\n            mapping = {}\n            for v in values:\n                if v not in mapping:\n                    mapping[v] = float(len(mapping))\n            col = np.array([mapping[v] for v in values], dtype=float)\n            specs.append((\"cat\", mapping))\n        cols.append(col)\n\n    X = np.column_stack(cols) if cols else np.zeros((len(rows), 0))\n    col_means = X.mean(axis=0) if X.shape[1] else np.zeros(0)\n\n    def encode_row(row_vals):\n        out = np.empty(len(inputs), dtype=float)\n        for j, (c, (kind, mapping)) in enumerate(zip(inputs, specs)):\n            v = row_vals.get(c)\n            if kind == \"num\":\n                try:\n                    out[j] = float(v)\n                except (TypeError, ValueError):\n                    out[j] = col_means[j]\n                if not np.isfinite(out[j]):\n                    out[j] = col_means[j]\n            else:\n                if v in mapping:\n                    out[j] = mapping[v]\n                else:\n                    # Unseen category: fall back to the training mean code.\n                    out[j] = col_means[j]\n        return out\n\n    return X, encode_row\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    fieldnames, rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(rows)\n\n    if n == 0:\n        return {name: (float(\"nan\"), float(\"-inf\"), float(\"inf\"))\n                for name, _ in goals}\n\n    X, encode_row = _encode_inputs(rows, inputs)\n\n    # Standardise inputs so every feature contributes comparably to distance.\n    if X.shape[1]:\n        mu = X.mean(axis=0)\n        sd = X.std(axis=0)\n        sd = np.where(sd > 0, sd, 1.0)\n        Z = (X - mu) / sd\n        z = (encode_row(row) - mu) / sd\n    else:\n        Z = np.zeros((n, 1))\n        z = np.zeros(1)\n\n    k = min(15, n)\n    nn = NearestNeighbors(n_neighbors=k).fit(Z)\n    _, idx = nn.kneighbors(z.reshape(1, -1))\n    idx = idx[0]\n\n    result: dict[str, tuple[float, float, float]] = {}\n    for name, _sign in goals:\n        Y = _to_float_column(rows, name)\n        neighbours = Y[idx]\n        estimate = float(np.median(neighbours))\n        low = float(np.percentile(neighbours, 10))\n        high = float(np.percentile(neighbours, 90))\n        result[name] = (estimate, low, high)\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "78c70dc9-755a-4618-945d-1514ccccfeac",
+ "total_cost_usd": 0.001407275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 1995,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2315,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 1995,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2315,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 1995,
+   "webSearchRequests": 0,
+   "costUSD": 0.001407275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "11017191-cf26-4154-9060-92dfca07da3f"
+}
