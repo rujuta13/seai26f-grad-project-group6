@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 25,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.017492337430629206,
+ "baseline": 0.03047795579998813,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "ACCEPTEDCMP2",
+   "ACCEPTEDCMP1",
+   "ACCEPTEDCMPOVERALL"
+  ]
+ }
+}

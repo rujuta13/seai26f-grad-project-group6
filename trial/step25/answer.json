@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 23417,
+ "stop_reason": "end_turn",
+ "session_id": "4dbd4635-d79e-40e9-8a86-87e6f4c6648f",
+ "total_cost_usd": 0.052759200000000006,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 48590,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5074,
+  "output_tokens_details": {
+   "thinking_tokens": 3776
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 48590,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5074,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 48590,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 48590
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 40439,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.040504000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5074,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 48590,
+   "webSearchRequests": 0,
+   "costUSD": 0.0122552,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py\n\"Step 25: blame. Which input columns are most to blame for customers who never respond to campaigns (RESPONSE) or who complain (COMPLAIN)?\"\nimport math\nimport ezr\n\nMIN   = 2                          # smallest group (rows) a split may isolate\nCUTS  = 4                          # thresholds tried per numeric column\nGOALS = (\"RESPONSE\", \"COMPLAIN\")   # the goals the client asked about\n\ndef _name(s: str) -> str:\n  \"A column name without its +, - or ! suffix.\"\n  return s[:-1] if s[-1:] in (\"+\", \"-\", \"!\") else s\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _usable(col, v) -> bool:\n  \"True if cell V of column COL can take part in a split.\"\n  if type(col) is ezr.Sym: return v != \"?\"\n  return _isnum(v)\n\ndef _goals(tbl) -> list:\n  \"The numeric goals named in GOALS, each judged on its own.\"\n  picked = [c for c in tbl.y\n            if type(c) is ezr.Num and _name(c.txt).upper() in GOALS]\n  if not picked:\n    raise ValueError(f\"blame: no numeric goal named in {GOALS!r}\")\n  return picked\n\ndef _ydist(goals, row) -> float | None:\n  \"Distance of ROW's numeric GOALS from their best; None if no goal is known.\"\n  sq, n = 0.0, 0\n  for c in goals:\n    v = row[c.at]\n    if not _isnum(v): continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else None\n\ndef _splits(col, xs: list):\n  \"Yield (label, test) pairs: one per symbol value, or CUTS thresholds per number.\"\n  if type(col) is ezr.Sym:\n    for v in sorted(set(xs), key=str):\n      yield v, (lambda x, v=v: x == v)\n  else:\n    ys = sorted(xs)\n    for i in range(1, CUTS + 1):\n      t = ys[(i * (len(ys) - 1)) // (CUTS + 1)]\n      yield t, (lambda x, t=t: x <= t)\n      yield t, (lambda x, t=t: x > t)\n\ndef _score(col, seen: list) -> float:\n  \"How much the worst split of COL's values isolates worse goal distances (0 if none).\"\n  vals = [(r[col.at], d) for r, d in seen if _usable(col, r[col.at])]\n  best = 0.0\n  if not vals: return best\n  for _, test in _splits(col, [x for x, _ in vals]):\n    yes = [d for x, d in vals if test(x)]\n    no  = [d for x, d in vals if not test(x)]\n    if len(yes) < MIN or len(no) < MIN: continue\n    gap = sum(yes) / len(yes) - sum(no) / len(no)\n    best = max(best, gap * len(yes) ** .5)\n  return best\n\ndef blame(train_csv) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  goals = _goals(tbl)\n  score = {col.txt: 0.0 for col in tbl.x}\n  for g in goals:\n    seen = []\n    for r in tbl.rows:\n      d = _ydist([g], r)\n      if d is not None: seen.append((r, d))\n    for col in tbl.x:\n      score[col.txt] = max(score[col.txt], _score(col, seen))\n  return sorted(score, key=lambda k: (-score[k], k))\n```",
+ "ttft_ms": 18223,
+ "type": "result",
+ "duration_ms": 21905,
+ "uuid": "60e76f91-a627-41c7-bf87-5a249b5d8c12",
+ "ttft_stream_ms": 1475,
+ "time_to_request_ms": 70,
+ "queued_turn_count": 0
+}
