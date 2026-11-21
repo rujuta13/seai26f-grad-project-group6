@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 23062,
+ "stop_reason": "end_turn",
+ "session_id": "66ac8809-caef-436f-842f-efaf0794563d",
+ "total_cost_usd": 0.0101385,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 7074,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4887,
+  "output_tokens_details": {
+   "thinking_tokens": 3635
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7074,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4887,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 7074,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 7074
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6210,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00628,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4887,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7074,
+   "webSearchRequests": 0,
+   "costUSD": 0.0038585,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step5.py - client question 6: blame.\n\nblame(train_csv) ranks the input columns (flags/passes) by how strongly they\nare tied to bad rows, where a row is bad when it is poor on the goals.\n\n- Each goal is turned into a percentile rank among the training rows (0 =\n  worst, 1 = best), so goals with different units count equally. Goals come\n  from step1._load, which already makes minimised goals maximisation-signed.\n- A row's badness is 1 minus its mean percentile over all goals. The worst\n  BAD_FRACTION of rows by badness are \"bad\"; the rest are \"good\".\n- For each input column, the effect is the difference between its mean among\n  bad rows and among good rows, divided by the pooled within-group standard\n  deviation. This standardised mean difference makes 0/1 flags and numeric\n  inputs comparable. A positive effect means the input is on, or higher, more\n  often in bad rows.\n- Columns are returned by effect, largest first. Ties keep file order.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\nBAD_FRACTION = 0.25\n\n\ndef _percentiles(values):\n    \"\"\"Percentile rank of each value in [0, 1] (0 = smallest). Ties share the\n    mean rank of their group.\"\"\"\n    n = len(values)\n    if n == 1:\n        return [1.0]\n    order = sorted(range(n), key=lambda i: values[i])\n    pct = [0.0] * n\n    p = 0\n    while p < n:\n        q = p\n        while q + 1 < n and values[order[q + 1]] == values[order[p]]:\n            q += 1\n        mid = (p + q) / 2\n        for k in range(p, q + 1):\n            pct[order[k]] = mid / (n - 1)\n        p = q + 1\n    return pct\n\n\ndef _effect(bad_vals, good_vals):\n    \"\"\"Standardised mean difference, bad minus good.\"\"\"\n    nb, ng = len(bad_vals), len(good_vals)\n    mb = sum(bad_vals) / nb\n    mg = sum(good_vals) / ng\n    ss = (sum((x - mb) ** 2 for x in bad_vals)\n          + sum((x - mg) ** 2 for x in good_vals))\n    sd = math.sqrt(ss / (nb + ng))\n    if sd == 0:\n        return 0.0\n    return (mb - mg) / sd\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    input_cols, goal_cols, X, Y = _load(train_csv)\n    n = len(X)\n    d = len(input_cols)\n    m = len(goal_cols)\n    if n == 0 or d == 0 or m == 0:\n        return list(input_cols)\n\n    # badness: 1 minus the mean percentile over all goals (1 = worst)\n    pct_cols = [_percentiles([Y[i][g] for i in range(n)]) for g in range(m)]\n    badness = [1.0 - sum(col[i] for col in pct_cols) / m for i in range(n)]\n\n    k = max(1, int(BAD_FRACTION * n))\n    order = sorted(range(n), key=lambda i: (-badness[i], i))\n    bad_idx = sorted(order[:k])\n    bad_set = set(bad_idx)\n    good_idx = [i for i in range(n) if i not in bad_set]\n    if not good_idx:\n        return list(input_cols)\n\n    effects = [\n        _effect([X[i][t] for i in bad_idx], [X[i][t] for i in good_idx])\n        for t in range(d)\n    ]\n    ranked = sorted(range(d), key=lambda t: (-effects[t], t))\n    return [input_cols[t] for t in ranked]\n```",
+ "ttft_ms": 18696,
+ "type": "result",
+ "duration_ms": 22286,
+ "uuid": "5b64efab-eea5-4849-9fa5-620afaf4d59a",
+ "ttft_stream_ms": 1671,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
