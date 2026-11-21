@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8650,
+ "stop_reason": "end_turn",
+ "session_id": "78483dae-7e8f-4da3-8ff2-e79b9f829ac6",
+ "total_cost_usd": 0.020722400000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19161,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1266,
+  "output_tokens_details": {
+   "thinking_tokens": 1041
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19161,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1266,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19161,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19161
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16177,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016257,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1266,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19161,
+   "webSearchRequests": 0,
+   "costUSD": 0.0044654000000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step12.py: guess. Guess each goal of a new player, with a range we are fairly sure of.\"\nfrom step2 import guess as _guess\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"For each goal: (estimate, low, high).  ROW has its goal columns removed,\n  either as a dict {column name: value} or a list in header order minus goals.\n  The estimate is the median goal of the K nearest train rows.  LOW..HIGH is\n  the 10th..90th percentile range, so a wide range means low confidence.\"\"\"\n  return _guess(str(train_csv), row)\n```",
+ "ttft_ms": 5866,
+ "type": "result",
+ "duration_ms": 6491,
+ "uuid": "966ca8d9-a371-4e4a-927e-a7fac7007bdd",
+ "ttft_stream_ms": 1292,
+ "time_to_request_ms": 78,
+ "queued_turn_count": 0
+}
