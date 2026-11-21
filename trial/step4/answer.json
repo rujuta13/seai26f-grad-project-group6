@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 40586,
+ "duration_api_ms": 40573,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef _goal_vector(row, goal_min, goal_max):\n    \"\"\"All goals as minimisation values; missing or non-finite = worst (+inf).\"\"\"\n    vals = []\n    for c in goal_min:\n        v = _to_float(row.get(c))\n        vals.append(v if math.isfinite(v) else math.inf)\n    for c in goal_max:\n        v = _to_float(row.get(c))\n        vals.append(-v if math.isfinite(v) else math.inf)\n    return vals\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) a row if no earlier reference row (training rows plus the\n    rows before it in `rows`) strictly dominates it on all goals, i.e. it is\n    on the running Pareto front. Only train_csv and prior rows are used.\"\"\"\n    cols, train_rows = _load(train_csv)\n    inputs, goal_max, goal_min = _split_columns(cols)\n    n_goals = len(goal_min) + len(goal_max)\n\n    if n_goals == 0:\n        return [False] * len(rows)\n\n    pool_list = [_goal_vector(r, goal_min, goal_max) for r in train_rows]\n    pool = np.array(pool_list, dtype=float).reshape(len(pool_list), n_goals)\n\n    out: list[bool] = []\n    for r in rows:\n        v = np.array(_goal_vector(r, goal_min, goal_max), dtype=float)\n        if pool.shape[0] > 0:\n            weakly = np.all(pool <= v, axis=1)\n            strictly = np.any(pool < v, axis=1)\n            dominated = bool(np.any(weakly & strictly))\n        else:\n            dominated = False\n        out.append(not dominated)\n        pool = np.vstack([pool, v[None, :]])\n    return out\n\n\ndef _binom_tail(n, k, p):\n    \"\"\"P(X >= k) for X ~ Binomial(n, p).\"\"\"\n    if k <= 0:\n        return 1.0\n    total = 0.0\n    for j in range(k, n + 1):\n        total += math.comb(n, j) * (p ** j) * ((1.0 - p) ** (n - j))\n    return total\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the first row at which the last WINDOW rows contain too many\n    'unusual' rows, relative to train_csv, or None if this never happens.\n\n    Two signals, each tested with a one-sided binomial test:\n      * input novelty: nearest-training-row distance above the 95th percentile\n        of leave-one-out training distances;\n      * goal outlier: some goal outside the train 2.5%-97.5% range.\n    \"\"\"\n    cols, train_rows = _load(train_csv)\n    inputs, goal_max, goal_min = _split_columns(cols)\n    goals = goal_min + goal_max\n\n    if not train_rows or not rows:\n        return None\n\n    WINDOW = 30\n    ALPHA = 5e-4\n    P_IN = 0.05\n\n    n_tr = len(train_rows)\n    n_new = len(rows)\n\n    # ---- input novelty flags ----\n    flags_in = np.zeros(n_new, dtype=bool)\n    d = len(inputs)\n    if d > 0 and n_tr >= 2:\n        X = np.array(\n            [[_to_float(r.get(c)) for c in inputs] for r in train_rows],\n            dtype=float,\n        ).reshape(n_tr, d)\n        X = np.where(np.isnan(X), 0.0, X)\n        sd = X.std(axis=0)\n        sd[sd == 0] = 1.0\n        Z = X / sd\n\n        sq = (Z ** 2).sum(axis=1)\n        D = sq[:, None] + sq[None, :] - 2.0 * (Z @ Z.T)\n        D = np.maximum(D, 0.0)\n        np.fill_diagonal(D, np.inf)\n        loo = np.sqrt(D.min(axis=1))\n        thr_in = float(np.quantile(loo, 0.95))\n\n        Xn = np.array(\n            [[_to_float(r.get(c)) for c in inputs] for r in rows],\n            dtype=float,\n        ).reshape(n_new, d)\n        Xn = np.where(np.isnan(Xn), 0.0, Xn)\n        Zn = Xn / sd\n        for i in range(n_new):\n            diff = Z - Zn[i]\n            dist = math.sqrt(float((diff ** 2).sum(axis=1).min()))\n            flags_in[i] = dist > thr_in\n\n    # ---- goal outlier flags ----\n    def _goal_flags(data_rows, lo_hi):\n        flags = np.zeros(len(data_rows), dtype=bool)\n        for i, r in enumerate(data_rows):\n            for g, (lo, hi) in lo_hi.items():\n                v = _to_float(r.get(g))\n                if math.isfinite(v) and (v < lo or v > hi):\n                    flags[i] = True\n                    break\n        return flags\n\n    lo_hi = {}\n    for g in goals:\n        vals = np.array([_to_float(r.get(g)) for r in train_rows], dtype=float)\n        vals = vals[np.isfinite(vals)]\n        if len(vals) > 0:\n            lo_hi[g] = (float(np.quantile(vals, 0.025)),\n                        float(np.quantile(vals, 0.975)))\n\n    if lo_hi:\n        train_out_flags = _goal_flags(train_rows, lo_hi)\n        p_out = float(train_out_flags.mean())\n        p_out = min(max(p_out, 1e-3), 0.5)\n        flags_out = _goal_flags(rows, lo_hi)\n    else:\n        p_out = 0.5\n        flags_out = np.zeros(n_new, dtype=bool)\n\n    # ---- sequential decision over sliding windows ----\n    if n_new < WINDOW:\n        return None\n\n    for i in range(WINDOW - 1, n_new):\n        lo_idx = i - WINDOW + 1\n        k_in = int(flags_in[lo_idx:i + 1].sum())\n        k_out = int(flags_out[lo_idx:i + 1].sum())\n        if _binom_tail(WINDOW, k_in, P_IN) < ALPHA:\n            return i\n        if _binom_tail(WINDOW, k_out, p_out) < ALPHA:\n            return i\n\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "3e377a4c-2212-4804-a2e8-44042dc6e066",
+ "total_cost_usd": 0.0040923999999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 4160,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7144,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4160,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7144,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4160,
+   "webSearchRequests": 0,
+   "costUSD": 0.0040923999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "82ef3183-b2ed-4e99-9658-7b9252a692c5"
+}
