@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 13061,
+ "stop_reason": "end_turn",
+ "session_id": "7d9b3302-28ec-43c7-8fb4-aa3ab4fe30ed",
+ "total_cost_usd": 0.0402207,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 37880,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2805,
+  "output_tokens_details": {
+   "thinking_tokens": 1995
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 37880,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2805,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 37880,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 37880
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 31172,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.031242,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2805,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 37880,
+   "webSearchRequests": 0,
+   "costUSD": 0.0089787,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step25.py: blame the input columns for customers who ignore campaigns or complain.\n\nStandard library only (Python 3.13). Reuses step1 (csv helpers, goal\nclassification and normalisation) and step5 (the grouping keys and the\nadjusted eta-squared that step5 uses to rank input columns).\n\nThe client asks about two outcomes: RESPONSE+ (answers the campaign, higher\nis better) and COMPLAIN- (complains, lower is better). step5.blame ranks\ninput columns by badness over every goal, which mixes in spend and purchase\ngoals that the client did not ask about. This step ranks by badness over\nonly these two goals. A row's badness is 1 minus the mean of its normalised\nRESPONSE+ and COMPLAIN- scores (step1 scaling, 1 is best), so a customer who\nnever responds or who complains is bad. If either column is missing, blame\nfalls back to step5.blame.\n\"\"\"\nfrom __future__ import annotations\n\nimport os\n\nfrom step1 import _classify, _goal_scores, _read\nfrom step5 import _adjusted_eta_squared, _keys\nfrom step5 import blame as _step5_blame\n\n_TARGETS = (\"RESPONSE+\", \"COMPLAIN-\")\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    A column ranks higher the more its values separate bad customers (never\n    responding to campaigns, or complaining) from good ones. Columns with no\n    explanatory power keep their header order at the end.\n    \"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    names = [header[j] for j in inputs]\n    if not rows or not inputs or not goals:\n        return names\n\n    wanted = [(j, sign) for j, sign in goals if header[j] in _TARGETS]\n    if len(wanted) != len(_TARGETS):\n        return _step5_blame(key)\n\n    S = _goal_scores(rows, wanted)\n    bad = [1.0 - sum(s) / len(s) for s in S]\n\n    scored: list[tuple[float, int]] = []\n    for pos, j in enumerate(inputs):\n        keys = _keys(rows, j)\n        scored.append((-_adjusted_eta_squared(keys, bad), pos))\n    scored.sort()\n    return [names[pos] for _, pos in scored]\n```",
+ "ttft_ms": 9635,
+ "type": "result",
+ "duration_ms": 11926,
+ "uuid": "f93e5e94-711a-47f7-923e-cc381cd77857",
+ "ttft_stream_ms": 1048,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
