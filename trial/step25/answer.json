@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 24672,
+ "stop_reason": "end_turn",
+ "session_id": "50421772-e20f-4ddf-8320-82744caa7b25",
+ "total_cost_usd": 0.0242251,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20567,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5385,
+  "output_tokens_details": {
+   "thinking_tokens": 4243
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20567,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5385,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20567,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20567
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17354,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017419,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5385,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20567,
+   "webSearchRequests": 0,
+   "costUSD": 0.0068061,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py\nimport ezr\nimport step2\nimport step3\n\n# The client's two questions share one split of the customers:\n#   bad  = never responds (RESPONSE+ is 0) or complained (COMPLAIN- is 1)\n#   good = responded (RESPONSE+ is 1) and did not complain\n# Inputs are ranked by how differently they are spread over bad vs good rows.\n# RESPONSE is the last campaign only, so \"never responds\" here means \"did not\n# respond to the last campaign\". Rows that are not clearly bad or good are left out.\n\ndef _at(tbl, base: str) -> int:\n  \"Column index of the goal named BASE (its name without the + or - suffix).\"\n  for at, s in enumerate(tbl.names):\n    if s.rstrip(\"+-\") == base: return at\n  raise ValueError(f\"blame: no {base} column in the header\")\n\ndef _groups(tbl, resp_at: int, comp_at: int) -> tuple[list, list]:\n  \"Rows that are good (responded, no complaint) and bad (no response, or complained).\"\n  good, bad = [], []\n  for r in tbl.rows:\n    resp, comp = r[resp_at], r[comp_at]\n    if resp == 0 or comp == 1:\n      bad.append(r)\n    elif resp == 1 and comp == 0:\n      good.append(r)\n  return good, bad\n\ndef _contrast(c, b: list, g: list) -> float:\n  \"How differently column C is spread over bad values B and good values G (0 = no difference).\"\n  if not b or not g: return 0.0\n  if type(c) is ezr.Sym:\n    cb, cg = {}, {}\n    for v in b: cb[v] = cb.get(v, 0) + 1\n    for v in g: cg[v] = cg.get(v, 0) + 1\n    return 0.5 * sum(abs(cb.get(v, 0)/len(b) - cg.get(v, 0)/len(g))\n                     for v in set(cb) | set(cg))\n  # squashed numbers (0..1); a gap that step3 calls noise counts as zero\n  nb = [ezr.norm(c, v) for v in b]\n  ng = [ezr.norm(c, v) for v in g]\n  return 0.0 if step3.same(nb, ng) else \\\n         abs(sum(nb)/len(nb) - sum(ng)/len(ng))\n\ndef blame(train_csv: str) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl = step2._table(train_csv)\n  if not tbl.rows: raise ValueError(f\"no rows in {train_csv}\")\n  resp_at = _at(tbl, \"RESPONSE\")\n  comp_at = _at(tbl, \"COMPLAIN\")\n  good, bad = _groups(tbl, resp_at, comp_at)\n  names = [tbl.names[c.at] for c in tbl.x]\n  if not good or not bad: return names          # nothing to contrast\n\n  scored = []\n  for i, c in enumerate(tbl.x):\n    b = [r[c.at] for r in bad  if r[c.at] != \"?\"]\n    g = [r[c.at] for r in good if r[c.at] != \"?\"]\n    scored.append((_contrast(c, b, g), i))\n\n  order = sorted(scored, key=lambda t: (-t[0], t[1]))\n  return [names[i] for _, i in order]\n```",
+ "ttft_ms": 20204,
+ "type": "result",
+ "duration_ms": 23660,
+ "uuid": "9bc37ffb-403d-4ca5-87ea-a64fe7eb5c63",
+ "ttft_stream_ms": 1235,
+ "time_to_request_ms": 13,
+ "queued_turn_count": 0
+}
