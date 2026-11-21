@@ -1,0 +1,12 @@
+{
+ "domain": "players",
+ "step": 12,
+ "skill": "guess",
+ "ok": true,
+ "score": 0.07561768814387987,
+ "baseline": 0.1522137768465165,
+ "better": "lower",
+ "extra": {
+  "coverage": 0.8225
+ }
+}

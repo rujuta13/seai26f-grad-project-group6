@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 55088,
+ "stop_reason": "end_turn",
+ "session_id": "d54727c2-d179-4e59-be28-afbdfaeef443",
+ "total_cost_usd": 0.0314924,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24461,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12128,
+  "output_tokens_details": {
+   "thinking_tokens": 10661
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24461,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12128,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24461,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24461
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20461,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020536,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12128,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24461,
+   "webSearchRequests": 0,
+   "costUSD": 0.0109564,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step12.py\n#!/usr/bin/env python3 -B\n\"Guess each goal of a build from its other inputs, with a range we are fairly sure of, via ezr.\"\nimport math\nimport ezr\n\n_cache: dict[str, tuple] = {}   # train_csv -> (input columns, goals as (name, at), rows)\n\ndef _cell(v) -> ezr.ATOM:\n  \"V as one cell: '?' if blank, unknown, None, or not finite; otherwise its atom.\"\n  if v is None: return \"?\"\n  if isinstance(v, str): v = ezr.atom(v.strip() or \"?\")\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\ndef _num(v) -> bool:\n  \"True for a usable number: an int or float, but not a bool.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _fit(col, v) -> ezr.ATOM:\n  \"V as COL expects it: a number for a Num (anything else is unknown), any atom for a Sym.\"\n  v = _cell(v)\n  if type(col) is ezr.Num and not _num(v): return \"?\"\n  return v\n\ndef _pct(vs: list, p: float) -> float:\n  \"The value at fraction P of the sorted VS (nearest rank).\"\n  vs = sorted(vs)\n  return vs[round(p * (len(vs) - 1))]\n\ndef _load(train_csv: str) -> tuple:\n  \"Read TRAIN_CSV once; return its input columns, its goals as (name, at), and its rows.\"\n  if train_csv not in _cache:\n    src   = ezr.csv(train_csv)\n    head  = [str(n) for n in (next(src, None) or [])]\n    width = len(head)\n    rows  = []\n    for r in src:\n      r = [_cell(v) for v in r]\n      rows.append((r + [\"?\"] * width)[:width])\n    n     = len(rows)\n    cols, goals = [], []\n    for at, name in enumerate(head):\n      vals = [r[at] for r in rows if r[at] != \"?\"]\n      if name[-1:] in (\"+\", \"-\"):              # a goal: keep it out of the inputs\n        if any(_num(v) for v in vals): goals.append((name, at))\n        continue\n      if name == \"num\" or name[-1:] == \"X\" or not vals: continue\n      numeric = all(_num(v) for v in vals)\n      if not numeric and len(set(vals)) > max(1, n // 2):\n        continue                               # an identifier, like a name: no signal\n      col = ezr.Num(name, at) if numeric else ezr.Sym(name, at)\n      for v in vals: ezr.add(col, v)\n      cols.append(col)\n    _cache[train_csv] = (cols, goals, rows)\n  return _cache[train_csv]\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Estimate each goal of ROW (a dict with its goal columns removed).\n  Returns {goal: (estimate, low, high)}. The estimate is the median goal value\n  of the nearest labelled training rows over the input columns; low..high is\n  the 10th..90th percentile of those same neighbours, the range we are fairly\n  sure the true value falls in. A wide range means the neighbours disagree.\"\"\"\n  cols, goals, rows = _load(train_csv)\n  if not goals: return {}\n  q     = {c.at: _fit(c, row.get(c.txt, \"?\")) for c in cols}\n  width = max(1, len(cols))\n  def dist(r: list) -> float:\n    \"Distance from the query row to training row R, over the input columns.\"\n    return ezr.dist((ezr.gap(c, q[c.at], r[c.at]) for c in cols), width)\n  k    = max(3, min(len(rows), int(len(rows) ** 0.5)))\n  near = sorted(rows, key=dist)[:k]\n  out  = {}\n  for name, at in goals:\n    vs = [float(r[at]) for r in near if _num(r[at])]\n    if not vs:                       # no neighbour knows this goal: use all rows\n      vs = [float(r[at]) for r in rows if _num(r[at])]\n    est, low, high = _pct(vs, 0.5), _pct(vs, 0.1), _pct(vs, 0.9)\n    out[name] = (est, low, high)\n  return out\n```",
+ "ttft_ms": 49787,
+ "type": "result",
+ "duration_ms": 53947,
+ "uuid": "8475393a-3d52-4b12-a240-eb0dee6ce2d1",
+ "ttft_stream_ms": 1312,
+ "time_to_request_ms": 12,
+ "queued_turn_count": 0
+}
