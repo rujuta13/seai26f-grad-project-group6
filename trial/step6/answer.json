@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28018,
+ "stop_reason": "end_turn",
+ "session_id": "83926c2c-731a-48fc-8f42-6b82bb47dea0",
+ "total_cost_usd": 0.015364999999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11529,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6184,
+  "output_tokens_details": {
+   "thinking_tokens": 4965
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11529,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6184,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11529,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11529
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9907,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009966999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6184,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11529,
+   "webSearchRequests": 0,
+   "costUSD": 0.005398,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step6.py: justify. Why is a flag set good or bad, in words a skeptic can check?\"\nfrom ezr import Sym, candidates, norm, say, ydist\nfrom step1 import TOP, best\nfrom step2 import _load\nfrom step4 import _ref, _row\nfrom step5 import blame\n\nTOP_SPLITS  = 3   # most-to-blame input columns to explain\nMIN_SUPPORT = 3   # a split must cover at least this many builds\n\ndef explain(train_csv) -> str:\n  \"Plain-word reasons, each a split you can count by hand, for what makes builds good.\"\n  tbl  = _load(str(train_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: return \"There are no builds to explain.\"\n  good = set(best(str(train_csv)))\n  if not good: return \"No build is good enough to learn from.\"\n  base  = len(good) / n\n  goals = \"; \".join(f\"{c.txt} ({'higher' if c.goal else 'lower'} is better)\"\n                    for c in tbl.y)\n  out = [f\"A build is good when it is among the best {100*TOP:.0f}% \"\n         f\"on the goals together ({goals}).\",\n         f\"{len(good)} of {n} builds ({100*base:.0f}%) meet that bar.\"]\n  for name in blame(str(train_csv))[:TOP_SPLITS]:\n    col   = tbl.cols[tbl.names.index(name)]\n    found = None                       # (rate, hits, support, text)\n    for v, go in candidates(col, rows):\n      yes = [i for i, r in enumerate(rows) if go(r)]\n      if len(yes) < MIN_SUPPORT or len(yes) == n: continue\n      hits = sum(1 for i in yes if i in good)\n      rate = hits / len(yes)\n      cond = (f\"{name} = {say(v)}\" if type(col) is Sym\n              else f\"{name} <= {say(v)}\")\n      if found is None or (rate, len(yes)) > found[:2]:\n        found = (rate, hits, len(yes), cond)\n    if found and found[0] > base:\n      rate, hits, k, cond = found\n      out.append(f\"{cond}: {hits} of {k} such builds ({100*rate:.0f}%) \"\n                 f\"are good, against {100*base:.0f}% overall.\")\n  if len(out) == 2:\n    out.append(\"No single input split makes good builds clearly more likely, \"\n               \"so the goals are the only firm evidence.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences: is this build good or bad, and which goal drives it?\"\n  tbl, cutoff = _ref(str(train_csv))\n  full        = _row(tbl, row)\n  missing     = [c.txt for c in tbl.y if full[c.at] == \"?\"]\n  if missing:\n    return f\"Cannot judge this build: its goal(s) {', '.join(missing)} are unknown.\"\n  d       = ydist(tbl, full)\n  verdict = \"good\" if d <= cutoff else \"bad\"\n  worst   = max(tbl.y, key=lambda c: abs(norm(c, full[c.at]) - c.goal))\n  want    = \"higher\" if worst.goal else \"lower\"\n  return (f\"This build is {verdict}: its distance from the ideal goals is \"\n          f\"{say(d)}, against a cutoff of {say(cutoff)} for the best builds. \"\n          f\"Its weakest goal is {worst.txt} at {say(full[worst.at])}, \"\n          f\"where {want} is better.\")\n```",
+ "ttft_ms": 23789,
+ "type": "result",
+ "duration_ms": 27173,
+ "uuid": "9c84cc9c-ce0b-4017-9d46-98dd4a5467ea",
+ "ttft_stream_ms": 1317,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
