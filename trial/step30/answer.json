@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 51779,
+ "stop_reason": "end_turn",
+ "session_id": "feb5047d-95bf-4ad7-ab69-902f5cae5b38",
+ "total_cost_usd": 0.0882899,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 80406,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12619,
+  "output_tokens_details": {
+   "thinking_tokens": 8735
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 80406,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12619,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 80406,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 80406
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 65829,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.065899,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12619,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 80406,
+   "webSearchRequests": 0,
+   "costUSD": 0.0223909,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 30: race. Two client questions, answered on test_csv.\n\n  - \"Does our targeting beat simply mailing our highest-income customers?\"\n  - \"Does our response guesser beat an off-the-shelf model?\"\n\nTargeting race. The mailing list is the MAIL_FRAC share of test rows (at least one).\nThe score is the mean scaled value of the target goal (RESPONSE+ when the file has it,\notherwise the first goal present in both files) over the mailed customers. Each goal\nvalue is min-max scaled over the test customers (0 = worst, 1 = best). Unusable\ncells count as 0. For RESPONSE+ this is the response rate of the mailed group.\n  - ours: rank customers by the target estimate from step22.guess, using inputs only.\n    The test goal cells are never read for ranking.\n  - top_income: the customers with the highest INCOME (file order if there is no\n    INCOME column).\n  - random_targeting: a seeded random mailing list.\n  - oracle_targeting: the true best mailing list (an upper bound, since it reads the\n    test goals).\n\nResponse race. Scores are R^2 on test_csv for the target goal, higher is better.\n  - ours_response_r2: the step22.guess point estimate.\n  - ridge_response_r2: stdlib ridge regression on the numeric inputs (standardised,\n    median-filled) and one-hot text inputs, fitted on train_csv. This is an\n    off-the-shelf model.\n  - ours_response_coverage: the share of judged test customers whose true target\n    value lies inside the guess low..high range.\n\nAll returned values are higher-is-better. \"ours\" is the targeting score.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load\nfrom step22 import guess\n\nSEED = 1                  # fixed seed so results are reproducible\nMAIL_FRAC = 0.10          # share of test customers mailed in the targeting race\nTARGET_GOAL = \"RESPONSE+\"\nNUMERIC_FRAC = 0.9        # a column is numeric if this share of its cells parse as numbers\nID_FRAC = 0.9             # numeric column with more distinct values than this share is an id\nMAX_LEVELS = 25           # text columns with more levels are identifier-like and skipped\nRIDGE = 1.0               # ridge penalty on the non-intercept weights\nINCOME = \"INCOME\"\n\nKEYS = (\"ours\", \"random_targeting\", \"top_income\", \"oracle_targeting\",\n        \"ours_response_r2\", \"ridge_response_r2\", \"ours_response_coverage\")\n\n\ndef _finite(v):\n    \"\"\"The cell as a finite float, or None if it is missing, non-numeric or non-finite.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v.strip()\n    return \"\" if v is None else str(v).strip()\n\n\ndef _zeros():\n    return {k: 0.0 for k in KEYS}\n\n\ndef _plan(train_rows, inputs):\n    \"\"\"Decide how each input column is encoded, from training rows.\n\n    Returns (num, cat):\n      num  list of (column, mean, sd, median) for standardised numeric columns.\n      cat  list of (column, sorted levels) for text columns with few levels.\n    \"\"\"\n    n = len(train_rows)\n    num, cat = [], []\n    for c in inputs:\n        raw = [r.get(c) for r in train_rows]\n        vals = [_finite(v) for v in raw]\n        present = [x for x in vals if x is not None]\n        if present and len(present) >= NUMERIC_FRAC * n:\n            if n >= 20 and len(set(present)) > ID_FRAC * n:\n                continue  # identifier-like numeric column\n            srt = sorted(present)\n            med = srt[len(srt) // 2]\n            filled = [x if x is not None else med for x in vals]\n            mean = sum(filled) / n\n            sd = math.sqrt(sum((x - mean) ** 2 for x in filled) / n)\n            if sd > 0:\n                num.append((c, mean, sd, med))\n        else:\n            levels = sorted({_text(v) for v in raw} - {\"\"})\n            if 2 <= len(levels) <= MAX_LEVELS:\n                cat.append((c, levels))\n    return num, cat\n\n\ndef _design(r, num, cat):\n    \"\"\"Feature vector for one row, intercept first.\"\"\"\n    x = [1.0]\n    for c, mean, sd, med in num:\n        v = _finite(r.get(c))\n        if v is None:\n            v = med\n        x.append((v - mean) / sd)\n    for c, levels in cat:\n        s = _text(r.get(c))\n        x.extend(1.0 if s == lv else 0.0 for lv in levels)\n    return x\n\n\ndef _solve(A, b):\n    \"\"\"Gaussian elimination with partial pivoting for a square system.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        if abs(p) < 1e-12:\n            continue\n        for r in range(col + 1, n):\n            f = M[r][col] / p\n            if f:\n                for c in range(col, n + 1):\n                    M[r][c] -= f * M[col][c]\n    w = [0.0] * n\n    for i in reversed(range(n)):\n        s = M[i][n] - sum(M[i][j] * w[j] for j in range(i + 1, n))\n        w[i] = s / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n    return w\n\n\ndef _ridge(X, y, p):\n    \"\"\"Ridge least squares. The intercept (index 0) is not penalised.\"\"\"\n    A = [[0.0] * p for _ in range(p)]\n    b = [0.0] * p\n    for x, t in zip(X, y):\n        for i in range(p):\n            xi = x[i]\n            if xi == 0.0:\n                continue\n            b[i] += xi * t\n            row = A[i]\n            for j in range(p):\n                row[j] += xi * x[j]\n    for i in range(1, p):\n        A[i][i] += RIDGE\n    return _solve(A, b)\n\n\ndef _r2(ys, preds):\n    \"\"\"R^2 of predictions against true values (0.0 if undefined).\"\"\"\n    if len(ys) < 2:\n        return 0.0\n    mean = sum(ys) / len(ys)\n    sst = sum((y - mean) ** 2 for y in ys)\n    if sst <= 0:\n        return 0.0\n    sse = sum((y - p) ** 2 for y, p in zip(ys, preds))\n    return 1.0 - sse / sst\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score the targeting and response methods on test_csv (higher is better).\n\n    Returns a dict with keys 'ours' (targeting score of our mailing list),\n    'random_targeting', 'top_income', 'oracle_targeting', 'ours_response_r2',\n    'ridge_response_r2' and 'ours_response_coverage'.\n    \"\"\"\n    train_rows, train_inputs, train_goals = _load(train_csv)\n    test_rows, test_inputs, test_goals = _load(test_csv)\n    n = len(test_rows)\n    if n == 0 or not train_rows or not train_goals or not test_goals:\n        return _zeros()\n\n    train_names = {c: s for c, s in train_goals}\n    test_names = {c: s for c, s in test_goals}\n    if TARGET_GOAL in train_names and TARGET_GOAL in test_names:\n        target = TARGET_GOAL\n    else:\n        target = next((c for c, _ in train_goals if c in test_names), None)\n    if target is None:\n        return _zeros()\n    sign = train_names[target]\n\n    # True target values on test_csv, raw and scaled to 0..1 (higher is better).\n    ys = [_finite(r.get(target)) for r in test_rows]\n    oriented = [None if y is None else sign * y for y in ys]\n    usable = [o for o in oriented if o is not None]\n    lo = min(usable) if usable else 0.0\n    hi = max(usable) if usable else 0.0\n    span = hi - lo\n    truth = []\n    for o in oriented:\n        if o is None or span <= 0:\n            truth.append(0.0)\n        else:\n            truth.append((o - lo) / span)\n\n    # Guesses from inputs only.\n    input_rows = [{c: r.get(c) for c in train_inputs} for r in test_rows]\n    ests = [guess(train_csv, row)[target] for row in input_rows]\n    est_val = [e[0] for e in ests]\n    est_or = [sign * v for v in est_val]\n\n    # Mailing lists.\n    k = max(1, min(n, int(MAIL_FRAC * n)))\n\n    def mean_truth(picks):\n        return sum(truth[i] for i in picks) / len(picks) if picks else 0.0\n\n    ours_pick = sorted(range(n), key=lambda i: (-est_or[i], i))[:k]\n    oracle_pick = sorted(range(n), key=lambda i: (-truth[i], i))[:k]\n    random_pick = random.Random(SEED).sample(range(n), k)\n\n    if INCOME in test_inputs:\n        inc = [_finite(r.get(INCOME)) for r in test_rows]\n        income_pick = sorted(\n            range(n),\n            key=lambda i: (math.inf if inc[i] is None else -inc[i], i),\n        )[:k]\n    else:\n        income_pick = list(range(n))[:k]\n\n    # Response race: ridge regression fitted on train_csv.\n    num, cat = _plan(train_rows, train_inputs)\n    fit_x, fit_y = [], []\n    for r in train_rows:\n        y = _finite(r.get(target))\n        if y is not None:\n            fit_x.append(_design(r, num, cat))\n            fit_y.append(y)\n    p = 1 + len(num) + sum(len(lv) for _, lv in cat)\n    if fit_y:\n        w = _ridge(fit_x, fit_y, p)\n    else:\n        w = [0.0] * p\n    ridge_pred = [sum(a * b for a, b in zip(w, _design(r, num, cat)))\n                  for r in test_rows]\n\n    judged = [i for i in range(n) if ys[i] is not None]\n    yt = [ys[i] for i in judged]\n    ours_r2 = _r2(yt, [est_val[i] for i in judged])\n    ridge_r2 = _r2(yt, [ridge_pred[i] for i in judged])\n\n    covered = 0\n    ranged = 0\n    for i in judged:\n        _, low, high = ests[i]\n        if math.isfinite(low) and math.isfinite(high):\n            ranged += 1\n            if low <= ys[i] <= high:\n                covered += 1\n    coverage = covered / ranged if ranged else 0.0\n\n    return {\n        \"ours\": float(mean_truth(ours_pick)),\n        \"random_targeting\": float(mean_truth(random_pick)),\n        \"top_income\": float(mean_truth(income_pick)),\n        \"oracle_targeting\": float(mean_truth(oracle_pick)),\n        \"ours_response_r2\": float(ours_r2),\n        \"ridge_response_r2\": float(ridge_r2),\n        \"ours_response_coverage\": float(coverage),\n    }\n```",
+ "ttft_ms": 38886,
+ "type": "result",
+ "duration_ms": 50136,
+ "uuid": "2f13ea27-6c0d-4e43-919b-d1e1de3e2544",
+ "ttft_stream_ms": 1719,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
