@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17393,
+ "stop_reason": "end_turn",
+ "session_id": "f745846c-13be-4ce1-86c2-72a56d920a10",
+ "total_cost_usd": 0.00907806,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 200,
+  "cache_read_input_tokens": 7886,
+  "output_tokens": 3646,
+  "output_tokens_details": {
+   "thinking_tokens": 3182
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 200,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3646,
+    "cache_read_input_tokens": 7886,
+    "cache_creation_input_tokens": 200,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 200
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7061,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007136,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3646,
+   "cacheReadInputTokens": 7886,
+   "cacheCreationInputTokens": 200,
+   "webSearchRequests": 0,
+   "costUSD": 0.00194206,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step1.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep1.py: remember.  Families of flag sets, and the best of them.\nReuses ezr for tables, trees, and distance.\n\"\"\"\nimport ezr\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (leaf of a tree grown on the rows) per data row, in file order.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  old = ezr.the.Leaf\n  ezr.the.Leaf = max(old, len(tbl.rows)//8)   # few, big families\n  try:     node = ezr.tree(tbl, tbl.rows)\n  finally: ezr.the.Leaf = old\n  ids = {id(z): i for i, z in enumerate(ezr.leafs(node))}\n  return [ids[id(ezr.leaf(node, r))] for r in tbl.rows]\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the best rows on all goals together: at most 5% of rows.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  n     = int(0.05 * len(tbl.rows))\n  order = sorted(range(len(tbl.rows)),\n                 key=lambda i: ezr.ydist(tbl, tbl.rows[i]))\n  return order[:n]\n```",
+ "ttft_ms": 15203,
+ "type": "result",
+ "duration_ms": 16542,
+ "uuid": "b3d5d61c-4ba7-40be-baa3-e9f3f7e0a40e",
+ "ttft_stream_ms": 1126,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
