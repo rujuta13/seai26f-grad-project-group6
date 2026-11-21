@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 47397,
+ "stop_reason": "end_turn",
+ "session_id": "5126a192-bc08-49c7-88db-9b93d3468a03",
+ "total_cost_usd": 0.0579653,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 50948,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10899,
+  "output_tokens_details": {
+   "thinking_tokens": 7848
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 50948,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10899,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 50948,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 50948
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 42266,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.042325999999999996,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10899,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 50948,
+   "webSearchRequests": 0,
+   "costUSD": 0.015639300000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py\nimport os\nimport random\nimport tempfile\nfrom collections.abc import Callable\nimport ezr\nimport step17\nimport step22\n\nBUDGET = 30           # labels each targeting method may spend on test rows\nRIDGE  = 1e-6         # a tiny ridge keeps the off-the-shelf linear fit stable\nRESP   = \"response\"   # the goal the response guesser is judged on\nINC    = \"income\"     # the input the highest-income rival is ranked by\n\ndef _num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _find(tbl: ezr.TBL, base: str) -> int:\n  \"Column index of the column whose name, sign dropped and in lower case, is BASE.\"\n  for at, s in enumerate(tbl.names):\n    if s.rstrip(\"+-\").lower() == base: return at\n  raise ValueError(f\"race: no column named {base!r}\")\n\ndef _rank(v) -> float:\n  \"Sort key for INC: the highest income first; unknown incomes last.\"\n  return -v if _num(v) else float(\"inf\")\n\ndef _blind(test: ezr.TBL, rows: ezr.ROWS) -> str:\n  \"Write ROWS to a temp csv with goal cells blanked to '?'; return its path.\"\n  goal_ats = {c.at for c in test.y if type(c) is ezr.Num}\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(test.names) + \"\\n\")\n    for r in rows:\n      f.write(\",\".join(\"?\" if at in goal_ats else str(v)\n                       for at, v in enumerate(r)) + \"\\n\")\n  return path\n\ndef _mean(tbl: ezr.TBL, at: int) -> float:\n  \"Mean of the numeric cells in column AT of TBL; 0 if there are none.\"\n  vals = [r[at] for r in tbl.rows if _num(r[at])]\n  return sum(vals) / len(vals) if vals else 0.0\n\ndef _cell(v, m: float) -> float:\n  \"V if it is a number, else the column mean M.\"\n  return v if _num(v) else m\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [row[:] + [b[i]] for i, row in enumerate(A)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    if abs(M[c][c]) < 1e-12: continue\n    for r in range(n):\n      if r != c and M[r][c]:\n        f = M[r][c] / M[c][c]\n        M[r] = [x - f * y for x, y in zip(M[r], M[c])]\n  return [M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n          for i in range(n)]\n\ndef _fit(X: list[list[float]], y: list[float]):\n  \"Ridge regression: centre X and y, then solve the normal equations.\"\n  n, p = len(X), len(X[0])\n  mx   = [sum(x[j] for x in X) / n for j in range(p)]\n  my   = sum(y) / n\n  Xc   = [[x[j] - mx[j] for j in range(p)] for x in X]\n  yc   = [v - my for v in y]\n  A    = [[sum(Xc[i][a] * Xc[i][b] for i in range(n)) + (RIDGE if a == b else 0.0)\n           for b in range(p)] for a in range(p)]\n  rhs  = [sum(Xc[i][a] * yc[i] for i in range(n)) for a in range(p)]\n  return mx, my, _solve(A, rhs)\n\ndef _predict(model, x: list[float]) -> float:\n  \"The fitted linear model's guess for feature vector X.\"\n  mx, my, w = model\n  return my + sum(wj * (xj - mj) for wj, xj, mj in zip(w, x, mx))\n\ndef _linear(train: ezr.TBL, goal_at: int) -> Callable[[ezr.ROW], float]:\n  \"An off-the-shelf linear model for one goal: ridge regression on the numeric inputs.\"\n  feats = [c.at for c in train.x if any(_num(r[c.at]) for r in train.rows)]\n  means = {at: _mean(train, at) for at in feats}\n  X, y  = [], []\n  for r in train.rows:\n    if _num(r[goal_at]):\n      X.append([_cell(r[at], means[at]) for at in feats])\n      y.append(r[goal_at])\n  if not feats or len(y) < 2:\n    m = sum(y) / len(y) if y else 0.0\n    return lambda r: m\n  model = _fit(X, y)\n  return lambda r: _predict(model, [_cell(r[at], means[at]) for at in feats])\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"\"\"Lower is better for every entry, and every entry is measured on TEST_CSV.\n  Targeting question: each method may label at most BUDGET test rows and must\n  return one row to mail; the score is the ydist of its pick (0 is best).\n  \"ours\" is step17.choose. \"top_income\" labels the BUDGET highest-income rows\n  and keeps the best. \"random\" labels BUDGET random rows and keeps the best.\n  Response question: each guesser predicts RESPONSE for every test row that\n  has one; the score is mean absolute error, scaled by RESPONSE's range in\n  TRAIN_CSV. \"ours_guess\" is step22.guess; \"linreg_guess\" is an off-the-shelf\n  linear model fit on TRAIN_CSV.\n  The two kinds of score are on different scales: compare within a kind.\"\"\"\n  train = ezr.Tbl(ezr.csv(train_csv))\n  test  = ezr.Tbl(ezr.csv(test_csv))\n  if train.names != test.names:\n    raise ValueError(\"race: train and test need the same header\")\n  goals = [c for c in test.y if type(c) is ezr.Num]\n  if not goals: raise ValueError(\"race: the test file has no numeric goals\")\n  rows  = [r for r in test.rows if all(_num(r[c.at]) for c in goals)]\n  if not rows: raise ValueError(\"race: no test row has numeric goals\")\n  budget = min(BUDGET, len(rows))\n\n  # targeting: each method labels at most BUDGET test rows\n  def label(i: int) -> dict:\n    return {test.names[c.at]: rows[i][c.at] for c in goals}\n\n  path = _blind(test, rows)\n  try:\n    pick = step17.choose(path, label, budget=budget)\n  finally:\n    os.remove(path)\n  ours = ezr.ydist(test, rows[pick])\n\n  inc_at     = _find(test, INC)\n  by_inc     = sorted(range(len(rows)), key=lambda i: _rank(rows[i][inc_at]))\n  top_income = min(ezr.ydist(test, rows[i]) for i in by_inc[:budget])\n\n  rng    = random.Random(ezr.the.Seed)\n  sample = rng.sample(range(len(rows)), budget)\n  rand   = min(ezr.ydist(test, rows[i]) for i in sample)\n\n  # response guessers: error scaled by the goal's range in TRAIN_CSV\n  resp_at   = _find(test, RESP)\n  resp_name = test.names[resp_at]\n  vals      = [r[resp_at] for r in train.rows if _num(r[resp_at])]\n  if not vals: raise ValueError(\"race: no numeric response in TRAIN_CSV\")\n  span      = (max(vals) - min(vals)) or 1.0\n  resp_rows = [r for r in test.rows if _num(r[resp_at])]\n  if not resp_rows: raise ValueError(\"race: no test row has a response value\")\n\n  model = _linear(train, resp_at)\n\n  def ours_guess(r: ezr.ROW) -> float:\n    cells = {test.names[c.at]: r[c.at] for c in test.x}\n    g     = step22.guess(train_csv, cells)\n    return g.get(resp_name, (0.0, 0.0, 0.0))[0]\n\n  def linreg_guess(r: ezr.ROW) -> float:\n    return model(r)\n\n  def mae(guess: Callable[[ezr.ROW], float]) -> float:\n    total = sum(abs(guess(r) - r[resp_at]) / span for r in resp_rows)\n    return total / len(resp_rows)\n\n  return {\n    \"ours\":         ours,\n    \"top_income\":   top_income,\n    \"random\":       rand,\n    \"ours_guess\":   mae(ours_guess),\n    \"linreg_guess\": mae(linreg_guess),\n  }\n```",
+ "ttft_ms": 36801,
+ "type": "result",
+ "duration_ms": 44935,
+ "uuid": "a6022fb4-9ea0-45f0-92e5-24cb13d91f25",
+ "ttft_stream_ms": 1258,
+ "time_to_request_ms": 57,
+ "queued_turn_count": 0
+}
