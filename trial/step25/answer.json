@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 26085,
+ "stop_reason": "end_turn",
+ "session_id": "cf899ada-c7e9-4827-a7b4-85a093f9d2b4",
+ "total_cost_usd": 0.035712,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 32404,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5566,
+  "output_tokens_details": {
+   "thinking_tokens": 4291
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32404,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5566,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 32404,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 32404
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26363,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026448,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5566,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32404,
+   "webSearchRequests": 0,
+   "costUSD": 0.009264000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step25.py: blame, for the two client questions.\n\nQ1: Why do some customers never respond to campaigns? (RESPONSE+)\nQ2: What do the customers who complain have in common? (COMPLAIN-)\n\nstep15.blame checks every goal with a bottom-quarter cut. That cut fails for\ngoals where most rows tie at the best value, such as COMPLAIN- (about 1% of\ncustomers complain), because the cut lands on the best value and every row\ncounts as bad. This module keeps step15's approach but changes the bad-row rule:\na row is bad on a goal when its normalised score is at or below the bottom-quarter\ncut, unless that cut sits at the best value. In that case, a row is bad when it\nfalls strictly below the best value. The client goals (RESPONSE and COMPLAIN) are\nused when present, and every goal otherwise.\n\nReading, column splitting, the signed goal vector, normalisation, quantiles and\nthe per-column blame score come from steps 1, 2, 4 and 5.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step1 import _columns, _read\nfrom step2 import _quantile\nfrom step4 import _objectives\nfrom step5 import BAD_QUANTILE, _column_blame, _scores\n\nCLIENT_GOALS = (\"RESPONSE\", \"COMPLAIN\")   # base names of the goals the client asks about\n\n\ndef _is_client_goal(g: str) -> bool:\n    \"\"\"True if goal column g (e.g. 'RESPONSE+') is one of the client's goals.\"\"\"\n    return g[:-1] in CLIENT_GOALS\n\n\ndef _bad_rows(score: list[float]) -> list[bool]:\n    \"\"\"Bad flags for one goal's normalised scores in [0, 1], higher is better.\n\n    Normally bad means at or below the BAD_QUANTILE cut. When the cut sits at the\n    best value (most rows tie there, as with a rare complaint), bad means strictly\n    below the best value, so the rare worst rows are still flagged.\n    \"\"\"\n    cut = _quantile(score, BAD_QUANTILE)\n    top = max(score)\n    if cut < top:\n        return [s <= cut for s in score]\n    return [s < top for s in score]\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Each client goal (RESPONSE+ and COMPLAIN-, when present) is considered\n    separately. Each goal's bad rows come from _bad_rows, and each input column\n    is scored by how much more often bad rows fall in its most troublesome value\n    or bin than the overall bad rate. A column's blame is the largest such score\n    over the goals considered. If neither client goal is present, every goal is\n    used. Ties keep the file's column order. Every input column is returned.\n    \"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    if not inputs:\n        return []\n    if n == 0 or not goals:\n        return list(inputs)\n\n    focus = [g for g in goals if _is_client_goal(g)] or goals\n    obj = [_objectives(r, gmax, gmin) for r in rows]\n\n    worst = [0.0] * len(inputs)\n    for g in focus:\n        j = goals.index(g)\n        single = [[o[j]] for o in obj]\n        score = _scores(single, 1)\n        bad = _bad_rows(score)\n        p0 = sum(bad) / n\n        for k, c in enumerate(inputs):\n            b = _column_blame(rows, c, bad, p0)\n            if b > worst[k]:\n                worst[k] = b\n\n    order = sorted(range(len(inputs)), key=lambda i: (-worst[i], i))\n    return [inputs[i] for i in order]\n```",
+ "ttft_ms": 20713,
+ "type": "result",
+ "duration_ms": 24831,
+ "uuid": "43657fcd-9238-4bed-b3a2-a125b22ff57f",
+ "ttft_stream_ms": 1215,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
