@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 10081,
+ "stop_reason": "end_turn",
+ "session_id": "824a79df-f0a7-49f0-9587-256750b54726",
+ "total_cost_usd": 0.0243662,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22210,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2020,
+  "output_tokens_details": {
+   "thinking_tokens": 1380
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22210,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2020,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22210,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22210
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18844,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018914,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2020,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22210,
+   "webSearchRequests": 0,
+   "costUSD": 0.005452200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 13: certify whether two groups of measurements really differ.\n\nsame(xs, ys) runs a two-sided permutation test on the difference of means.\nIt answers both client questions: whether the shortlist's goal values beat the\nleague average, and whether strikers and midfielders differ as penalty takers.\nIt uses only the standard library and a fixed random seed, so repeated calls\ngive the same answer. Non-numeric and non-finite values are ignored.\n\"\"\"\n\nimport math\nimport random\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"Return True if the gap between xs and ys is consistent with noise.\n\n    Returns False only when the difference in means is statistically\n    significant at the 5% level (two-sided permutation test). Returns True\n    when either sample has no usable values, or when the means are equal.\n    \"\"\"\n    alpha = 0.05\n    n_perm = 10000\n\n    groups = []\n    for seq in (xs, ys):\n        vals = []\n        for x in seq:\n            try:\n                f = float(x)\n            except (TypeError, ValueError):\n                continue\n            if math.isfinite(f):\n                vals.append(f)\n        groups.append(vals)\n    a, b = groups\n\n    if not a or not b:\n        return True\n\n    na = len(a)\n    nb = len(b)\n    observed = abs(math.fsum(a) / na - math.fsum(b) / nb)\n    if observed == 0.0:\n        return True\n\n    pooled = a + b\n    rng = random.Random(0)\n    threshold = observed * (1.0 - 1e-9)\n    hits = 0\n\n    for _ in range(n_perm):\n        rng.shuffle(pooled)\n        sa = math.fsum(pooled[:na])\n        sb = math.fsum(pooled[na:])\n        if abs(sa / na - sb / nb) >= threshold:\n            hits += 1\n\n    p_value = (hits + 1) / (n_perm + 1)\n    return bool(p_value > alpha)\n```",
+ "ttft_ms": 7354,
+ "type": "result",
+ "duration_ms": 9230,
+ "uuid": "56de330d-6d70-4fee-8129-5a59e3bd3123",
+ "ttft_stream_ms": 1313,
+ "time_to_request_ms": 189,
+ "queued_turn_count": 0
+}
