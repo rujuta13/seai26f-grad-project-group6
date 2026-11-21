@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 61559,
+ "stop_reason": "end_turn",
+ "session_id": "b93a61e5-d274-44ac-92af-c56f5a809561",
+ "total_cost_usd": 0.0348265,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26849,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13991,
+  "output_tokens_details": {
+   "thinking_tokens": 11456
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26849,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13991,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26849,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26849
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22356,
+   "outputTokens": 21,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022461000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13991,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26849,
+   "webSearchRequests": 0,
+   "costUSD": 0.012365500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 14: flow. Keep promising scouting rows as they arrive; warn when new rows drift.\n\nstream(): each arriving row is kept when its normalised goal total reaches the\n95th percentile of the training totals (the same rule as step4.stream). Goal\nnormalisation uses only the training data, and missing goal values count as\nworst. Each decision depends only on train_csv and the row itself.\n\ndrift(): every _STRIDE rows, the most recent _WINDOW rows are compared with the\ntraining data, one column at a time. Numeric columns (inputs and goals) are\ncompared directly. Categorical columns are reduced to how typical each value is\nin the training data (its training frequency), so a new category or a shift in\nthe category mix shows up as a shift in that number. Each comparison is a\ntwo-sample Kolmogorov-Smirnov test with a conservative critical value. A warning\nis raised once _CONFIRM consecutive checks find a difference.\n\"\"\"\n\nimport math\nfrom collections import Counter\nfrom functools import lru_cache\n\nimport step1\n\n_KEEP_QUANTILE = 0.95  # keep rows scoring at or above this training quantile\n_WINDOW = 50           # recent rows compared against training in drift()\n_STRIDE = 10           # run a drift check every _STRIDE rows\n_CONFIRM = 3           # consecutive differing checks before warning\n_MIN_N = 5             # fewer usable values than this in a column -> column skipped\n_KS_C = 2.05           # KS constant: per-column test level about 0.0005 (many columns)\n\n\ndef _is_num(v):\n    return isinstance(v, float) and not math.isnan(v)\n\n\ndef _key(v):\n    \"\"\"Category key for a cell: missing cells share the key ''.\"\"\"\n    return \"\" if v is None else str(v)\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    pos = q * (len(sorted_vals) - 1)\n    lo = math.floor(pos)\n    hi = min(lo + 1, len(sorted_vals) - 1)\n    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)\n\n\ndef _score(row, ranges):\n    \"\"\"Sum of normalised goal values (higher is better). Missing counts as 0.\"\"\"\n    total = 0.0\n    for name, sign, lo, span in ranges:\n        v = row.get(name)\n        if not _is_num(v):\n            continue  # missing counts as worst\n        x = v * sign\n        total += (x - lo) / span if span > 0 else 1.0\n    return total\n\n\n@lru_cache(maxsize=4)\ndef _keep_model(train_csv):\n    \"\"\"Parse train_csv once. Returns (ranges, threshold).\n\n    ranges: (name, sign, lo, span) per goal over the training data.\n    threshold: keep cut-off on the normalised totals, or None if no goals/rows.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    _, goals_max, goals_min = step1._classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n\n    ranges = []\n    for name, sign in goals:\n        vals = [r[name] * sign for r in rows if _is_num(r.get(name))]\n        lo = min(vals) if vals else 0.0\n        hi = max(vals) if vals else 0.0\n        ranges.append((name, sign, lo, hi - lo))\n    ranges = tuple(ranges)\n\n    if not ranges or not rows:\n        return ranges, None\n    totals = sorted(_score(r, ranges) for r in rows)\n    return ranges, _quantile(totals, _KEEP_QUANTILE)\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or drop (False) each incoming row, in order.\n\n    Each decision uses only the training data and the row itself: the row is\n    kept when its normalised goal total reaches the training threshold.\n    \"\"\"\n    ranges, threshold = _keep_model(train_csv)\n    if threshold is None:\n        return [False] * len(rows)\n    return [_score(r, ranges) >= threshold for r in rows]\n\n\n@lru_cache(maxsize=4)\ndef _profile(train_csv):\n    \"\"\"Parse train_csv once. Returns one entry per input and goal column.\n\n    Each entry is (name, kind, train, freq):\n      kind \"num\": train is the sorted finite training values, freq is None.\n      kind \"cat\": train is the sorted training typicality of each row's value\n                  (its frequency in training), freq maps value key -> frequency.\n    Columns with no usable training values are left out.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n\n    cols = []\n    for name in inputs + goals_max + goals_min:\n        raw = [r.get(name) for r in rows]\n        present = [v for v in raw\n                   if v is not None and not (isinstance(v, str) and v == \"\")]\n        if present and all(isinstance(v, float) for v in present):\n            train = sorted(v for v in present if not math.isnan(v))\n            if train:\n                cols.append((name, \"num\", train, None))\n            continue\n\n        keys = [_key(v) for v in raw]\n        counts = Counter(keys)\n        n = len(keys)\n        freq = {k: c / n for k, c in counts.items()}\n        train = sorted(freq[k] for k in keys)\n        if train:\n            cols.append((name, \"cat\", train, freq))\n    return cols\n\n\ndef _ks(a, b):\n    \"\"\"Two-sample Kolmogorov-Smirnov statistic of lists a and b (ties handled).\"\"\"\n    a = sorted(a)\n    b = sorted(b)\n    n, m = len(a), len(b)\n    i = j = 0\n    d = 0.0\n    while i < n and j < m:\n        x = a[i] if a[i] <= b[j] else b[j]\n        while i < n and a[i] <= x:\n            i += 1\n        while j < m and b[j] <= x:\n            j += 1\n        d = max(d, abs(i / n - j / m))\n    return d\n\n\ndef _differs(col, window):\n    \"\"\"True if this column of the window differs from its training values.\"\"\"\n    name, kind, train, freq = col\n    if kind == \"num\":\n        vals = [v for v in (r.get(name) for r in window) if _is_num(v)]\n    else:\n        vals = [freq.get(_key(r.get(name)), 0.0) for r in window]\n    if len(vals) < _MIN_N:\n        return False\n    n, m = len(vals), len(train)\n    return _ks(vals, train) > _KS_C * math.sqrt((n + m) / (n * m))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the new results have stopped\n    looking like the training results, or None if they never do.\n\n    At each periodic check, the most recent _WINDOW rows are compared with the\n    training data for every input and goal column. A warning is raised once\n    _CONFIRM consecutive checks find a difference.\n    \"\"\"\n    cols = _profile(train_csv)\n    if not cols or not rows:\n        return None\n\n    streak = 0\n    for i in range(_WINDOW - 1, len(rows)):\n        if (i + 1) % _STRIDE:\n            continue\n        window = rows[i + 1 - _WINDOW: i + 1]\n        differs = any(_differs(col, window) for col in cols)\n        streak = streak + 1 if differs else 0\n        if streak >= _CONFIRM:\n            return i\n    return None\n```",
+ "ttft_ms": 53354,
+ "type": "result",
+ "duration_ms": 60426,
+ "uuid": "68b175fd-3e6b-429d-8c31-7e3cb5ada933",
+ "ttft_stream_ms": 1173,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
