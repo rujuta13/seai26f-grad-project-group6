@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 19689,
+ "stop_reason": "end_turn",
+ "session_id": "d59c3015-8acf-4f9a-9016-1937cb33a9e9",
+ "total_cost_usd": 0.0224744,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19486,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3992,
+  "output_tokens_details": {
+   "thinking_tokens": 3144
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19486,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3992,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19486,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19486
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16516,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016581,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3992,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19486,
+   "webSearchRequests": 0,
+   "costUSD": 0.0058934,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step12.py\n\"\"\"\nstep12: guess, with confidence.  For each goal of a row with its goals\nremoved, return (estimate, low, high).  The estimate is the median goal\nvalue among training rows in the same family.  low..high is the middle 90%\nof those values, our \"fairly sure\" range.  When the family is thin, the\nrange comes from every training row instead, so it is wider and says so.\nReuses step2 (model, _full, _q) and ezr (leaf).\n\"\"\"\nimport math\nimport ezr\nimport step2\n\nFAIR    = (0.05, 0.95)   # \"fairly sure\": the middle 90% of the values seen\nMIN_VAL = 5               # fewer numeric family values than this: use every row\nTHIN    = 30              # fewer family rows than this: range from every row\n\n\ndef _nums(rows, at) -> list[float]:\n  \"Sorted finite numbers in column AT of ROWS; '?' and text are skipped.\"\n  return sorted(float(r[at]) for r in rows\n                if isinstance(r[at], (int, float)) and math.isfinite(r[at]))\n\n\ndef _interval(fam, rows, at) -> tuple[float, float, float]:\n  \"(estimate, low, high) for the goal in column AT, from FAM, else ROWS.\"\n  fv   = _nums(fam, at)\n  allv = _nums(rows, at)\n  if not allv:\n    return (float(\"nan\"),) * 3\n  est_src = fv if len(fv) >= MIN_VAL else allv     # estimate: family if it can be trusted\n  est     = step2._q(est_src, 0.5)\n  thin    = len(fam) < THIN or len(fv) < MIN_VAL\n  rng_src = allv if thin else fv                    # thin family: judge by the whole table\n  lo, hi  = step2._q(rng_src, FAIR[0]), step2._q(rng_src, FAIR[1])\n  return (est, min(lo, est), max(hi, est))          # the estimate always sits inside\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"For every goal: (estimate, low, high). Keys are the goal column names,\n  as in the csv header. ROW has its goal columns removed.\"\"\"\n  tbl, node = step2._model(train_csv)\n  full = step2._full(tbl, row)                      # goal cells are '?'\n  fam  = ezr.leaf(node, full).rows                  # training rows in the same family\n  return {c.txt: _interval(fam, tbl.rows, c.at) for c in tbl.y}\n```",
+ "ttft_ms": 15922,
+ "type": "result",
+ "duration_ms": 18748,
+ "uuid": "f871e541-7dfd-49e5-82d9-428f3b55d108",
+ "ttft_stream_ms": 1358,
+ "time_to_request_ms": 90,
+ "queued_turn_count": 0
+}
