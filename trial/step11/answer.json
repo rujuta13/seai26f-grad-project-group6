@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 23921,
+ "stop_reason": "end_turn",
+ "session_id": "d85a5a1f-f07b-48a7-80c2-236b629d1f19",
+ "total_cost_usd": 0.024323900000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20966,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4875,
+  "output_tokens_details": {
+   "thinking_tokens": 3913
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20966,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4875,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20966,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20966
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17608,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017693,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4875,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20966,
+   "webSearchRequests": 0,
+   "costUSD": 0.0066309,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step11.py: player types (families) and the strong-and-good-from-the-spot front.\n\nfamilies(train_csv): step1's k-means family labels, reused unchanged.\n\nbest(train_csv): the same rule as step1.best (the Pareto front of the goals,\ncapped at BEST_FRACTION of the rows, ranked by normalised goal sum). step1\ncompares every row with every other row, which is O(n^2) dominance checks and\ntoo slow for about 17,000 players. Here rows are sorted by their oriented goal\nvector, best first. A dominator always sorts before the row it dominates, so\neach row is checked only against the front found so far. The result is the same\nas step1.best.\n\nStandard library only.\n\"\"\"\nimport step1 as _step1\nfrom step1 import _load, _columns, _dominates, BEST_FRACTION\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    return _step1.families(train_csv)\n\n\ndef _pareto_front(V):\n    \"\"\"Indices of rows in V that no other row dominates (higher is better).\"\"\"\n    order = sorted(range(len(V)), key=lambda i: V[i], reverse=True)\n    front = []\n    for i in order:\n        if not any(_dominates(V[j], V[i]) for j in front):\n            front.append(i)\n    return front\n\n\ndef _top_by_score(V, front, cap):\n    \"\"\"The cap front rows with the highest normalised goal sum (as in step1.best).\"\"\"\n    g = len(V[0])\n    lo = [min(v[t] for v in V) for t in range(g)]\n    hi = [max(v[t] for v in V) for t in range(g)]\n\n    def score(i):\n        s = 0.0\n        for t in range(g):\n            span = hi[t] - lo[t]\n            s += (V[i][t] - lo[t]) / span if span > 0 else 1.0\n        return s\n\n    scores = {i: score(i) for i in front}\n    ranked = sorted(front, key=lambda i: (-scores[i], i))\n    return ranked[:cap]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows.\"\"\"\n    cols, rows = _load(train_csv)\n    n = len(rows)\n    cap = int(BEST_FRACTION * n)\n    if n == 0 or cap == 0:\n        return []\n    _, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals:\n        return []\n\n    # Orient every goal so that higher is better.\n    V = [[sgn * float(r[c]) for c, sgn in goals] for r in rows]\n\n    front = _pareto_front(V)\n    if len(front) > cap:\n        front = _top_by_score(V, front, cap)\n    return sorted(front)\n```",
+ "ttft_ms": 19783,
+ "type": "result",
+ "duration_ms": 22802,
+ "uuid": "c3b3e59c-0ff9-4db3-a350-84f1b881a661",
+ "ttft_stream_ms": 1244,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
