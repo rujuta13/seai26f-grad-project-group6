@@ -1,0 +1,15 @@
+{
+ "domain": "ssw",
+ "step": 4,
+ "skill": "flow",
+ "ok": true,
+ "score": 0.3351529946278892,
+ "baseline": 0.5180104349067333,
+ "better": "lower",
+ "extra": {
+  "kept": 17,
+  "drift_at": 34,
+  "drift_hit": false,
+  "false_alarm": true
+ }
+}
