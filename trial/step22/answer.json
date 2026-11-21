@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 15913,
+ "stop_reason": "end_turn",
+ "session_id": "e57ac1d0-a55c-4a12-9ece-089492188b5e",
+ "total_cost_usd": 0.0371764,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 34681,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3146,
+  "output_tokens_details": {
+   "thinking_tokens": 2202
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 34681,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3146,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 34681,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 34681
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 28582,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.028666999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3146,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 34681,
+   "webSearchRequests": 0,
+   "costUSD": 0.0085094,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step22.py: guess a new customer's web and store purchases, and whether they\nwill answer the next campaign.\n\nThe client's two questions are the goals NUMWEBPURCHASES+, NUMSTOREPURCHASES+\nand RESPONSE+. The estimates and ranges come from step12.guess, the calibrated\nnearest-neighbour model, so every goal in the file is returned in the same\nformat.\n\nPurchase counts cannot be negative and RESPONSE is a 0/1 flag, so each range is\nclipped to the span of values seen in the training file. Clipping preserves\nlow <= estimate <= high because it is a monotone map.\n\nReuses step1 (loading and column roles) and step12 (guessing and calibration).\nStandard library only.\n\"\"\"\nimport math\nimport os\n\nfrom step1 import _load, _columns\nfrom step12 import guess as _guess\n\n_BOUNDS = {}  # (path, mtime, size) -> {goal: (min, max)} for the latest file\n\n\ndef _bounds(train_csv):\n    \"\"\"{goal: (smallest, largest)} of the finite training values of each goal.\"\"\"\n    key = (os.path.abspath(train_csv),\n           os.path.getmtime(train_csv),\n           os.path.getsize(train_csv))\n    b = _BOUNDS.get(key)\n    if b is None:\n        cols, rows = _load(train_csv)\n        _, maxi, mini = _columns(cols, rows)\n        b = {}\n        for g in maxi + mini:\n            vals = [r[g] for r in rows\n                    if isinstance(r[g], float) and math.isfinite(r[g])]\n            if vals:\n                b[g] = (min(vals), max(vals))\n        _BOUNDS.clear()\n        _BOUNDS[key] = b\n    return b\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal column of train_csv.\n\n    `row` is a customer's flags with the goal columns removed. For\n    NUMWEBPURCHASES+ and NUMSTOREPURCHASES+ the estimate is the expected number\n    of purchases through that channel. For RESPONSE+ it is the chance of\n    answering the campaign. low..high is the range the true value is fairly\n    sure to fall in, clipped to the values seen in training.\n    \"\"\"\n    pred = _guess(train_csv, row)\n    bounds = _bounds(train_csv)\n    out = {}\n    for g, (est, lo, hi) in pred.items():\n        if g in bounds:\n            gmin, gmax = bounds[g]\n            est = min(max(est, gmin), gmax)\n            lo = min(max(lo, gmin), gmax)\n            hi = min(max(hi, gmin), gmax)\n        out[g] = (est, lo, hi)\n    return out\n```",
+ "ttft_ms": 11065,
+ "type": "result",
+ "duration_ms": 14137,
+ "uuid": "3d066c71-f47f-4bfb-866b-2afcbd1ada11",
+ "ttft_stream_ms": 1234,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
