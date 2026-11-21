@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17638,
+ "stop_reason": "end_turn",
+ "session_id": "46007122-63f0-483e-8fc0-457cc05b860e",
+ "total_cost_usd": 0.029562899999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26851,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3603,
+  "output_tokens_details": {
+   "thinking_tokens": 2881
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26851,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3603,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26851,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26851
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22316,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022390999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3603,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26851,
+   "webSearchRequests": 0,
+   "costUSD": 0.0071719,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step22.py\n\"\"\"Guess a customer's purchases (online and in store) and campaign response.\n\nguess() is step12.guess. The nearest training customers vote: the estimate\nis their mean, and low..high is their 10th..90th percentile, so a wide range\nmeans the neighbours disagree. The keys are the goal columns of train_csv,\nwhich include NUMWEBPURCHASES+ (online purchases), NUMSTOREPURCHASES+ (in-store\npurchases), and RESPONSE+ (answers the campaign).\n\nGoal cells are never used to make the guess. If a row arrives with its goals\nfilled in, they are blanked first, so the estimate cannot peek at the answer.\n\"\"\"\nimport step2\nimport step4\nimport step12\n\n\ndef _inputs_only(train_csv, row):\n  \"ROW with every goal cell blanked to '?', so only the inputs can inform the guess.\"\n  tbl   = step2._load(train_csv)\n  goals = step4._goals(tbl)\n  names = {g.txt for g in goals}\n  if isinstance(row, dict):\n    return {k: v for k, v in row.items() if k not in names}\n  if len(row) == len(tbl.names):           # full-width list: blank the goals\n    out = list(row)\n    for g in goals: out[g.at] = \"?\"\n    return out\n  return row                                # input-order list: already inputs only\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal of TRAIN_CSV.\n  ROW has its goal columns removed; any goal cells it carries are ignored.\n  'NUMWEBPURCHASES+' is online purchases, 'NUMSTOREPURCHASES+' is in-store\n  purchases, and 'RESPONSE+' is whether the customer answers the campaign.\n  Low..high is the range the true value is fairly sure to fall in.\"\"\"\n  clean = _inputs_only(train_csv, row)\n  out   = step12.guess(train_csv, clean)\n  return {goal: (float(est), float(lo), float(hi))\n          for goal, (est, lo, hi) in out.items()}\n```",
+ "ttft_ms": 14217,
+ "type": "result",
+ "duration_ms": 16186,
+ "uuid": "5b7e481d-059a-484e-81e3-fb7c8c29aeb6",
+ "ttft_stream_ms": 1651,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
