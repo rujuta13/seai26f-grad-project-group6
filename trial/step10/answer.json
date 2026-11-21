@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 47931,
+ "duration_api_ms": 47919,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _goal_matrix, _load\nfrom step2 import _build_encoders, _encode, guess\nfrom step5 import _badness\nfrom step7 import _encode_inputs, choose\n\n\n_BUDGET = 30          # labelled test builds allowed for every tuner\n_GUESS_SAMPLE = 25    # test builds used to compare the two guessers (guess() is slow)\n_SEED = 0\n\n\ndef _blind_copy(src_csv, dst_csv, goal_cols):\n    \"\"\"Write a copy of src_csv with every goal cell replaced by '?'.\"\"\"\n    with open(src_csv, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        raw = list(reader)\n    with open(dst_csv, \"w\", newline=\"\", encoding=\"utf-8\") as f:\n        writer = csv.DictWriter(f, fieldnames=header)\n        writer.writeheader()\n        for r in raw:\n            out = dict(r)\n            for g in goal_cols:\n                out[g] = \"?\"\n            writer.writerow(out)\n\n\ndef _surrogate_tuner(X, badness, budget):\n    \"\"\"Standard-library-style rival: sequential greedy random-forest surrogate.\n\n    Starts from a few random labels, then repeatedly labels the unlabelled\n    build with the best predicted badness. Returns the best labelled index.\n    \"\"\"\n    n = len(badness)\n    rng = np.random.default_rng(_SEED)\n    init = rng.choice(n, size=min(5, budget), replace=False).tolist()\n    labeled = {int(i): float(badness[i]) for i in init}\n\n    while len(labeled) < budget:\n        L = sorted(labeled)\n        U = [i for i in range(n) if i not in labeled]\n        if not U:\n            break\n        y = np.array([labeled[i] for i in L], dtype=float)\n        model = RandomForestRegressor(\n            n_estimators=200,\n            random_state=_SEED,\n            n_jobs=1,\n        ).fit(X[L], y)\n        pred = model.predict(X[U])\n        pick = U[int(np.argmin(pred))]\n        labeled[pick] = float(badness[pick])\n\n    L = sorted(labeled)\n    return int(L[int(np.argmin([labeled[i] for i in L]))])\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare the earlier skills against standard rivals on test_csv.\n\n    Tuner scores: each method labels at most _BUDGET test builds and picks one.\n    The score is 1 minus the chosen build's mean normalised rank over all goals\n    across the whole test set (1.0 = best possible, 0.0 = worst). Higher is better.\n    Keys: \"ours\" (step7.choose), \"random_search\", \"sklearn_surrogate\".\n\n    Guesser scores: negative mean absolute error of the predicted goal value\n    (Performance- if present, else the first shared goal) on a fixed sample of\n    test builds. Higher (closer to 0) is better.\n    Keys: \"ours_guess\" (step2.guess), \"off_the_shelf_guess\" (default\n    sklearn RandomForestRegressor on the same encoded inputs).\n    \"\"\"\n    header, rows = _load(test_csv)\n    n = len(rows)\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    if n == 0 or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n\n    G = _goal_matrix(header, rows)\n    badness = _badness(G)\n    budget = min(_BUDGET, n)\n    scores: dict[str, float] = {}\n\n    # ---- tuners\n    def label_fn(i):\n        return {g: rows[i][g] for g in goals}\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _blind_copy(test_csv, blind, goals)\n        pick = choose(blind, label_fn, budget=budget)\n    scores[\"ours\"] = 1.0 - float(badness[pick])\n\n    rng = np.random.default_rng(_SEED)\n    idx = rng.choice(n, size=budget, replace=False)\n    pick = int(idx[int(np.argmin(badness[idx]))])\n    scores[\"random_search\"] = 1.0 - float(badness[pick])\n\n    X_test = _encode_inputs(header, rows)\n    pick = _surrogate_tuner(X_test, badness, budget)\n    scores[\"sklearn_surrogate\"] = 1.0 - float(badness[pick])\n\n    # ---- guessers\n    train_header, train_rows = _load(train_csv)\n    train_goals = [c for c in train_header if _column_kind(c) in (\"max\", \"min\")]\n    common = [g for g in goals if g in train_goals]\n    if not common or not train_rows:\n        raise ValueError(\"train_csv and test_csv share no goal columns or rows\")\n    target = \"Performance-\" if \"Performance-\" in common else common[0]\n\n    sub = rng.choice(n, size=min(_GUESS_SAMPLE, n), replace=False)\n    y_true = np.array([float(rows[i][target]) for i in sub], dtype=float)\n\n    ours_pred = np.array(\n        [float(guess(train_csv, dict(rows[i]))[target][0]) for i in sub],\n        dtype=float,\n    )\n\n    train_inputs = [c for c in train_header if _column_kind(c) == \"input\"]\n    ytr = np.array([float(r[target]) for r in train_rows], dtype=float)\n    if train_inputs:\n        values_by_col = {c: [r.get(c) for r in train_rows] for c in train_inputs}\n        encoders = _build_encoders(values_by_col)\n        Xtr = np.zeros((len(train_rows), len(train_inputs)), dtype=float)\n        for j, c in enumerate(train_inputs):\n            Xtr[:, j] = [_encode(v, encoders[c]) for v in values_by_col[c]]\n        Xte = np.array(\n            [[_encode(rows[i].get(c), encoders[c]) for c in train_inputs] for i in sub],\n            dtype=float,\n        ).reshape(len(sub), len(train_inputs))\n        model = RandomForestRegressor(random_state=_SEED, n_jobs=1).fit(Xtr, ytr)\n        off_pred = model.predict(Xte)\n    else:\n        off_pred = np.full(len(sub), float(np.median(ytr)), dtype=float)\n\n    scores[\"ours_guess\"] = -float(np.mean(np.abs(ours_pred - y_true)))\n    scores[\"off_the_shelf_guess\"] = -float(np.mean(np.abs(off_pred - y_true)))\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "88216ab0-7bad-4d66-b884-0d473a47dbe6",
+ "total_cost_usd": 0.00646415,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 14702,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9252,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14702,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 9252,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14702,
+   "webSearchRequests": 0,
+   "costUSD": 0.00646415,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "7178aa8f-de7d-4073-a792-24cbc251c088"
+}
