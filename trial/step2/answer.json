@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 14268,
+ "duration_api_ms": 14255,
+ "num_turns": 1,
+ "result": "```python\nimport csv\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.model_selection import KFold, cross_val_predict\n\n\ndef _to_value(cell):\n    try:\n        return float(cell)\n    except (TypeError, ValueError):\n        return cell\n\n\ndef _column_kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _load(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        rows = [{k: _to_value(v) for k, v in r.items()} for r in reader]\n    return header, rows\n\n\ndef _build_encoders(values_by_col):\n    \"\"\"Per input column: None for numeric, else a label -> code dict.\"\"\"\n    encoders = {}\n    for c, values in values_by_col.items():\n        if all(isinstance(v, float) for v in values):\n            encoders[c] = None\n        else:\n            labels = {}\n            for v in values:\n                key = str(v)\n                if key not in labels:\n                    labels[key] = float(len(labels))\n            encoders[c] = labels\n    return encoders\n\n\ndef _encode(value, labels):\n    if labels is None:\n        if isinstance(value, float):\n            return value\n        try:\n            return float(value)\n        except (TypeError, ValueError):\n            return -1.0\n    if value is None:\n        return -1.0\n    return labels.get(str(value), -1.0)\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    header, rows = _load(train_csv)\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    inputs = [c for c in header if _column_kind(c) == \"input\"]\n    n = len(rows)\n\n    if n == 0 or not goals:\n        return {g: (0.0, 0.0, 0.0) for g in goals}\n\n    values_by_col = {c: [r.get(c) for r in rows] for c in inputs}\n    encoders = _build_encoders(values_by_col)\n\n    X = np.zeros((n, len(inputs)), dtype=float)\n    for j, c in enumerate(inputs):\n        labels = encoders[c]\n        X[:, j] = [_encode(v, labels) for v in values_by_col[c]]\n\n    xq = np.array(\n        [[_encode(row.get(c), encoders[c]) for c in inputs]], dtype=float\n    ).reshape(1, len(inputs))\n\n    result = {}\n    for g in goals:\n        y = np.asarray([float(r[g]) for r in rows], dtype=float)\n\n        if len(inputs) == 0 or n < 4:\n            est = float(np.median(y))\n            low = float(np.quantile(y, 0.05))\n            high = float(np.quantile(y, 0.95))\n            result[g] = (est, min(low, est), max(high, est))\n            continue\n\n        def make_model():\n            return RandomForestRegressor(\n                n_estimators=300,\n                min_samples_leaf=2,\n                random_state=0,\n                n_jobs=1,\n            )\n\n        k = min(5, n)\n        cv = KFold(n_splits=k, shuffle=True, random_state=0)\n        oof = cross_val_predict(make_model(), X, y, cv=cv)\n        residuals = y - oof\n        r_lo, r_hi = np.quantile(residuals, [0.05, 0.95])\n\n        model = make_model().fit(X, y)\n        est = float(model.predict(xq)[0])\n        low = est + float(r_lo)\n        high = est + float(r_hi)\n        result[g] = (est, min(low, est), max(high, est))\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "02393777-1f56-4a01-ad16-d68fe23a3080",
+ "total_cost_usd": 0.0016337749999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 2199,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2717,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2199,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2717,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2199,
+   "webSearchRequests": 0,
+   "costUSD": 0.0016337749999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "a6fdba01-78c4-459c-8dc4-634f19b29455"
+}
