@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 11984,
+ "duration_api_ms": 11972,
+ "num_turns": 1,
+ "result": "```python\nimport csv\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\n\n\ndef _read(path):\n    with open(path, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        fieldnames = list(reader.fieldnames or [])\n        rows = list(reader)\n    return fieldnames, rows\n\n\ndef _columns(fieldnames):\n    # goals: (name, sign) with sign +1 to maximise, -1 to minimise\n    goals = [(c, 1.0) for c in fieldnames if c.endswith(\"+\")]\n    goals += [(c, -1.0) for c in fieldnames if c.endswith(\"-\")]\n    inputs = [c for c in fieldnames if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goals\n\n\ndef _to_float_column(rows, col):\n    \"\"\"Convert a column to floats; non-numeric strings are coded by first appearance.\"\"\"\n    values = [r[col] for r in rows]\n    try:\n        return np.array([float(v) for v in values], dtype=float)\n    except (TypeError, ValueError):\n        codes = {}\n        out = np.empty(len(values), dtype=float)\n        for i, v in enumerate(values):\n            if v not in codes:\n                codes[v] = float(len(codes))\n            out[i] = codes[v]\n        return out\n\n\ndef families(train_csv) -> list[int]:\n    fieldnames, rows = _read(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    inputs, _ = _columns(fieldnames)\n    if not inputs:\n        return [0] * n\n    X = np.column_stack([_to_float_column(rows, c) for c in inputs])\n    k = min(5, n)\n    km = KMeans(n_clusters=k, n_init=10, random_state=0)\n    labels = km.fit_predict(X)\n    return [int(x) for x in labels]\n\n\ndef best(train_csv) -> list[int]:\n    fieldnames, rows = _read(train_csv)\n    n = len(rows)\n    _, goals = _columns(fieldnames)\n    cap = int(np.floor(0.05 * n))\n    if n == 0 or cap == 0 or not goals:\n        return []\n\n    # Oriented goal matrix: larger is better on every column.\n    S = np.column_stack(\n        [sign * _to_float_column(rows, name) for name, sign in goals]\n    )\n\n    # Pareto front: a row is kept unless some other row is at least as good\n    # on every goal and strictly better on at least one.\n    nondominated = np.ones(n, dtype=bool)\n    for i in range(n):\n        at_least = np.all(S >= S[i], axis=1)\n        strictly = np.any(S > S[i], axis=1)\n        if np.any(at_least & strictly):\n            nondominated[i] = False\n    front = np.flatnonzero(nondominated)\n\n    if len(front) > cap:\n        # Rank front rows by min-max normalised goal sum and keep the top `cap`.\n        F = S[front]\n        lo = S.min(axis=0)\n        hi = S.max(axis=0)\n        span = np.where(hi - lo > 0, hi - lo, 1.0)\n        score = ((F - lo) / span).sum(axis=1)\n        order = np.argsort(-score, kind=\"stable\")\n        front = front[order[:cap]]\n\n    return sorted(int(i) for i in front)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "a855b0aa-e2f0-4748-b9c8-6118c21c4eb7",
+ "total_cost_usd": 0.00128662,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 822,
+  "output_tokens": 2556,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2556,
+   "cacheReadInputTokens": 822,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00128662,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "87a20cd8-9fe2-4d68-8a12-4905a5a33613"
+}
