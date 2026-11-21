@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 32715,
+ "stop_reason": "end_turn",
+ "session_id": "d4fdad10-7ca5-4206-96c3-d84a3827ee99",
+ "total_cost_usd": 0.036983300000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 32443,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8123,
+  "output_tokens_details": {
+   "thinking_tokens": 5800
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32443,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8123,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 32443,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 32443
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26363,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026433,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8123,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32443,
+   "webSearchRequests": 0,
+   "costUSD": 0.0105503,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 30: race. Targeting against mailing the highest-income customers, and the\nresponse guesser against an off-the-shelf model.\n\nStandard library only. Reuses:\n  - step1: loading, column splitting, goal normalisation and input encoding.\n  - step2: the cached training model.\n  - step4: the goal bounds used to scale errors.\n  - step10: the answer rule (_pick), the stdlib hill climber, the ridge\n    regression rival (_ridge_fit, _linear_predict, RIDGE) and BUDGET.\n  - step22: the clipped response guesser (guess).\n  - step27: the targeting (choose).\n\nScores (higher is better):\n  - ours: mean normalised goal value of the build that step 27's choose()\n    picks on test_csv (0 = worst, 1 = best over the test file).\n  - top_income: the same score for mailing the BUDGET highest-income\n    customers. Those customers are benchmarked and the best of them is\n    picked by the same answer rule, so the budget is matched.\n  - random_search, hill_climb: rival searches with the same budget and the\n    same answer rule.\n  - guesser_ours: negative mean absolute error, in training spans, of step\n    22's guess() on RESPONSE+.\n  - guesser_ridge: the same score for a ridge regression fitted on the\n    training inputs for RESPONSE+.\n\nTuner scores lie in [0, 1] and guesser scores are at most 0. Compare methods\nwithin each family only.\n\"\"\"\n\nimport random\n\nfrom step1 import SEED, _load, _columns, _input_matrix, _normalised_goals\nfrom step2 import _model\nfrom step4 import _goal_bounds\nfrom step10 import BUDGET, RIDGE, _pick, _hill_climb, _ridge_fit, _linear_predict\nfrom step22 import guess as _guess_response\nfrom step27 import choose\n\n\nINCOME = \"INCOME\"\nRESPONSE_GOAL = \"RESPONSE+\"\n\nTUNER_KEYS = (\"ours\", \"top_income\", \"random_search\", \"hill_climb\")\nGUESS_KEYS = (\"guesser_ours\", \"guesser_ridge\")\n\n\ndef _top_income(rows, count):\n    \"\"\"Row indices of the `count` rows with the highest INCOME (ties by index).\"\"\"\n    order = sorted(range(len(rows)), key=lambda i: (-float(rows[i][INCOME]), i))\n    return order[:count]\n\n\ndef _response_scores(train_csv, rows):\n    \"\"\"Negative mean absolute error (in training spans) on RESPONSE+, for step\n    22's guess() and for the ridge rival.\"\"\"\n    zeros = {\"guesser_ours\": 0.0, \"guesser_ridge\": 0.0}\n    model = _model(train_csv)\n    goal_names = [name for name, _ in model[\"goals\"]]\n    if (\n        RESPONSE_GOAL not in goal_names\n        or not rows\n        or RESPONSE_GOAL not in rows[0]\n        or not model[\"targets\"]\n    ):\n        return zeros\n\n    g = goal_names.index(RESPONSE_GOAL)\n    inputs = model[\"inputs\"]\n    lo, hi = _goal_bounds(model)[g]\n    span = hi - lo if hi - lo > 0 else 1.0\n    n = len(rows)\n\n    # Our guesser (step 22): step 2's estimator with calibrated, clipped ranges.\n    err = 0.0\n    for r in rows:\n        est = _guess_response(train_csv, {c: r[c] for c in inputs})\n        err += abs(est[RESPONSE_GOAL][0] - r[RESPONSE_GOAL]) / span\n    ours = -err / n\n\n    # Ridge rival, fitted on the training rows only. Train and test are encoded\n    # together so that training codes match model[\"points\"], as in step 2.\n    train_rows = model[\"rows\"]\n    k = len(train_rows)\n    feats = _input_matrix(train_rows + rows, inputs)\n    X = [[1.0] + x for x in feats[:k]]\n    Y = [[t[g]] for t in model[\"targets\"]]\n    W = _ridge_fit(X, Y, RIDGE)\n\n    err = 0.0\n    for x, r in zip(feats[k:], rows):\n        pred = _linear_predict(W, [1.0] + x)[0]\n        err += abs(pred - r[RESPONSE_GOAL]) / span\n    ridge = -err / n\n\n    return {\"guesser_ours\": ours, \"guesser_ridge\": ridge}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores for our targeting and response guesser and their rivals on test_csv.\n\n    Tuner keys (mean normalised goal value of the build picked, higher is\n    better): \"ours\" (step 27 choose), \"top_income\" (best of the BUDGET\n    highest-income customers), \"random_search\", \"hill_climb\".\n    Guesser keys (negative mean normalised absolute error, higher is better):\n    \"guesser_ours\" (step 22 guess on RESPONSE+), \"guesser_ridge\".\n    \"\"\"\n    header, rows = _load(test_csv)\n    inputs, goals = _columns(header)\n    n = len(rows)\n    names = [name for name, _ in goals]\n    keys = TUNER_KEYS + GUESS_KEYS\n    if n == 0 or not goals:\n        return {k: 0.0 for k in keys}\n\n    # True quality of every test build, normalised over the test file.\n    truth = [sum(p) / len(p) for p in _normalised_goals(rows, goals)]\n\n    def label(i):\n        return {name: rows[i][name] for name in names}\n\n    results = {}\n\n    # Our targeting (step 27).\n    results[\"ours\"] = truth[choose(test_csv, label, budget=BUDGET)]\n\n    # Mailing the highest-income customers, with the same budget and answer rule.\n    # Without an INCOME column this baseline cannot be formed, so it scores 0.0.\n    if INCOME in header:\n        top = _top_income(rows, min(BUDGET, n))\n        results[\"top_income\"] = truth[_pick({i: label(i) for i in top}, goals)]\n    else:\n        results[\"top_income\"] = 0.0\n\n    # Random search with the same budget and answer rule.\n    rng = random.Random(SEED)\n    picks = rng.sample(range(n), min(BUDGET, n))\n    results[\"random_search\"] = truth[_pick({i: label(i) for i in picks}, goals)]\n\n    # Stdlib-only hill climber.\n    rng = random.Random(SEED)\n    points = _input_matrix(rows, inputs)\n    results[\"hill_climb\"] = truth[\n        _pick(_hill_climb(points, label, goals, BUDGET, rng), goals)\n    ]\n\n    # Response guesser (step 22) against the ridge regression rival.\n    results.update(_response_scores(train_csv, rows))\n\n    return {k: float(results[k]) for k in keys}\n```",
+ "ttft_ms": 25106,
+ "type": "result",
+ "duration_ms": 31483,
+ "uuid": "cd703abf-db58-4bb9-9402-371f976e11fa",
+ "ttft_stream_ms": 1460,
+ "time_to_request_ms": 94,
+ "queued_turn_count": 0
+}
