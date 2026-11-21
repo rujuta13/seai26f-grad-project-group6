@@ -1,0 +1,12 @@
+{
+ "domain": "marketing",
+ "step": 22,
+ "skill": "guess",
+ "ok": true,
+ "score": 0.0968180228439272,
+ "baseline": 0.13351805029309924,
+ "better": "lower",
+ "extra": {
+  "coverage": 0.925625
+ }
+}
