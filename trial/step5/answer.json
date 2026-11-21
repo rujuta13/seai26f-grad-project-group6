@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17926,
+ "stop_reason": "end_turn",
+ "session_id": "194a8636-e93d-4ff7-ba7a-cc479057d67f",
+ "total_cost_usd": 0.0094795,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 7119,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3485,
+  "output_tokens_details": {
+   "thinking_tokens": 2752
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7119,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3485,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 7119,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 7119
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6243,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006313,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3485,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7119,
+   "webSearchRequests": 0,
+   "costUSD": 0.0031665,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 5: blame. Which input columns are most to blame for bad rows?\n\nStandard library only. Loading, column splitting and goal normalisation are\nreused from step1.\n\nMethod: a row is bad when its mean normalised goal value (higher is better)\nis in the worst quarter of the training rows. For every input column and\nevery value it takes in at least MIN_GROUP rows, the lift is how much more\noften that value occurs among bad rows than among all rows. A column's blame\nis the share-weighted sum of its positive lifts, so columns that concentrate\nbad rows on common values rank first.\n\"\"\"\n\nfrom step1 import _load, _columns, _normalised_goals\n\n\nBAD_SHARE = 0.25   # worst share of rows (by goal score) counted as bad\nMIN_GROUP = 5      # values seen in fewer rows are ignored as noise\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    inputs, goals = _columns(header)\n    if n == 0 or not inputs or not goals:\n        return list(inputs)\n\n    points = _normalised_goals(rows, goals)\n    score = [sum(p) / len(p) for p in points]\n    n_bad = max(1, int(n * BAD_SHARE))\n    order = sorted(range(n), key=lambda i: (score[i], i))\n    bad = set(order[:n_bad])\n    base = n_bad / n\n\n    blames = []\n    for col_index, c in enumerate(inputs):\n        # value -> [rows with this value, bad rows with this value]\n        groups = {}\n        for i, row in enumerate(rows):\n            g = groups.setdefault(row[c], [0, 0])\n            g[0] += 1\n            if i in bad:\n                g[1] += 1\n\n        total = 0.0\n        for count, bad_count in groups.values():\n            if count < MIN_GROUP:\n                continue\n            lift = bad_count / count - base\n            if lift > 0:\n                total += lift * count / n\n        blames.append((-total, col_index, c))\n\n    blames.sort()\n    return [c for _, _, c in blames]\n```",
+ "ttft_ms": 15061,
+ "type": "result",
+ "duration_ms": 17071,
+ "uuid": "551121d1-84d8-4b45-845b-836c839b0633",
+ "ttft_stream_ms": 1803,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
