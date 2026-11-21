@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 56120,
+ "stop_reason": "end_turn",
+ "session_id": "afc56920-1e47-44d6-a4db-4249a7d560f5",
+ "total_cost_usd": 0.0623701,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 53732,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14257,
+  "output_tokens_details": {
+   "thinking_tokens": 12055
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 53732,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14257,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 53732,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 53732
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 44405,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.044495,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14257,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 53732,
+   "webSearchRequests": 0,
+   "costUSD": 0.0178751,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step22.py\n\"\"\"Step 22: guess.  Before a campaign, guess each goal of a new customer from\nthe customer's other numbers, with a range calibrated on the training data:\nhow many purchases they will make online and in store, and whether they will\nanswer the next campaign (RESPONSE+).\n\nThe estimate is the median goal value of the training rows nearest to the\ncustomer.  The range is that estimate widened by the 90th percentile of how\nfar the same kind of guess missed on training rows held out of their own\nneighbourhood, and clamped to the goal values seen in training.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nimport ezr\n\n_CAL   = 150     # training rows used to calibrate the range\n_COVER = 0.9     # the range should hold about this share of the time\n\n\ndef guess(train_csv: str, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"For each goal: (estimate, low, high).  ROW has its goal columns removed.\n  The estimate is the median goal value of the training rows nearest to ROW.\n  LOW and HIGH bracket it by the calibrated miss, clamped to the goal values\n  seen in training, so the range is never wider than the data allows.\"\"\"\n\n  def num(v) -> bool:\n    \"True if V is a usable finite number (not text, not missing, not a bool).\"\n    return (isinstance(v, (int, float)) and not isinstance(v, bool)\n            and math.isfinite(v))\n\n  def clean(v):\n    \"A cell as ezr reads it: strings are cast; blanks, '?' and non-finite numbers are unknown.\"\n    if v is None: return \"?\"\n    if isinstance(v, str):\n      s = v.strip()\n      if s in (\"\", \"?\"): return \"?\"\n      v = ezr.atom(s)\n      if isinstance(v, str): return v\n    if isinstance(v, float) and not math.isfinite(v): return \"?\"\n    return v\n\n  def quantile(xs, p: float) -> float:\n    \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n    xs     = sorted(xs)\n    i      = p * (len(xs) - 1)\n    lo, hi = math.floor(i), math.ceil(i)\n    return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n  def encode(c, v):\n    \"An input cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n    if v == \"?\": return None\n    if isinstance(c, ezr.Num): return ezr.norm(c, v) if num(v) else None\n    return v\n\n  def gap(c, a, b) -> float:\n    \"Gap between two encoded cells of column C; unknown is far.\"\n    if a is None or b is None: return 1.0\n    if isinstance(c, ezr.Num): return abs(a - b)\n    return 0.0 if a == b else 1.0\n\n  # Training table: every cell cleaned, every row padded to full width.\n  raw = list(ezr.csv(train_csv))\n  if not raw: return {}\n  names = [str(h).strip() for h in raw[0]]\n  body  = []\n  for r in raw[1:]:\n    r = [clean(v) for v in r][:len(names)]\n    body.append(r + [\"?\"] * (len(names) - len(r)))\n  tbl   = ezr.Tbl([names] + body)\n  rows  = tbl.rows\n  xs    = tbl.x\n  goals = list(tbl.y)\n  if not goals: return {}\n  if not rows:  return {c.txt: (0.0, 0.0, 0.0) for c in goals}\n\n  n = len(rows)\n  k = min(n, max(5, int(math.sqrt(n))))\n  E = [[encode(c, r[c.at]) for c in xs] for r in rows]\n\n  # The new customer's input cells, laid out in header order.\n  q = [\"?\"] * len(names)\n  if isinstance(row, dict):                    # {column name: value}\n    stems = {str(key).strip().rstrip(\"+-!\"): v for key, v in row.items()}\n    for c in xs:\n      stem = names[c.at].rstrip(\"+-!\")\n      if stem in stems: q[c.at] = stems[stem]\n  else:\n    seq = list(row)\n    if len(seq) == len(names):                 # already full-width\n      q = seq\n    else:                                      # positional, x-column order\n      for c, v in zip(xs, seq): q[c.at] = v\n  eq = [encode(c, clean(q[c.at])) for c in xs]\n\n  def dist(a, b) -> float:\n    \"Root mean square gap between two encoded input rows, as ezr.xdist.\"\n    if not xs: return 0.0\n    return math.sqrt(sum(gap(c, x, y) ** 2 for c, x, y in zip(xs, a, b))\n                     / len(xs))\n\n  def near(e, skip: int | None = None) -> list[int]:\n    \"Indices of the K training rows nearest encoded row E, leaving out SKIP.\"\n    order = sorted((i for i in range(n) if i != skip),\n                   key=lambda i: (dist(e, E[i]), i))\n    return order[:k]\n\n  rng   = random.Random(ezr.the.Seed)          # local rng: no global side effects\n  cal   = rng.sample(range(n), min(_CAL, n))\n  cnear = {i: near(E[i], skip=i) for i in cal} # held out of their own neighbourhood\n  qn    = near(eq)\n\n  out = {}\n  for c in goals:\n    gv = {}                                    # row index -> known goal value\n    for i, r in enumerate(rows):\n      v = r[c.at]\n      if num(v): gv[i] = float(v)\n    if not gv:\n      out[c.txt] = (0.0, 0.0, 0.0)\n      continue\n    allv = list(gv.values())\n\n    def estimate(idxs: list[int]) -> float:\n      \"Median goal value of the known goals among IDXS (all rows if none).\"\n      vs = [gv[i] for i in idxs if i in gv] or allv\n      return quantile(vs, 0.5)\n\n    est   = estimate(qn)\n    resid = [abs(gv[i] - estimate(cnear[i])) for i in cal if i in gv]\n    half  = (quantile(resid, _COVER) if resid\n             else (max(allv) - min(allv)) / 2)\n    lo    = max(min(allv), est - half)\n    hi    = min(max(allv), est + half)\n    out[c.txt] = (float(est), float(min(lo, est)), float(max(hi, est)))\n  return out\n```",
+ "ttft_ms": 48993,
+ "type": "result",
+ "duration_ms": 54698,
+ "uuid": "de82cb93-79c1-4c31-b137-1fa3a81547f3",
+ "ttft_stream_ms": 1200,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
