@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 31044,
+ "stop_reason": "end_turn",
+ "session_id": "815ac9f7-4211-4202-b2fb-e6e6855c1020",
+ "total_cost_usd": 0.030429099999999997,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26067,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7029,
+  "output_tokens_details": {
+   "thinking_tokens": 5617
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26067,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7029,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26067,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26067
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21636,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.021700999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7029,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26067,
+   "webSearchRequests": 0,
+   "costUSD": 0.008728099999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py\n\"\"\"\nstep30: race.  Two client asks, each against a standard rival, on the same\ntest rows and the same yardstick (ezr.wins of each method's one pick).\n\n  Ask 1: does our targeting beat simply mailing the highest-income customers?\n         Rival \"income\": the test row with the highest INCOME.\n\n  Ask 2: does our response guesser beat an off-the-shelf model?\n         \"response_guess\": step12's guess of RESPONSE+, the highest\n                          predicted response wins.\n         \"response_knn\":  stdlib k-nearest-neighbour regression of RESPONSE+\n                          on the training rows (off-the-shelf stand-in).\n\nMethods from step10.race are kept: ours, random, ours_guess, knn.\nReuses step2 (model), step10 (race, _blind, KNN_K), step12 (guess), and\nezr (Tbl, csv, wins, xdist).\n\nstep20's race is not reused here: it needs an OVR column, which the\ncustomer table does not have.\n\"\"\"\nimport heapq\nimport math\nimport ezr\nimport step2\nimport step10\nimport step12\n\nRESP   = \"RESPONSE+\"   # the response goal the client asks about\nINCOME = \"INCOME\"      # the simple rival's sort key\n\n\ndef _at(tbl, name: str) -> int:\n  \"Column index of NAME in TBL, with or without its goal sign.\"\n  for key in (name, name.rstrip(\"+-!\")):\n    if key in tbl.names: return tbl.names.index(key)\n  raise ValueError(f\"race: test_csv has no {name} column\")\n\n\ndef _best(vals: list) -> int:\n  \"Index of the largest finite number in VALS; anything else counts as lowest.\"\n  def key(i):\n    v = vals[i]\n    ok = isinstance(v, (int, float)) and math.isfinite(v)\n    return v if ok else float(\"-inf\")\n  return max(range(len(vals)), key=key)\n\n\ndef _response_guess(train_csv, test, goals, at) -> int:\n  \"Our response guesser: pick the row with the highest predicted RESPONSE.\"\n  name  = test.names[at]\n  preds = [step12.guess(train_csv, step10._blind(r, goals))[name][0]\n           for r in test.rows]\n  return _best(preds)\n\n\ndef _response_knn(train_tbl, test, goals, at) -> int:\n  \"Off-the-shelf stand-in: kNN regression of RESPONSE, pick the highest.\"\n  def predict(row) -> float:\n    near = heapq.nsmallest(step10.KNN_K, train_tbl.rows,\n                           key=lambda t: ezr.xdist(train_tbl, row, t))\n    vs = [t[at] for t in near\n          if isinstance(t[at], (int, float)) and math.isfinite(t[at])]\n    return sum(vs) / len(vs) if vs else train_tbl.cols[at].mu\n  preds = [predict(step10._blind(r, goals)) for r in test.rows]\n  return _best(preds)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"Each method's pick on TEST_CSV, scored by ezr.wins. Higher is better. Includes 'ours'.\"\n  scores = step10.race(train_csv, test_csv)     # ours, random, ours_guess, knn\n\n  test = ezr.Tbl(ezr.csv(test_csv))\n  if not test.rows:\n    raise ValueError(\"race: test_csv has no rows\")\n  goals = {c.at for c in test.y}\n  score = ezr.wins(test)\n  train_tbl, _ = step2._model(train_csv)\n\n  resp_at = _at(test, RESP)\n  inc_at  = _at(test, INCOME)\n\n  picks = {\n    \"income\":         _best([r[inc_at] for r in test.rows]),\n    \"response_guess\": _response_guess(train_csv, test, goals, resp_at),\n    \"response_knn\":   _response_knn(train_tbl, test, goals, resp_at),\n  }\n  for m, i in picks.items():\n    scores[m] = float(score(test.rows[i]))\n\n  if \"ours\" not in scores:\n    raise RuntimeError(\"race: step10.race returned no 'ours' score\")\n  return scores\n```",
+ "ttft_ms": 25361,
+ "type": "result",
+ "duration_ms": 29793,
+ "uuid": "80d8c830-e8a9-42bc-ba34-415997027bd8",
+ "ttft_stream_ms": 1642,
+ "time_to_request_ms": 106,
+ "queued_turn_count": 0
+}
