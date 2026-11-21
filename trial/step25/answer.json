@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21766,
+ "stop_reason": "end_turn",
+ "session_id": "f574a597-a068-4e52-9c63-830a3de72081",
+ "total_cost_usd": 0.06483720000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 60590,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5308,
+  "output_tokens_details": {
+   "thinking_tokens": 2969
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 60590,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5308,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 60590,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 60590
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 50000,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.050065000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5308,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 60590,
+   "webSearchRequests": 0,
+   "costUSD": 0.014772200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py\n\"\"\"Step 25: blame.  Which input columns go with the customers who never\nrespond to campaigns and the ones who complain?\n\nCustomers are read as in step21: identifier and text columns are left out,\ngoals are the numeric columns named with a trailing \"+\" (higher is better)\nor \"-\" (lower is better), and every other kept column is an input.  A bad\ncustomer is one whose goals, taken together, are in the worst quarter; a\ngood one is in the best quarter.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nfrom collections import Counter\nimport ezr\n\n_GOOD_Q = 0.25   # best quarter of customers counts as good\n_BAD_Q  = 0.75   # worst quarter counts as bad\n_DROP   = {\"ID\", \"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable finite number (not text, not missing, not a bool).\"\n  if isinstance(v, bool) or not isinstance(v, (int, float)): return False\n  return not isinstance(v, float) or math.isfinite(v)\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast; blanks, '?' and non-finite numbers are unknown.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    if s in (\"\", \"?\"): return \"?\"\n    v = ezr.atom(s)\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _load(train_csv: str):\n  \"Read TRAIN_CSV: (header names, full-width rows with cleaned cells), or None if empty.\"\n  raw = list(ezr.csv(train_csv))\n  if not raw: return None\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  return names, rows\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _prepare(train_csv: str):\n  \"\"\"Load TRAIN_CSV: (names, rows, goals, inputs).  GOALS are (position, Num)\n  for numeric goals; INPUTS are (position, Num) or (position, None) when\n  the input is symbolic.\"\"\"\n  loaded = _load(train_csv)\n  if loaded is None: return None\n  names, rows = loaded\n  goals, inputs = [], []\n  for at, nm in enumerate(names):\n    if not nm or nm in _DROP or nm.endswith(\"X\"): continue\n    numeric = _is_num(rows, at)\n    if nm[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return names, rows, goals, inputs\n\n\ndef _ydist(goals: list, row: list) -> float:\n  \"How far ROW's goals, taken together, are from the ideal; a missing goal is worst.\"\n  gaps = [abs(ezr.norm(m, row[at]) - m.goal) if _num(row[at]) else 1.0\n          for at, m in goals]\n  return math.sqrt(sum(g * g for g in gaps) / len(gaps)) if gaps else 0.0\n\n\ndef _shares(rs: list, at: int) -> dict:\n  \"Share of the known cells of column AT in RS, per value seen.\"\n  vals = [r[at] for r in rs if r[at] != \"?\"]\n  if not vals: return {}\n  n = len(vals)\n  return {v: k / n for v, k in Counter(vals).items()}\n\n\ndef _score(names: list, at: int, m, bad: list, good: list) -> float:\n  \"How strongly input column AT separates bad rows from good rows.\"\n  if m is not None:\n    vb = [ezr.norm(m, r[at]) for r in bad  if _num(r[at])]\n    vg = [ezr.norm(m, r[at]) for r in good if _num(r[at])]\n    if not vb or not vg: return 0.0\n    return abs(sum(vb) / len(vb) - sum(vg) / len(vg))\n  sb, sg = _shares(bad, at), _shares(good, at)\n  values = set(sb) | set(sg)\n  if not values: return 0.0\n  return max(abs(sb.get(v, 0.0) - sg.get(v, 0.0)) for v in values)\n\n\ndef blame(train_csv: str) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n  A row is bad if its goals together are in the worst quarter, and good if\n  in the best quarter.  A numeric input scores the gap between its mean\n  (scaled to 0..1) in bad and good rows.  A symbolic input scores the\n  largest gap, over its values, between how often that value appears in\n  bad rows and in good rows.  Ties keep file order.\"\"\"\n  data = _prepare(train_csv)\n  if data is None: return []\n  names, rows, goals, inputs = data\n  if not inputs: return []\n  if not rows or not goals:\n    return [names[at] for at, _ in inputs]\n\n  ys   = [_ydist(goals, r) for r in rows]\n  hi   = _quantile(ys, _BAD_Q)\n  lo   = _quantile(ys, _GOOD_Q)\n  bad  = [r for r, y in zip(rows, ys) if y >= hi]\n  good = [r for r, y in zip(rows, ys) if y <= lo]\n  if not bad or not good:\n    return [names[at] for at, _ in inputs]\n\n  scored = [(_score(names, at, m, bad, good), i, names[at])\n            for i, (at, m) in enumerate(inputs)]\n  scored.sort(key=lambda t: (-t[0], t[1]))   # most blame first; ties by file order\n  return [name for _, _, name in scored]\n```",
+ "ttft_ms": 14209,
+ "type": "result",
+ "duration_ms": 20341,
+ "uuid": "2148c100-ee91-4a65-b23a-359111e4454e",
+ "ttft_stream_ms": 1202,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
