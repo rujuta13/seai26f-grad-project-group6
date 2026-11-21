@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7990,
+ "stop_reason": "end_turn",
+ "session_id": "f17c1646-130e-49f8-b4ec-50d1c2f0d36f",
+ "total_cost_usd": 0.035807599999999995,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 34017,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1202,
+  "output_tokens_details": {
+   "thinking_tokens": 969
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 34017,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1202,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 34017,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 34017
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 28338,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.028402999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1202,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 34017,
+   "webSearchRequests": 0,
+   "costUSD": 0.0074046,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport step18\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of a bad customer `row`, changed in as few values as possible so it\n    becomes good, with the columns named in `frozen` left exactly as they are.\n\n    `row` carries only input columns (goals removed). The result has the same\n    input columns as `row`. Values come from a training row that no other\n    training row dominates, chosen by step18.fix (which uses step8.fix). Names\n    in `frozen` that are not inputs are ignored. If no training row agrees\n    with the frozen columns, the inputs are returned unchanged.\n    \"\"\"\n    return step18.fix(train_csv, row, frozen=frozen)\n```",
+ "ttft_ms": 5817,
+ "type": "result",
+ "duration_ms": 6624,
+ "uuid": "48059eaf-e578-4d57-9226-6f27199a8615",
+ "ttft_stream_ms": 1615,
+ "time_to_request_ms": 123,
+ "queued_turn_count": 0
+}
