@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 56358,
+ "stop_reason": "end_turn",
+ "session_id": "5823b6cd-b903-4932-988a-56dc2ed5220d",
+ "total_cost_usd": 0.0415112,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 33200,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14462,
+  "output_tokens_details": {
+   "thinking_tokens": 11544
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33200,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14462,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 33200,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 33200
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 27535,
+   "outputTokens": 21,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02764,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14462,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33200,
+   "webSearchRequests": 0,
+   "costUSD": 0.0138712,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step20.py: race our shortlist and penalty guesser against simple rivals.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers,\ngoal scoring, input encoding and the 5% cap), step2 (kNN goal guesses),\nstep4 (training ranges and goal scoring) and step10 (ridge helpers).\n\nShortlist race (higher is better). Each method picks k test rows using only\ntheir input columns, then is scored by the mean normalised goal score of the\npicked rows (step1 scaling over the test file, 1 is best). k is the 5% cap\nfrom step1, so every method gets the same shortlist size.\n  - ours: step2.guess predicts each test row's goals from its inputs, the\n    prediction is scored against the training ranges (step4), and the k best\n    predictions form the shortlist.\n  - top_overall: the k rows with the highest OVR, the simple rating list.\n  - oracle: the k rows with the best true score, the ceiling.\n\nPenalty guesser race (higher is better): negative mean absolute error of\nPenalties+ on the test rows, in goal units. 0 is perfect.\n  - guess_ours: the step2.guess median for Penalties+. With no usable\n    neighbour value, the training mean of Penalties+ is used instead.\n  - guess_ridge: ridge regression on the input flags from step10, the\n    off-the-shelf rival.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\n\nfrom step1 import (\n    _BEST_DEN,\n    _BEST_NUM,\n    _classify,\n    _encode_inputs,\n    _goal_scores,\n    _minmax,\n    _read,\n    _to_float,\n)\nfrom step2 import guess\nfrom step4 import _context, _score\nfrom step10 import _RIDGE, _at, _dot, _ridge_fit\n\n_OVR = \"OVR\"\n_PEN_PREFIX = \"Penalties\"\n\n\ndef _goal_index(header: list[str], goals, prefix: str) -> int | None:\n    \"\"\"Column index of the first goal whose name starts with prefix.\"\"\"\n    for j, _ in goals:\n        if header[j].startswith(prefix):\n            return j\n    return None\n\n\ndef _top_k(values: list[float], k: int) -> list[int]:\n    \"\"\"Indices of the k largest values (ties keep file order).\"\"\"\n    return sorted(range(len(values)), key=lambda i: (-values[i], i))[:k]\n\n\ndef _mean_over(values: list[float], idx: list[int]) -> float:\n    return sum(values[i] for i in idx) / len(idx)\n\n\ndef _test_inputs(row: list[str], names: list[str],\n                 te_cols: list[int | None]) -> dict[str, str]:\n    \"\"\"Input cells of a test row, keyed by training input column name.\"\"\"\n    return {\n        nm: (_at(row, j) if j is not None else \"\")\n        for nm, j in zip(names, te_cols)\n    }\n\n\ndef _predicted_scores(tr_path: str, names: list[str],\n                      te_cols: list[int | None],\n                      rows: list[list[str]], ctx: dict) -> list[float]:\n    \"\"\"Mean normalised score of each test row, from kNN goal estimates.\"\"\"\n    out: list[float] = []\n    for r in rows:\n        est = guess(tr_path, _test_inputs(r, names, te_cols))\n        vals: list[float | None] = []\n        for name in ctx[\"goal_names\"]:\n            e = est.get(name, (math.nan, math.nan, math.nan))[0]\n            vals.append(None if math.isnan(e) else e)\n        s = _score(vals, ctx)\n        out.append(sum(s) / len(s))\n    return out\n\n\ndef _penalty_scores(tr_path: str, train_header: list[str],\n                    train_rows: list[list[str]],\n                    rows: list[list[str]],\n                    tr_pen: int, te_pen: int,\n                    names: list[str],\n                    te_cols: list[int | None]) -> dict[str, float]:\n    \"\"\"Negative MAE of Penalties+ for step2.guess and the ridge rival.\"\"\"\n    if not names:\n        return {}\n    tr_inputs, _ = _classify(train_header)\n    tr_proj = [[_at(r, j) for j in tr_inputs] for r in train_rows]\n    te_proj = [\n        [_at(r, j) if j is not None else \"\" for j in te_cols]\n        for r in rows\n    ]\n    enc = _minmax(_encode_inputs(tr_proj + te_proj, list(range(len(names)))))\n    m = len(tr_proj)\n    Xtr, Xte = enc[:m], enc[m:]\n\n    fit_x: list[list[float]] = []\n    fit_y: list[float] = []\n    for x, r in zip(Xtr, train_rows):\n        v = _to_float(_at(r, tr_pen))\n        if v is not None and math.isfinite(v):\n            fit_x.append([1.0] + x)\n            fit_y.append(v)\n    if not fit_x:\n        return {}\n    beta = _ridge_fit(fit_x, fit_y, _RIDGE)\n    fallback = sum(fit_y) / len(fit_y)\n    pen_name = train_header[tr_pen]\n\n    ridge_err: list[float] = []\n    guess_err: list[float] = []\n    for x, r in zip(Xte, rows):\n        truth = _to_float(_at(r, te_pen))\n        if truth is None or not math.isfinite(truth):\n            continue\n\n        ridge_err.append(abs(_dot(beta, [1.0] + x) - truth))\n\n        est = guess(tr_path, _test_inputs(r, names, te_cols)).get(\n            pen_name, (math.nan, math.nan, math.nan))[0]\n        if math.isfinite(est):\n            guess_err.append(abs(est - truth))\n        else:\n            guess_err.append(abs(fallback - truth))\n\n    def neg_mean(errs: list[float]) -> float:\n        return -sum(errs) / len(errs) if errs else -math.inf\n\n    return {\n        \"guess_ours\": neg_mean(guess_err),\n        \"guess_ridge\": neg_mean(ridge_err),\n    }\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores of ours and the rivals on test_csv (higher is better).\n\n    Shortlist keys: \"ours\", \"top_overall\", and \"oracle\" (the best possible\n    shortlist of the same size). Penalty keys, when both files have a\n    Penalties+ goal and inputs: \"guess_ours\" and \"guess_ridge\".\n    \"\"\"\n    tr_path = os.fspath(train_csv)\n    te_path = os.fspath(test_csv)\n    train_header, train_rows = _read(tr_path)\n    header, rows = _read(te_path)\n    _, tr_goals = _classify(train_header)\n    _, goals = _classify(header)\n    if not rows or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n    if not train_rows or not tr_goals:\n        raise ValueError(\"train_csv needs rows and goal columns\")\n\n    n = len(rows)\n    k = max(1, n * _BEST_NUM // _BEST_DEN)\n    truth = [sum(s) / len(s) for s in _goal_scores(rows, goals)]\n\n    results: dict[str, float] = {\n        \"oracle\": _mean_over(truth, _top_k(truth, k)),\n    }\n\n    ctx = _context(tr_path)\n    tr_inputs, _ = _classify(train_header)\n    names = [train_header[j] for j in tr_inputs]\n    te_index = {nm: j for j, nm in enumerate(header)}\n    te_cols: list[int | None] = [te_index.get(nm) for nm in names]\n\n    pred = _predicted_scores(tr_path, names, te_cols, rows, ctx)\n    results[\"ours\"] = _mean_over(truth, _top_k(pred, k))\n\n    ovr_j = te_index.get(_OVR)\n    if ovr_j is not None:\n        ovr: list[float] = []\n        for r in rows:\n            v = _to_float(_at(r, ovr_j))\n            ovr.append(-math.inf if v is None or math.isnan(v) else v)\n        results[\"top_overall\"] = _mean_over(truth, _top_k(ovr, k))\n\n    tr_pen = _goal_index(train_header, tr_goals, _PEN_PREFIX)\n    te_pen = _goal_index(header, goals, _PEN_PREFIX)\n    if tr_pen is not None and te_pen is not None:\n        results.update(_penalty_scores(\n            tr_path, train_header, train_rows, rows,\n            tr_pen, te_pen, names, te_cols))\n\n    return results\n```",
+ "ttft_ms": 47491,
+ "type": "result",
+ "duration_ms": 55185,
+ "uuid": "77dbd406-ec76-4a10-b81a-de9c66887c10",
+ "ttft_stream_ms": 1160,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
