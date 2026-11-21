@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 12921,
+ "stop_reason": "end_turn",
+ "session_id": "bcd9af19-b700-4fea-8f4f-99e74cb0ba2f",
+ "total_cost_usd": 0.0320689,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30281,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2383,
+  "output_tokens_details": {
+   "thinking_tokens": 1731
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30281,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2383,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30281,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30281
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24746,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024821,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2383,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30281,
+   "webSearchRequests": 0,
+   "costUSD": 0.0072479,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step21.py: remember. Group customers into the kinds of shopper they really\nare, and find the best customers on all goals together.\n\nfamilies() clusters customers on their input columns (demographics, household,\nmarital status, education, and the spend columns that are inputs), using the\nk-means of step1. Goal columns are never used, so the clusters describe who the\ncustomers are rather than how the goals turned out.\n\nbest() is step1.best: the Pareto-ranked rows over all goal columns together.\nIn this file those goals include the purchase counts across web, catalogue and\nstore channels (NUMWEBPURCHASES+, NUMCATALOGPURCHASES+, NUMSTOREPURCHASES+),\ntenure (CUSTOMER_DAYS+), and complaints (COMPLAIN-, where lower is better).\n\nReading, column splitting, feature scaling, k-means and the Pareto best set all\ncome from step1. Only the thin wrappers below are new here.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step1 import K_FAMILIES, _columns, _features, _kmeans, _read\nfrom step1 import best as _pareto_best\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\n\n    Families are k-means clusters over the input columns. Goal columns are not\n    used. A file with no rows gives an empty list. A file with rows but no\n    input columns puts every row in family 0.\n    \"\"\"\n    header, rows = _read(str(train_csv))\n    inputs, _, _ = _columns(header)\n    if not rows:\n        return []\n    if not inputs:\n        return [0] * len(rows)\n    return _kmeans(_features(rows, inputs), K_FAMILIES)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good customers (best on all goals together),\n    at most 5% of rows, best first. Delegates to step1.best.\n    \"\"\"\n    return _pareto_best(train_csv)\n```",
+ "ttft_ms": 9478,
+ "type": "result",
+ "duration_ms": 11773,
+ "uuid": "2e6c7326-2d30-4c91-b921-40bf95e5e775",
+ "ttft_stream_ms": 1429,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
