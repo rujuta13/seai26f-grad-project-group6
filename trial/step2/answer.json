@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 17469,
+ "duration_api_ms": 17457,
+ "num_turns": 1,
+ "result": "```python\nimport csv\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.model_selection import KFold, cross_val_predict\n\nfrom step1 import _load\n\n\ndef _columns(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        cols = next(csv.reader(f), [])\n    goals = [c for c in cols if c.endswith(\"+\") or c.endswith(\"-\")]\n    inputs = [c for c in cols\n              if not (c.endswith(\"+\") or c.endswith(\"-\") or c.endswith(\"X\"))]\n    return inputs, goals\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate each goal for a flag set, with an interval calibrated on held-out errors.\"\"\"\n    inputs, goals = _columns(train_csv)\n    if not goals:\n        return {}\n\n    d = _load(train_csv)\n    rows = d[\"rows\"]\n    n = len(rows)\n\n    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)\n    X = X.reshape(n, len(inputs))\n    Y = np.array([[float(r[g]) for g in goals] for r in rows], dtype=float)\n    Y = Y.reshape(n, len(goals))\n\n    x_new = np.array(\n        [[_as_float(row.get(c, 0.0)) for c in inputs]], dtype=float\n    ).reshape(1, len(inputs))\n\n    if n == 0:\n        return {g: (0.0, 0.0, 0.0) for g in goals}\n    if n < 4:\n        # Too little data for a model; report the observed spread.\n        out = {}\n        for j, g in enumerate(goals):\n            lo, mid, hi = float(Y[:, j].min()), float(Y[:, j].mean()), float(Y[:, j].max())\n            out[g] = (mid, lo, hi)\n        return out\n\n    model = RandomForestRegressor(\n        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1\n    )\n    if len(inputs) == 0:\n        est = Y.mean(axis=0).reshape(1, -1)\n        oof = np.tile(Y.mean(axis=0), (n, 1))\n    else:\n        model.fit(X, Y)\n        est = model.predict(x_new).reshape(1, -1)\n        cv = KFold(n_splits=min(5, n), shuffle=True, random_state=0)\n        oof = cross_val_predict(\n            RandomForestRegressor(\n                n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1\n            ),\n            X, Y, cv=cv,\n        ).reshape(n, len(goals))\n\n    resid = Y - oof\n    lo_r = np.quantile(resid, 0.10, axis=0)\n    hi_r = np.quantile(resid, 0.90, axis=0)\n\n    result = {}\n    for j, g in enumerate(goals):\n        e = float(est[0, j])\n        lo = e + float(lo_r[j])\n        hi = e + float(hi_r[j])\n        lo, hi = min(lo, e), max(hi, e)\n        result[g] = (e, lo, hi)\n    return result\n\n\ndef _as_float(v):\n    try:\n        return float(v)\n    except (TypeError, ValueError):\n        return 0.0\n```",
+ "stop_reason": "end_turn",
+ "session_id": "600908f1-2b85-4ed4-904d-fe9501803d7d",
+ "total_cost_usd": 0.001581025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 2081,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2641,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2081,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2641,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2081,
+   "webSearchRequests": 0,
+   "costUSD": 0.001581025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "b8548fa5-2819-4708-aeba-5821a7e653b6"
+}
