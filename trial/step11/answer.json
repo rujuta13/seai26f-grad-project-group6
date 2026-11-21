@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 97565,
+ "stop_reason": "end_turn",
+ "session_id": "b656a669-7895-4b66-9c1d-e9075d77e965",
+ "total_cost_usd": 0.0344605,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22744,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 21555,
+  "output_tokens_details": {
+   "thinking_tokens": 19854
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22744,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 21555,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22744,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22744
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19049,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019133999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 21555,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22744,
+   "webSearchRequests": 0,
+   "costUSD": 0.015326500000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step11.py\n#!/usr/bin/env python3 -B\n\"Player families (types) and the unusually good rows, via ezr.\"\nimport random\nimport ezr\n\nFAMILIES = 5                # how many player types to sort into\nITERS    = 30               # k-means passes, at most\nSKIP     = {\"num\", \"Rank\"}  # row ids and ranks derived from OVR: not player types\n\ndef _read(train_csv: str) -> tuple[list, list]:\n  \"Header and data rows of TRAIN_CSV; empty cells become '?', short rows are padded.\"\n  src   = ezr.csv(train_csv)\n  first = next(src, None)\n  if first is None: return [], []\n  head = [str(n) for n in first]\n  rows = []\n  for r in src:\n    r = [(\"?\" if v == \"\" else v) for v in r]\n    rows.append((r + [\"?\"] * len(head))[:len(head)])\n  return head, rows\n\ndef _textual(head: list, rows: list) -> set[int]:\n  \"Columns holding any text other than '?': they cannot be read as numbers.\"\n  return {at for at in range(len(head))\n          if any(isinstance(r[at], str) and r[at] != \"?\" for r in rows)}\n\ndef _table(train_csv: str):\n  \"\"\"TRAIN_CSV as an ezr table, or None if the file is empty. Text and SKIP\n  columns are renamed to end in X, which ezr ignores; the rest start with a\n  capital, so ezr reads them as numbers. Row indices match the file.\"\"\"\n  head, rows = _read(train_csv)\n  if not head: return None\n  bad   = _textual(head, rows) | {at for at, n in enumerate(head) if n in SKIP}\n  names = [(n + \"X\") if at in bad else (n if n[:1].isupper() else \"A \" + n)\n           for at, n in enumerate(head)]\n  return ezr.Tbl([names] + rows)\n\ndef _vector(tbl, row: list) -> list[float]:\n  \"ROW's input columns, each scaled to 0..1 by ezr.norm; unknown is the middle, 0.5.\"\n  return [0.5 if row[c.at] == \"?\" else ezr.norm(c, row[c.at]) for c in tbl.x]\n\ndef _sq(a: list, b: list) -> float:\n  \"Squared distance between two feature vectors.\"\n  return sum((x - y) ** 2 for x, y in zip(a, b))\n\ndef _kmeans(vs: list, k: int, rng: random.Random) -> list[int]:\n  \"Lloyd's k-means with farthest-first starts, so the families start out spread apart.\"\n  n     = len(vs)\n  cents = [list(vs[rng.randrange(n)])]\n  while len(cents) < k:\n    far = max(range(n), key=lambda i: min(_sq(vs[i], c) for c in cents))\n    cents.append(list(vs[far]))\n  labs = []\n  for _ in range(ITERS):\n    new = [min(range(k), key=lambda c: _sq(v, cents[c])) for v in vs]\n    if new == labs: break\n    labs = new\n    for c in range(k):\n      mem = [vs[i] for i in range(n) if labs[i] == c]\n      cents[c] = ([sum(col) / len(mem) for col in zip(*mem)] if mem\n                  else list(vs[rng.randrange(n)]))\n  return labs\n\ndef _gydist(goals: list, row: list) -> float | None:\n  \"Distance of ROW's goals from the ideal, or None if a goal cell is unknown.\"\n  if any(row[c.at] == \"?\" for c in goals): return None\n  return ezr.dist((abs(ezr.norm(c, row[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef families(train_csv) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl = _table(train_csv)\n  if tbl is None or not tbl.rows: return []\n  vs    = [_vector(tbl, r) for r in tbl.rows]\n  k     = min(FAMILIES, len(vs))\n  rng   = random.Random(ezr.the.Seed)\n  labs  = _kmeans(vs, k, rng)\n  remap = {}                                   # relabel 0,1,2... by first use\n  return [remap.setdefault(c, len(remap)) for c in labs]\n\ndef best(train_csv) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl = _table(train_csv)\n  if tbl is None or not tbl.rows: return []\n  goals = [c for c in tbl.y if c.txt[-1] in \"+-\"]\n  if not goals: return []\n  ys    = [_gydist(goals, r) for r in tbl.rows]\n  known = [i for i, y in enumerate(ys) if y is not None]\n  cap   = len(tbl.rows) * 5 // 100             # at most 5% of all rows\n  return sorted(known, key=lambda i: (ys[i], i))[:cap]\n```",
+ "ttft_ms": 91901,
+ "type": "result",
+ "duration_ms": 96538,
+ "uuid": "2f8b3d55-7a06-499d-9a84-32398e9e4864",
+ "ttft_stream_ms": 1234,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
