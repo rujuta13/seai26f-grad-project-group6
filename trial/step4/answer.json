@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 27850,
+ "stop_reason": "end_turn",
+ "session_id": "92fe8273-d0a0-4b66-a3e9-4afdb5b730cf",
+ "total_cost_usd": 0.0136388,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9988,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5880,
+  "output_tokens_details": {
+   "thinking_tokens": 4934
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9988,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5880,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9988,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9988
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8626,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008701,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5880,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9988,
+   "webSearchRequests": 0,
+   "costUSD": 0.0049378,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py\nimport random\nimport ezr\nimport step2\nimport step3\n\nW      = 20    # drift: how many recent rows to compare, at once\nSAMPLE = 100   # drift: how many train rows to measure the reference with\n\n_scorers = {}  # train_csv -> (TBL, wins scorer), built once\n_refs    = {}  # train_csv -> (TBL, leave-one-out gaps of sampled train rows)\n\ndef _scorer(train_csv: str):\n  \"A wins scorer over the train table, built once per train_csv.\"\n  if train_csv not in _scorers:\n    tbl = step2._table(train_csv)\n    if not tbl.rows: raise ValueError(f\"no rows in {train_csv}\")\n    _scorers[train_csv] = (tbl, ezr.wins(tbl))\n  return _scorers[train_csv]\n\ndef _complete(tbl, row):\n  \"ROW in full column layout, or None if a goal is missing (can't judge it).\"\n  full = step2._row(tbl, row)\n  if any(full[c.at] == \"?\" for c in tbl.y): return None\n  return full\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"For each row, in order: True if its goals beat the train average.\"\n  tbl, score = _scorer(train_csv)\n  out = []\n  for row in rows:\n    full = _complete(tbl, row)\n    out.append(full is not None and score(full) > 0)\n  return out\n\ndef _reference(train_csv: str):\n  \"Leave-one-out nearest-neighbour gaps of sampled train rows: what 'normal' looks like.\"\n  if train_csv not in _refs:\n    tbl  = step2._table(train_csv)\n    rows = tbl.rows\n    if len(rows) < 2: raise ValueError(f\"need at least 2 rows in {train_csv}\")\n    rng   = random.Random(ezr.the.Seed)          # reproducible sample\n    picks = rng.sample(range(len(rows)), min(SAMPLE, len(rows)))\n    gaps  = [min(ezr.xdist(tbl, rows[i], s)\n                 for j, s in enumerate(rows) if j != i)\n             for i in picks]\n    _refs[train_csv] = (tbl, gaps)\n  return _refs[train_csv]\n\ndef drift(train_csv, rows) -> int | None:\n  \"Index of the first row where the last W new rows stop looking like train_csv.\"\n  tbl, ref = _reference(train_csv)\n  near = []                                      # each new row's nearest-train gap\n  for i, row in enumerate(rows):\n    full = step2._row(tbl, row)\n    near.append(min(ezr.xdist(tbl, full, t) for t in tbl.rows))\n    if len(near) >= W and not step3.same(ref, near[-W:]):\n      return i\n  return None\n```",
+ "ttft_ms": 24099,
+ "type": "result",
+ "duration_ms": 26986,
+ "uuid": "2143f6a0-af97-4f7e-83cf-ea269daed3cb",
+ "ttft_stream_ms": 1295,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
