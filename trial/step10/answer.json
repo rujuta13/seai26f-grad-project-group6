@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 64355,
+ "stop_reason": "end_turn",
+ "session_id": "a1fbb767-6f4b-4c0e-b535-2e7888dbd5d1",
+ "total_cost_usd": 0.0261068,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17423,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15306,
+  "output_tokens_details": {
+   "thinking_tokens": 11561
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17423,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15306,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17423,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17423
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14859,
+   "outputTokens": 22,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014969000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15306,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17423,
+   "webSearchRequests": 0,
+   "costUSD": 0.0111378,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 10: race our tuner and guesser against standard rivals on test_csv.\n\nTuner race: each method may measure at most BUDGET builds of test_csv and\nreturns the build it likes best. Its score is the regret: the normalised goal\nsum of that build minus the best normalised goal sum in test_csv. Lower is\nbetter, and 0 means the best build was found. Random search and local search\nare averaged over SEEDS.\n\nGuesser race: each method predicts every goal of every test build from its\ninputs alone. Its score is the mean absolute error divided by each goal's\nrange over test_csv. Lower is better.\n\nThe standard library has no tuner or regression model, so the rivals are\nstdlib-only stand-ins: a seeded local search over one-flag neighbours, and a\nridge regression on standardised numeric inputs and one-hot categorical inputs,\nsolved with Gaussian elimination.\n\nReturned keys: \"ours\", \"random_search\", \"local_search\" (tuner regret),\n\"guesser_ours_nmae\", \"guesser_ridge_nmae\" (guesser error). All values are\nlower-is-better.\n\"\"\"\n\nimport csv\nimport math\nimport os\nimport random\nimport tempfile\n\nfrom step1 import _load, _split_columns\nfrom step2 import guess\nfrom step7 import choose\n\nBUDGET = 30\nSEEDS = range(10)\nRIDGE_LAMBDA = 1.0\n\n_KEYS = (\n    \"ours\",\n    \"random_search\",\n    \"local_search\",\n    \"guesser_ours_nmae\",\n    \"guesser_ridge_nmae\",\n)\n\n\ndef _finite(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _normalised_scores(rows, maximise, minimise):\n    \"\"\"Per row: normalised goal sum in [0, 1] (lower is better), or None if a goal is missing.\"\"\"\n    names = maximise + minimise\n    sign = [-1.0] * len(maximise) + [1.0] * len(minimise)\n    raw = []\n    for r in rows:\n        vec = []\n        for g, s in zip(names, sign):\n            v = _finite(r.get(g))\n            if v is None:\n                vec = None\n                break\n            vec.append(s * v)\n        raw.append(vec)\n\n    usable = [v for v in raw if v is not None]\n    if not usable:\n        return [None] * len(rows)\n\n    m = len(names)\n    lo = [min(v[j] for v in usable) for j in range(m)]\n    hi = [max(v[j] for v in usable) for j in range(m)]\n    out = []\n    for vec in raw:\n        if vec is None:\n            out.append(None)\n            continue\n        total = 0.0\n        for j in range(m):\n            if hi[j] > lo[j]:\n                total += (vec[j] - lo[j]) / (hi[j] - lo[j])\n        out.append(total / m)\n    return out\n\n\ndef _write_blind(columns, rows, goals, path):\n    \"\"\"Write rows to path with every goal cell replaced by '?'.\"\"\"\n    with open(path, \"w\", newline=\"\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=columns)\n        writer.writeheader()\n        for r in rows:\n            writer.writerow(\n                {c: (\"?\" if c in goals else r.get(c, \"\")) for c in columns}\n            )\n\n\ndef _random_search(valid, budget, rng, score):\n    picks = rng.sample(valid, min(budget, len(valid)))\n    return min(picks, key=lambda i: (score[i], i))\n\n\ndef _hamming(a, b, inputs):\n    return sum(1 for c in inputs if str(a.get(c)) != str(b.get(c)))\n\n\ndef _local_search(rows, inputs, valid, budget, rng, score):\n    \"\"\"Start at a random build, then repeatedly measure an unmeasured one-flag\n    neighbour of the current best (or any unmeasured build if none is left).\"\"\"\n    unmeasured = set(valid)\n    best = rng.choice(sorted(valid))\n    unmeasured.discard(best)\n    used = 1\n    limit = min(budget, len(valid))\n    while used < limit:\n        near = sorted(\n            i for i in unmeasured if _hamming(rows[i], rows[best], inputs) == 1\n        )\n        pool = near if near else sorted(unmeasured)\n        pick = rng.choice(pool)\n        unmeasured.discard(pick)\n        used += 1\n        if (score[pick], pick) < (score[best], best):\n            best = pick\n    return best\n\n\ndef _encode_fit(train, inputs):\n    \"\"\"Feature map fitted on train: numeric columns standardised, others one-hot.\"\"\"\n    spec = []\n    for c in inputs:\n        vals = [r.get(c) for r in train]\n        if vals and all(isinstance(v, float) for v in vals):\n            mean = sum(vals) / len(vals)\n            sd = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))\n            spec.append((c, \"num\", (mean, sd if sd > 0 else 1.0)))\n        else:\n            levels = sorted({str(v) for v in vals})\n            spec.append((c, \"cat\", levels))\n    return spec\n\n\ndef _features(row, spec):\n    feats = [1.0]\n    for c, kind, data in spec:\n        if kind == \"num\":\n            mean, sd = data\n            v = _finite(row.get(c))\n            feats.append(0.0 if v is None else (v - mean) / sd)\n        else:\n            s = str(row.get(c))\n            feats.extend(1.0 if s == lev else 0.0 for lev in data)\n    return feats\n\n\ndef _solve(A, b):\n    \"\"\"Solve A x = b by Gauss-Jordan elimination with partial pivoting.\"\"\"\n    n = len(b)\n    M = [A[i][:] + [b[i]] for i in range(n)]\n    for col in range(n):\n        piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        if abs(p) < 1e-12:\n            continue\n        for r in range(n):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col] / p\n                for k in range(col, n + 1):\n                    M[r][k] -= f * M[col][k]\n    return [\n        M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0 for i in range(n)\n    ]\n\n\ndef _fit_ridge(X, y, lam):\n    \"\"\"Ridge weights; the bias (index 0) is not penalised.\"\"\"\n    d = len(X[0])\n    A = [[0.0] * d for _ in range(d)]\n    b = [0.0] * d\n    for x, t in zip(X, y):\n        for i in range(d):\n            xi = x[i]\n            b[i] += xi * t\n            row = A[i]\n            for j in range(d):\n                row[j] += xi * x[j]\n    for i in range(1, d):\n        A[i][i] += lam\n    return _solve(A, b)\n\n\ndef _fit_all(train, inputs, names):\n    spec = _encode_fit(train, inputs)\n    models = {}\n    for g in names:\n        X, y = [], []\n        for r in train:\n            t = _finite(r.get(g))\n            if t is None:\n                continue\n            X.append(_features(r, spec))\n            y.append(t)\n        if X:\n            models[g] = _fit_ridge(X, y, RIDGE_LAMBDA)\n    return spec, models\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Return {method: score} on test_csv. Every score is lower-is-better.\n\n    \"ours\" is step7's choose(); \"random_search\" and \"local_search\" are the\n    tuner rivals; \"guesser_ours_nmae\" is step2's guess(); \"guesser_ridge_nmae\"\n    is a stdlib ridge regression. Guesser scores are mean absolute error\n    divided by each goal's range over test_csv.\n    \"\"\"\n    columns, test = _load(test_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n    names = maximise + minimise\n    goals = set(names)\n\n    scores = _normalised_scores(test, maximise, minimise)\n    valid = [i for i, s in enumerate(scores) if s is not None]\n    if not valid or not names:\n        # Nothing to compare: no test build has complete goal values.\n        return {k: 0.0 for k in _KEYS}\n\n    best_score = min(scores[i] for i in valid)\n\n    def regret(j):\n        if j is None or scores[j] is None:\n            return 1.0\n        return scores[j] - best_score\n\n    result = {}\n\n    # Tuner race. choose() needs a blind file with goals hidden.\n    blind_fd, blind_path = tempfile.mkstemp(suffix=\".csv\")\n    os.close(blind_fd)\n    try:\n        _write_blind(columns, test, goals, blind_path)\n\n        def label(i):\n            return {g: test[i].get(g) for g in names}\n\n        ours_idx = choose(blind_path, label, budget=BUDGET)\n        result[\"ours\"] = regret(ours_idx)\n\n        rand_regrets, local_regrets = [], []\n        for seed in SEEDS:\n            rng = random.Random(seed)\n            rand_regrets.append(\n                regret(_random_search(valid, BUDGET, rng, scores))\n            )\n            rng = random.Random(seed)\n            local_regrets.append(\n                regret(_local_search(test, inputs, valid, BUDGET, rng, scores))\n            )\n        result[\"random_search\"] = sum(rand_regrets) / len(rand_regrets)\n        result[\"local_search\"] = sum(local_regrets) / len(local_regrets)\n    finally:\n        os.unlink(blind_path)\n\n    # Guesser race.\n    train_columns, train = _load(train_csv)\n    _, _, train_inputs = _split_columns(train_columns)\n    spec, models = _fit_all(train, train_inputs, names)\n\n    spans = {}\n    for g in names:\n        vals = [v for v in (_finite(r.get(g)) for r in test) if v is not None]\n        spans[g] = (max(vals) - min(vals)) if vals else 0.0\n\n    ours_sum = 0.0\n    ridge_sum = 0.0\n    count = 0\n    for r in test:\n        probe = {c: r.get(c) for c in train_inputs}\n        est = guess(train_csv, probe)\n        feats = _features(probe, spec)\n        for g in names:\n            truth = _finite(r.get(g))\n            if truth is None or g not in models or g not in est:\n                continue\n            scale = spans[g] if spans[g] > 0 else 1.0\n            ours_sum += abs(est[g][0] - truth) / scale\n            ridge_pred = sum(w * f for w, f in zip(models[g], feats))\n            ridge_sum += abs(ridge_pred - truth) / scale\n            count += 1\n\n    result[\"guesser_ours_nmae\"] = ours_sum / count if count else 0.0\n    result[\"guesser_ridge_nmae\"] = ridge_sum / count if count else 0.0\n    return result\n```",
+ "ttft_ms": 52949,
+ "type": "result",
+ "duration_ms": 63415,
+ "uuid": "b12b76f5-6702-444c-9aac-7c6d0c9e4184",
+ "ttft_stream_ms": 1328,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
