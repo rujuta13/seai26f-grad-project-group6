@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 30185,
+ "stop_reason": "end_turn",
+ "session_id": "cfe9639e-a32b-46f3-8289-944ea628e5c2",
+ "total_cost_usd": 0.0125225,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8639,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6451,
+  "output_tokens_details": {
+   "thinking_tokens": 5380
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8639,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6451,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8639,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8639
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7504,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007569,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6451,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8639,
+   "webSearchRequests": 0,
+   "costUSD": 0.0049535000000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step2.py\n\"\"\"\nstep2: guess.  Given a flag set with its goal cells removed, guess each\ngoal as (estimate, low, high).  Reuses ezr's table, tree, leaf, and atom.\nThe estimate is the median goal value of the training rows in the same\nleaf; low..high is the 10th..90th percentile of those rows.\n\"\"\"\nimport ezr\n\n_cache: dict = {}   # train_csv -> (tbl, node), so the tree is grown once\n\n\ndef _model(train_csv: str):\n  \"Grow one tree on the training rows (once per file). Return (tbl, node).\"\n  if train_csv not in _cache:\n    tbl = ezr.Tbl(ezr.csv(train_csv))\n    old = ezr.the.Leaf\n    ezr.the.Leaf = max(4, len(tbl.rows) // 16)   # big enough families\n    try:\n      node = ezr.tree(tbl, tbl.rows)\n    finally:\n      ezr.the.Leaf = old                          # always put `the` back\n    _cache[train_csv] = (tbl, node)\n  return _cache[train_csv]\n\n\ndef _cell(v):\n  \"Strings become ATOMs (so '1' -> 1); numbers and '?' pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\n\ndef _full(tbl, row) -> list:\n  \"\"\"Put ROW back into full table order. Goal cells are unknown ('?').\n  ROW may be a dict {column name: value} (the usual convention) or a list.\n  A list is either full-length, or has only the non-goal cells.\"\"\"\n  names = tbl.names\n  if isinstance(row, dict):\n    return [_cell(row[n]) if n in row else \"?\" for n in names]\n  if len(row) == len(names):\n    return [_cell(v) for v in row]\n  goals = {c.at for c in tbl.y}\n  xs = iter(row)\n  return [\"?\" if at in goals else _cell(next(xs))\n          for at in range(len(names))]\n\n\ndef _q(vs: list, p: float) -> float:\n  \"The p-th quantile (nearest rank) of sorted VS.\"\n  return float(vs[min(len(vs) - 1, int(p * len(vs)))])\n\n\ndef guess(train_csv: str, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"For every goal: (median, 10th percentile, 90th percentile) of that\n  goal's values among the training rows that share ROW's leaf.\n  Keys are the goal column names, as in the csv header.\"\"\"\n  tbl, node = _model(train_csv)\n  fam = ezr.leaf(node, _full(tbl, row)).rows\n  out = {}\n  for c in tbl.y:\n    vs = sorted(r[c.at] for r in fam if r[c.at] != \"?\")\n    if len(vs) < 5:                  # family too thin: use every row\n      vs = sorted(r[c.at] for r in tbl.rows if r[c.at] != \"?\")\n    if not vs:\n      out[c.txt] = (float(\"nan\"),) * 3\n    else:\n      out[c.txt] = (_q(vs, 0.5), _q(vs, 0.1), _q(vs, 0.9))\n  return out\n```",
+ "ttft_ms": 25864,
+ "type": "result",
+ "duration_ms": 29370,
+ "uuid": "9b185b06-6703-4cf1-9385-3c7864401e0b",
+ "ttft_stream_ms": 1646,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
