@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 42763,
+ "stop_reason": "end_turn",
+ "session_id": "a79d5897-0296-4634-8597-e72878cbb166",
+ "total_cost_usd": 0.051043500000000006,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 44164,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11801,
+  "output_tokens_details": {
+   "thinking_tokens": 6872
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 44164,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11801,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 44164,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 44164
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 36240,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.03631,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11801,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 44164,
+   "webSearchRequests": 0,
+   "costUSD": 0.0147335,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 26: justify. Plain-language reasons a sales director or an analyst can check and act on.\n\nServes the client's questions:\n  - \"Explain to the sales director why this group should get the next campaign.\"\n  - \"Why did you mark this customer as low value? Give me reasons I can act on.\"\n\nMethod (builds on steps 1, 3, 11 and 25; mirrors step16 for customers):\n  - The reference group is the top customers from step11.best (at most 5% of\n    rows), ranked on all goals together. Everyone else is \"the rest\".\n  - Only attributes that can be checked against the customer record are used as\n    reasons. A numeric attribute gives a reason when the reference group's mean\n    is far from the rest's mean (as a fraction of the attribute's range). A text\n    attribute gives a reason when one of its values is much more or much less\n    common in the reference group.\n  - Each goal's difference is checked with a permutation test (step3.same), so\n    the director can see whether the gap could be noise.\n  - explain() names the inputs most tied to bad goal values (step25.blame).\n  - why() rates one row by its goal shares (as step6.why does) and names the\n    attributes where it sits on the side of the reference group that matches\n    the verdict, so a low-value customer gets the gaps it could act on.\n\"\"\"\n\nimport math\nfrom collections import Counter\n\nimport step1\nimport step3\nimport step11\nimport step25\n\n_MIN_GAP = 0.2     # smallest gap that counts as a reason (share difference, or mean\n                   # difference as a fraction of the attribute's range)\n_MAX_REASONS = 6   # cap on reasons listed by explain()\n_MAX_WHY = 3       # cap on attributes named by why()\n_MAX_CATS = 40     # text columns with more distinct values than this are not used\n_BLAME_TOP = 3     # inputs named from step25.blame in explain()\n\n\ndef _num(v):\n    \"\"\"Finite float for v, or None if the cell is blank, missing or not finite.\"\"\"\n    if isinstance(v, (int, float)) and math.isfinite(v):\n        return float(v)\n    return None\n\n\ndef _blank(v):\n    \"\"\"True for an empty, missing or NaN cell.\"\"\"\n    if v is None:\n        return True\n    if isinstance(v, str):\n        return v.strip() == \"\"\n    return isinstance(v, float) and math.isnan(v)\n\n\ndef _key(v):\n    \"\"\"Category label for a cell; blank and missing cells share the key ''.\"\"\"\n    return \"\" if _blank(v) else str(v)\n\n\ndef _label(key):\n    \"\"\"Readable category label.\"\"\"\n    return key if key else \"(blank)\"\n\n\ndef _goal_name(goal):\n    \"\"\"Plain name of a goal column and which direction is better.\"\"\"\n    if goal.endswith(\"+\"):\n        return f\"{goal[:-1]} (higher is better)\"\n    return f\"{goal[:-1]} (lower is better)\"\n\n\ndef _fmt(v):\n    \"\"\"Short, readable number.\"\"\"\n    if abs(v - round(v)) < 1e-9:\n        return str(int(round(v)))\n    if abs(v) >= 10:\n        return f\"{v:.1f}\"\n    return f\"{v:.2f}\"\n\n\ndef _is_numeric(values):\n    \"\"\"True if every non-blank cell is a float.\"\"\"\n    present = [v for v in values if not _blank(v)]\n    return bool(present) and all(isinstance(v, float) for v in present)\n\n\ndef _shares(keys):\n    \"\"\"Share of each category label among the given keys.\"\"\"\n    counts = Counter(keys)\n    n = len(keys)\n    return {k: c / n for k, c in counts.items()}\n\n\ndef _usable(rows, inputs):\n    \"\"\"Checkable input columns as (name, is_numeric) pairs, in header order.\"\"\"\n    keep = []\n    for name in inputs:\n        values = [r.get(name) for r in rows]\n        if _is_numeric(values):\n            keep.append((name, True))\n        elif len({_key(v) for v in values}) <= _MAX_CATS:\n            keep.append((name, False))\n    return keep\n\n\ndef _numeric_facts(name, rows, good, rest):\n    \"\"\"Reference-group facts for a numeric attribute, or None if it is no reason.\"\"\"\n    gv = [x for x in (_num(r.get(name)) for r in good) if x is not None]\n    rv = [x for x in (_num(r.get(name)) for r in rest) if x is not None]\n    allv = [x for x in (_num(r.get(name)) for r in rows) if x is not None]\n    if not gv or not rv or not allv:\n        return None\n    span = max(allv) - min(allv)\n    if span <= 0:\n        return None\n    mg = sum(gv) / len(gv)\n    mr = sum(rv) / len(rv)\n    gap = (mg - mr) / span\n    if abs(gap) < _MIN_GAP:\n        return None\n    return {\"gap\": gap, \"good\": mg, \"rest\": mr,\n            \"binary\": set(allv) <= {0.0, 1.0}}\n\n\ndef _numeric_text(name, f):\n    \"\"\"Reason sentence for a numeric attribute (used by explain).\"\"\"\n    if f[\"binary\"]:\n        if f[\"gap\"] > 0:\n            return (f\"{name} is on for {f['good']:.0%} of top customers versus \"\n                    f\"{f['rest']:.0%} of the rest\")\n        return (f\"{name} is off for {1 - f['good']:.0%} of top customers versus \"\n                f\"{1 - f['rest']:.0%} of the rest\")\n    return (f\"{name} averages {_fmt(f['good'])} among top customers versus \"\n            f\"{_fmt(f['rest'])} for the rest\")\n\n\ndef _biggest_share_gap(sg, sr):\n    \"\"\"The category whose share differs most between the groups: (key, share gap).\"\"\"\n    best_key, best_gap = None, 0.0\n    for k in sorted(set(sg) | set(sr)):\n        d = sg.get(k, 0.0) - sr.get(k, 0.0)\n        if abs(d) > abs(best_gap):\n            best_key, best_gap = k, d\n    return best_key, best_gap\n\n\ndef _category_text(name, key, sg, sr):\n    \"\"\"Reason sentence for a text attribute (used by explain).\"\"\"\n    return (f\"{name} is {_label(key)} for {sg.get(key, 0.0):.0%} of top customers \"\n            f\"versus {sr.get(key, 0.0):.0%} of the rest\")\n\n\ndef _why_numeric(name, x, facts):\n    \"\"\"Short attribute phrase for a numeric value in why().\"\"\"\n    if facts[\"binary\"]:\n        on = x >= 0.5\n        share = facts[\"good\"] if on else 1 - facts[\"good\"]\n        state = \"on\" if on else \"off\"\n        return f\"{name} is {state}, which {share:.0%} of top customers share\"\n    return (f\"{name} is {_fmt(x)} against a top-customer average of \"\n            f\"{_fmt(facts['good'])}\")\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons, checkable by a skeptical expert, for what makes rows good.\n\n    The reference group is the top customers by step11.best (at most 5% of\n    rows). Each checkable attribute is compared between that group and the rest;\n    large gaps become reasons, strongest first. Each goal's gap is checked with a\n    permutation test (step3.same), and the inputs most tied to bad goal values\n    are named (step25.blame).\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = goals_max + goals_min\n    if not rows or not goals:\n        return (\"No recommendation: the data needs at least one row and at least one \"\n                \"goal column (names ending in + or -).\")\n    order = step11.best(train_csv)\n    if not order:\n        return \"No recommendation: no customer could be ranked on the goals.\"\n\n    good_set = set(order)\n    good = [rows[i] for i in order]\n    rest = [rows[i] for i in range(len(rows)) if i not in good_set]\n    if not rest:\n        return \"No comparison: every training row is in the top group.\"\n\n    lines = [\n        f\"Reference group: the {len(good)} best of {len(rows)} customers (at most 5%), \"\n        f\"ranked on \" + \", \".join(_goal_name(g) for g in goals) + \".\"\n    ]\n\n    reasons = []  # (negative strength, usable-input position, sentence)\n    for idx, (name, numeric) in enumerate(_usable(rows, inputs)):\n        if numeric:\n            facts = _numeric_facts(name, rows, good, rest)\n            if facts is not None:\n                reasons.append((-abs(facts[\"gap\"]), idx, _numeric_text(name, facts)))\n        else:\n            sg = _shares([_key(r.get(name)) for r in good])\n            sr = _shares([_key(r.get(name)) for r in rest])\n            key, gap = _biggest_share_gap(sg, sr)\n            if key is not None and abs(gap) >= _MIN_GAP:\n                reasons.append((-abs(gap), idx, _category_text(name, key, sg, sr)))\n\n    reasons.sort()\n    if reasons:\n        lines.append(\"Reasons the top customers differ from the rest, strongest first:\")\n        lines.extend(f\"- {text}.\" for _, _, text in reasons[:_MAX_REASONS])\n    else:\n        lines.append(f\"No single attribute separates the top customers from the rest \"\n                     f\"by at least {_MIN_GAP:.0%}.\")\n\n    for g in goals:\n        gv = [x for x in (_num(r.get(g)) for r in good) if x is not None]\n        rv = [x for x in (_num(r.get(g)) for r in rest) if x is not None]\n        if not gv or not rv:\n            continue\n        verdict = (\"the gap is real under a permutation test.\"\n                   if not step3.same(gv, rv) else \"the gap could be noise.\")\n        lines.append(f\"{_goal_name(g)}: top customers average \"\n                     f\"{_fmt(sum(gv) / len(gv))} versus {_fmt(sum(rv) / len(rv))} \"\n                     f\"for the rest; \" + verdict)\n\n    blamed = step25.blame(train_csv)[:_BLAME_TOP]\n    if blamed:\n        lines.append(\"Inputs most tied to bad goal values (step25): \"\n                     + \", \".join(blamed) + \".\")\n    lines.append(\"These are associations in this customer data, not proof of cause. \"\n                 \"To test an action, run it on a random split of similar customers \"\n                 \"and compare the goals.\")\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row (goals included) is good or bad.\n\n    Per goal, the share of training customers the row is at least as good as is\n    computed, direction-aware (minimised goals are negated). Missing goal values\n    count as worst. The row is rated good if its average share exceeds 0.5. The\n    second sentence names the checkable attributes where the row sits on the\n    side of the reference group that matches the verdict, so a low-value\n    customer is told which gaps it falls short on.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, goals_max, goals_min = step1._classify(header)\n    goals = [(g, 1.0) for g in goals_max] + [(g, -1.0) for g in goals_min]\n    if not rows or not goals:\n        return (\"Cannot rate this customer: the training data needs at least one row \"\n                \"and at least one goal column.\")\n\n    scored = []  # (goal, share of training customers this row is at least as good as)\n    for g, sign in goals:\n        pool = []\n        for t in rows:\n            x = _num(t.get(g))\n            if x is not None:\n                pool.append(x * sign)\n        if not pool:\n            continue\n        v = _num(row.get(g))\n        share = 0.0 if v is None else sum(1 for p in pool if p <= v * sign) / len(pool)\n        scored.append((g, share))\n    if not scored:\n        return \"Cannot rate this customer: no training values exist for any goal.\"\n\n    overall = sum(s for _, s in scored) / len(scored)\n    verdict = \"good\" if overall > 0.5 else \"bad\"\n    favoured = verdict == \"good\"\n    detail = \"; \".join(f\"{g[:-1]} {s:.0%}\" for g, s in scored)\n    first = (f\"Rated {verdict}: on average it is at least as good as {overall:.0%} of \"\n             f\"training customers on the goals (per goal: {detail}).\")\n\n    order = step11.best(train_csv)\n    good_set = set(order)\n    if not order or len(good_set) >= len(rows):\n        return first + \" No reference group is available to compare its attributes.\"\n    good = [rows[i] for i in order]\n    rest = [rows[i] for i in range(len(rows)) if i not in good_set]\n\n    picks = []  # (strength, usable-input position, phrase) on the verdict's side\n    for idx, (name, numeric) in enumerate(_usable(rows, inputs)):\n        if numeric:\n            facts = _numeric_facts(name, rows, good, rest)\n            x = _num(row.get(name))\n            if facts is None or x is None:\n                continue\n            mid = (facts[\"good\"] + facts[\"rest\"]) / 2\n            if x == mid:\n                continue\n            toward_good = (x > mid) == (facts[\"gap\"] > 0)\n            if toward_good != favoured:\n                continue\n            picks.append((abs(facts[\"gap\"]), idx, _why_numeric(name, x, facts)))\n        else:\n            sg = _shares([_key(r.get(name)) for r in good])\n            sr = _shares([_key(r.get(name)) for r in rest])\n            k = _key(row.get(name))\n            d = sg.get(k, 0.0) - sr.get(k, 0.0)\n            if abs(d) < _MIN_GAP or (d > 0) != favoured:\n                continue\n            picks.append((abs(d), idx,\n                          f\"{name} is {_label(k)}, which {sg.get(k, 0.0):.0%} \"\n                          f\"of top customers share\"))\n\n    picks.sort(key=lambda p: (-p[0], p[1]))\n    texts = [t for _, _, t in picks[:_MAX_WHY]]\n    if texts:\n        if favoured:\n            lead = \"Attributes where it sits on the top customers' side: \"\n        else:\n            lead = \"Attributes where it falls short of the top customers: \"\n        second = lead + \"; \".join(texts) + \".\"\n    elif favoured:\n        second = (\"No attribute clearly places it on the top customers' side, so the \"\n                  \"rating rests mainly on its goal values.\")\n    else:\n        second = (\"No attribute clearly falls short of the top customers, so the rating \"\n                  \"rests mainly on its goal values.\")\n    return first + \" \" + second\n```",
+ "ttft_ms": 28373,
+ "type": "result",
+ "duration_ms": 41554,
+ "uuid": "ece013ee-41e1-45ed-b5a6-c9bcbcc885ff",
+ "ttft_stream_ms": 1247,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
