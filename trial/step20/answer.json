@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 59522,
+ "stop_reason": "end_turn",
+ "session_id": "e496565f-9574-4ffa-b0ab-f2c395329c10",
+ "total_cost_usd": 0.0287443,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20878,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13961,
+  "output_tokens_details": {
+   "thinking_tokens": 11920
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20878,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13961,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20878,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20878
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17518,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017588,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13961,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20878,
+   "webSearchRequests": 0,
+   "costUSD": 0.011156300000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step20.py: race. Does our shortlist beat a plain top-OVR list, and does our penalty guesser beat an off-the-shelf model?\"\nimport os, random, tempfile\nfrom ezr import Num, Sym, Tbl, csv, the, wins\nfrom step2 import guess\nfrom step7 import choose\nfrom step10 import BUDGET, _oracle, _random, _hill, _score_guess, _solve\n\nPEN    = \"penalties\"  # the goal the penalty guesser must get right\nRIDGE  = 1.0          # ridge penalty for the off-the-shelf model\nLEVELS = 12           # Sym inputs with more levels than this are dropped\n\ndef _fit_one(tr, goal, lam=RIDGE):\n  \"\"\"Ridge regression of one GOAL on TR's inputs: Nums z-scored,\n  few-valued Syms one-hot.  Returns predict(row) -> float.\"\"\"\n  cols   = [c for c in tr.x if type(c) is Num or len(c.has) <= LEVELS]\n  levels = {c.at: sorted(c.has, key=str) for c in cols if type(c) is Sym}\n  def vec(row) -> list[float]:\n    x = [1.0]\n    for c in cols:\n      v = row[c.at]\n      if type(c) is Sym:\n        x += [1.0 if v == w else 0.0 for w in levels[c.at]]\n      else:\n        ok = isinstance(v, (int, float))\n        x.append((v - c.mu) / (c.sd or 1.0) if ok else 0.0)\n    return x\n  d = len(vec(tr.rows[0]))\n  A = [[0.0] * d for _ in range(d)]\n  b = [0.0] * d\n  for r in tr.rows:\n    y = r[goal.at]\n    if not isinstance(y, (int, float)): continue\n    x = vec(r)\n    for i in range(d):\n      b[i] += x[i] * y\n      for j in range(d): A[i][j] += x[i] * x[j]\n  for i in range(d): A[i][i] += lam\n  w = _solve(A, b)\n  return lambda row: sum(p * q for p, q in zip(w, vec(row)))\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Scores, higher is better, keyed by method.\n  Shortlist (one pick from TEST_CSV, scored by wins: 100 = best row,\n  0 = an average one): 'ours' (step7.choose), 'top_ovr' (the row with the\n  highest OVR), 'random' and 'hillclimb' (same label budget, as in step10).\n  Penalty guess (every TEST_CSV row's Penalties, scored by\n  1/(1 + mean error in train sds)): 'penalty_ours' (step2.guess) and\n  'penalty_linreg' (off-the-shelf ridge regression).\"\"\"\n  random.seed(the.Seed)\n  rng     = random.Random(the.Seed)\n  raw     = list(csv(str(test_csv)))\n  if len(raw) < 2: raise ValueError(f\"no rows in {test_csv}\")\n  names   = raw[0]\n  test    = Tbl(raw)\n  rows    = test.rows\n  goals   = [n for n in names if n[-1] in \"+-\"]\n  goal_at = {n: names.index(n) for n in goals}\n  score   = wins(test)\n  res     = {}\n\n  # ours: step7.choose on a blind copy of TEST, every goal shown as '?'\n  def ask(i) -> dict:\n    return {g: rows[i][goal_at[g]] for g in goals}\n  with tempfile.TemporaryDirectory() as d:\n    blind = os.path.join(d, \"blind.csv\")\n    with open(blind, \"w\", encoding=\"utf-8\") as f:\n      f.write(\",\".join(names) + \"\\n\")\n      for r in rows:\n        f.write(\",\".join(\"?\" if n in goal_at else str(v)\n                         for n, v in zip(names, r)) + \"\\n\")\n    res[\"ours\"] = float(score(rows[choose(blind, ask, budget=BUDGET)]))\n\n  # a plain top-overall-rating list: the single row with the highest OVR\n  ovr = [i for i, n in enumerate(names) if n.upper() == \"OVR\"]\n  if not ovr: raise ValueError(f\"no OVR column in {names}\")\n  def rating(i) -> float:\n    v = rows[i][ovr[0]]\n    return v if isinstance(v, (int, float)) else float(\"-inf\")\n  res[\"top_ovr\"] = float(score(rows[max(range(len(rows)), key=rating)]))\n\n  # standard rivals with the same label budget\n  res[\"random\"]    = float(score(rows[_random(test, _oracle(test, BUDGET),\n                                              BUDGET, rng)]))\n  res[\"hillclimb\"] = float(score(rows[_hill(test, _oracle(test, BUDGET),\n                                             BUDGET, rng)]))\n\n  # penalty guesser: ours vs an off-the-shelf ridge regression, trained on TRAIN\n  tr = Tbl(csv(str(train_csv)))\n  pen = next((c for c in tr.y if c.txt.rstrip(\"+-\").lower() == PEN), None)\n  if pen is None: raise ValueError(f\"no penalties goal in {tr.names}\")\n  pname = pen.txt\n  sd    = {pname: pen.sd or 1.0}\n  pat   = {pname: pen.at}\n\n  ours = []\n  for r in rows:\n    x   = {n: v for n, v in zip(names, r) if n[-1] not in \"+-\"}\n    est = guess(str(train_csv), x)\n    ours.append({pname: est[pname][0]})\n  res[\"penalty_ours\"] = float(_score_guess(ours, rows, pat, sd))\n\n  predict = _fit_one(tr, pen)\n  res[\"penalty_linreg\"] = float(_score_guess([{pname: predict(r)} for r in rows],\n                                             rows, pat, sd))\n  return res\n```",
+ "ttft_ms": 53015,
+ "type": "result",
+ "duration_ms": 58547,
+ "uuid": "1aa90fb6-c6a5-45ba-8350-b22163193823",
+ "ttft_stream_ms": 1317,
+ "time_to_request_ms": 85,
+ "queued_turn_count": 0
+}
