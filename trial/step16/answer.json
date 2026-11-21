@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 37041,
+ "stop_reason": "end_turn",
+ "session_id": "ca266740-623b-4fa1-b9a8-52ee59f1dbe1",
+ "total_cost_usd": 0.0275311,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22347,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8929,
+  "output_tokens_details": {
+   "thinking_tokens": 6912
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22347,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8929,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22347,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22347
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18532,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018597,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8929,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22347,
+   "webSearchRequests": 0,
+   "costUSD": 0.0089341,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 16: justify. Two client questions, answered in plain words.\n\nStandard library only. Reuses loading, column splitting and goal normalisation\nfrom step1, the training model and goal estimates from step2, the explanation,\nscoring and bounds helpers from step6, and the per-goal blame helpers from\nstep15. Only the per-goal causes and the weakest-goal sentence are new.\n\"\"\"\n\nimport statistics\n\nfrom step1 import _load, _columns, _normalised_goals, _dominates\nfrom step2 import _model, guess\nfrom step5 import BAD_SHARE, MIN_GROUP\nfrom step6 import explain as _explain, _bounds, _scaled, _fmt\nfrom step15 import _bad_rows, _column_blame\n\n\ndef _worst_value(rows, col, bad):\n    \"\"\"(value, bad count, count) for the value of col with the highest share of\n    bad rows, among values seen in at least MIN_GROUP rows. None if there is none.\"\"\"\n    groups = {}\n    for i, row in enumerate(rows):\n        g = groups.setdefault(row[col], [0, 0])\n        g[0] += 1\n        if i in bad:\n            g[1] += 1\n    ranked = sorted(\n        ((v, cnt, bc) for v, (cnt, bc) in groups.items() if cnt >= MIN_GROUP),\n        key=lambda t: (-t[2] / t[1], str(t[0])),\n    )\n    return ranked[0] if ranked else None\n\n\ndef _goal_causes(rows, inputs, goals):\n    \"\"\"For each goal, the input column and value most tied to the worst builds\n    on that goal, as step 15 measures it, with counts a reader can recount.\"\"\"\n    n = len(rows)\n    n_bad = max(1, int(n * BAD_SHARE))\n    base = n_bad / n\n    norm = _normalised_goals(rows, goals)\n    lines = [\n        f\"Per goal, the worst {BAD_SHARE:.0%} of builds on that goal are checked \"\n        f\"against each input column (step 15):\"\n    ]\n    for g, (name, _) in enumerate(goals):\n        bad = _bad_rows([p[g] for p in norm], n_bad)\n        blames = [\n            (_column_blame(rows, c, bad, n, base), k, c)\n            for k, c in enumerate(inputs)\n        ]\n        top_blame, _, top_col = max(blames, key=lambda t: (t[0], -t[1]))\n        if top_blame <= 0:\n            lines.append(f\"  {name}: no input setting stands out.\")\n            continue\n        worst = _worst_value(rows, top_col, bad)\n        if worst is None:\n            lines.append(\n                f\"  {name}: most tied to {top_col}, but no value of it is seen \"\n                f\"often enough to name.\"\n            )\n            continue\n        v, cnt, bc = worst\n        lines.append(\n            f\"  {name}: most tied to {top_col}; {bc} of the {cnt} builds with \"\n            f\"{top_col} = {_fmt(v)} are in the worst {BAD_SHARE:.0%} on {name}, \"\n            f\"against {n_bad} of {n} builds overall.\"\n        )\n    return lines\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons for the manager: what makes builds good, and on each\n    goal which setting is most tied to the weakest builds.\"\"\"\n    text = _explain(train_csv)\n    header, rows = _load(train_csv)\n    inputs, goals = _columns(header)\n    if not rows or not inputs or not goals:\n        return text\n    return text + \"\\n\" + \"\\n\".join(_goal_causes(rows, inputs, goals))\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"Two sentences: whether this build (goals included) is good or bad, and\n    its weakest goal, checkable against the training builds.\"\"\"\n    model = _model(train_csv)\n    goals = model[\"goals\"]\n    targets = model[\"targets\"]\n    if not targets:\n        return \"There is no training data to compare this build with.\"\n    if not goals:\n        return \"The data has no goal columns, so this build cannot be rated.\"\n\n    full = dict(row)\n    missing = [name for name, _ in goals if name not in row]\n    if missing:\n        est = guess(train_csv, row)\n        for name in missing:\n            full[name] = est[name][0]\n\n    names = [name for name, _ in goals]\n    bounds = _bounds(model)\n    train_vecs = [_scaled(dict(zip(names, t)), goals, bounds) for t in targets]\n    vec = _scaled(full, goals, bounds)\n\n    score = sum(vec) / len(vec)\n    median = statistics.median([sum(v) / len(v) for v in train_vecs])\n    good = score >= median\n\n    note = \"\"\n    if missing:\n        note = (\n            f\" (goal values {', '.join(missing)} were not given and are estimated \"\n            f\"from the nearest builds)\"\n        )\n    s1 = (\n        f\"{'Good' if good else 'Bad'}: its mean goal score is {score:.2f} on a 0-to-1 scale \"\n        f\"over the training range, {'at or above' if good else 'below'} the training median \"\n        f\"of {median:.2f}{note}.\"\n    )\n\n    weak = min(range(len(goals)), key=lambda g: vec[g])\n    wn, wsign = goals[weak]\n    direction = \"higher\" if wsign > 0 else \"lower\"\n    better_on_weak = sum(1 for v in train_vecs if v[weak] > vec[weak])\n    beaten_by = sum(1 for v in train_vecs if _dominates(v, vec))\n    if beaten_by:\n        dom = f\"{beaten_by} training builds beat it on every goal at once\"\n    else:\n        dom = \"no training build beats it on every goal at once\"\n    s2 = (\n        f\"Its weakest goal is {wn} ({_fmt(full[wn])}, where {direction} is better), \"\n        f\"which {better_on_weak} of {len(train_vecs)} training builds beat on that goal; {dom}.\"\n    )\n    return f\"{s1} {s2}\"\n```",
+ "ttft_ms": 30239,
+ "type": "result",
+ "duration_ms": 35982,
+ "uuid": "4c1ed972-494b-40b2-bb0f-a1fa1d1df789",
+ "ttft_stream_ms": 1305,
+ "time_to_request_ms": 62,
+ "queued_turn_count": 0
+}
