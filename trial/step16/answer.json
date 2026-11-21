@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 62343,
+ "stop_reason": "end_turn",
+ "session_id": "7f21cfa2-8f3d-422b-b5f1-c85d65482ed4",
+ "total_cost_usd": 0.037290199999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28460,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15226,
+  "output_tokens_details": {
+   "thinking_tokens": 11779
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28460,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15226,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28460,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28460
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23920,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023985,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15226,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28460,
+   "webSearchRequests": 0,
+   "costUSD": 0.0133052,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step16.py\nimport ezr\n\nGOOD   = 0.25   # a row is good if its goal score is in the best quarter of training rows\nMARGIN = 0.10   # a setting must beat the overall share of good rows by this much\nMIN_N  = 10     # a setting needs at least this many rows before we claim anything\n\ndef _is_num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _cell(v):\n  \"A raw cell as an ezr atom; None, blank and '?' become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return \"?\" if s in (\"\", \"?\") else ezr.atom(s)\n  return v\n\ndef _align(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"\"\"Align ROW to TBL's columns. ROW is a dict by column name (with or\n  without its + or - sign), or a list over every column or over the\n  non-goal columns. Missing is '?'; a number column holding text is '?'.\"\"\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name, row.get(name.rstrip(\"+-\"))))\n             for at, name in enumerate(tbl.names)]\n  elif len(row) == len(tbl.names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(tbl.names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs: q[at] = _cell(v)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _is_num(q[c.at]): q[c.at] = \"?\"\n  return q\n\ndef _goals(tbl: ezr.TBL) -> list:\n  \"The numeric goal columns of TBL (names ending + or -).\"\n  return [c for c in tbl.y if type(c) is ezr.Num]\n\ndef _complete(goals: list, q: ezr.ROW) -> bool:\n  \"True if every goal cell of Q is a number.\"\n  return all(_is_num(q[c.at]) for c in goals)\n\ndef _ydist(goals: list, q: ezr.ROW) -> float:\n  \"How far Q's goals are from the best they could be: 0 is best, 1 is worst.\"\n  return ezr.dist((abs(ezr.norm(c, q[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _usable(tbl: ezr.TBL) -> list:\n  \"\"\"Input columns that can support a checkable reason. Near-unique symbols\n  (ids, names, urls) match almost no other row, so they are left out.\"\"\"\n  n = len(tbl.rows)\n  return [c for c in tbl.x\n          if type(c) is ezr.Num or len(c.has) <= max(1, n // 2)]\n\ndef _rate(tbl: ezr.TBL, goals: list):\n  \"\"\"Rows with complete goals, whether each is good, the goal-score cutoff\n  for good, and the share of good rows.\"\"\"\n  rows = [r for r in tbl.rows if _complete(goals, r)]\n  if not rows: return [], [], 0.0, 0.0\n  ys   = [_ydist(goals, r) for r in rows]\n  cut  = sorted(ys)[min(len(ys) - 1, int(GOOD * (len(ys) - 1)))]\n  good = [y <= cut for y in ys]\n  return rows, good, cut, sum(good) / len(good)\n\ndef _label(col: ezr.COL, name: str, v) -> str:\n  \"A readable name for one split of COL.\"\n  if type(col) is ezr.Sym: return f\"{name} = {ezr.say(v)}\"\n  return f\"{name} <= {ezr.say(v)}\"\n\ndef _settings(tbl: ezr.TBL, rows: ezr.ROWS, good: list) -> list:\n  \"\"\"Every usable input split with at least MIN_N rows, as\n  (name, label, go, n, share_good).\"\"\"\n  out = []\n  for col in _usable(tbl):\n    name = tbl.names[col.at]\n    for v, go in ezr.candidates(col, rows):\n      hits  = [i for i, r in enumerate(rows) if go(r)]\n      n     = len(hits)\n      if n < MIN_N: continue\n      share = sum(good[i] for i in hits) / n\n      out.append((name, _label(col, name, v), go, n, share))\n  return out\n\ndef _recommend(settings: list, base: float) -> list:\n  \"For each input, its best setting, if it clearly beats the overall share of good.\"\n  best: dict[str, tuple] = {}\n  for s in settings:\n    if s[4] > base + MARGIN and (s[0] not in best or s[4] > best[s[0]][4]):\n      best[s[0]] = s\n  return sorted(best.values(), key=lambda s: -s[4])\n\ndef explain(train_csv) -> str:\n  \"Plain-words reasons, checkable by hand, for what makes rows good.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  goals = _goals(tbl)\n  if not goals or not tbl.x:\n    return (\"Cannot explain: the file needs goal columns (names ending + or -) \"\n            \"and input columns.\")\n  rows, good, cut, base = _rate(tbl, goals)\n  if not rows:\n    return \"Cannot explain: no training row has numeric values for every goal.\"\n  gnames   = \", \".join(tbl.names[c.at] for c in goals)\n  settings = _settings(tbl, rows, good)\n  rec      = _recommend(settings, base)\n  lines = [\n    f\"1. What 'good' means: a row is good when its goals ({gnames}) are in the \"\n    f\"best {GOOD:.0%} of the {len(rows)} training rows that have every goal value. \"\n    f\"Each row gets a goal score from 0 (best possible on every goal) to 1 (worst). \"\n    f\"Good means a score of {cut:.2f} or less. In this file {base:.0%} of rows are good.\",\n    f\"2. Recommended settings. For each input, the setting whose rows are good most \"\n    f\"often, if it beats the overall {base:.0%} by at least {MARGIN*100:.0f} points \"\n    f\"and has at least {MIN_N} rows:\",\n  ]\n  if rec:\n    for _, label, _, n, share in rec:\n      lines.append(f\"   - {label}: {n} rows, {share:.0%} good (overall {base:.0%}). \"\n                   f\"To check: filter the file to those rows and count how many \"\n                   f\"are in the best {GOOD:.0%} on the goals.\")\n    hits = [i for i, r in enumerate(rows) if all(s[2](r) for s in rec)]\n    if len(hits) >= MIN_N:\n      hs = sum(good[i] for i in hits) / len(hits)\n      lines.append(f\"   Rows matching all of these together: {len(hits)}, \"\n                   f\"{hs:.0%} good.\")\n    else:\n      lines.append(f\"   Rows matching all of these together: {len(hits)}, too few \"\n                   f\"to trust, so the combined effect is untested.\")\n  else:\n    lines.append(\"   No single setting beats the overall share by enough, \"\n                 \"so no setting is recommended from this data.\")\n  worst = sorted((s for s in settings if s[4] < base - MARGIN),\n                 key=lambda s: s[4])[:3]\n  lines.append(\"3. Settings linked to bad rows (lowest share good):\")\n  for _, label, _, n, share in worst:\n    lines.append(f\"   - {label}: {n} rows, {share:.0%} good.\")\n  if not worst: lines.append(\"   None clear enough to report.\")\n  lines.append(\"4. Limits: these are patterns in one file of past rows, not proof \"\n               \"that a setting causes better goals. Rows with a setting may differ \"\n               f\"in other ways. Settings with fewer than {MIN_N} rows were left out. \"\n               \"Before relying on the recommended settings, check a sample of rows \"\n               \"by hand against the goal columns, and test them on rows the file \"\n               \"did not use.\")\n  return \"\\n\".join(lines)\n\ndef why(train_csv, row) -> str:\n  \"One or two sentences on why this row (goals included) is good or bad.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  goals = _goals(tbl)\n  if not goals or not tbl.x:\n    return \"Cannot rate this row: the file needs goal columns and input columns.\"\n  rows, good, cut, base = _rate(tbl, goals)\n  if not rows:\n    return \"Cannot rate this row: no training row has numeric goals.\"\n  q = _align(tbl, row)\n  if not _complete(goals, q):\n    missing = [tbl.names[c.at] for c in goals if not _is_num(q[c.at])]\n    return (f\"Cannot rate it: its goal values are missing ({', '.join(missing)}), \"\n            f\"so there is no goal score to compare with the best {GOOD:.0%}.\")\n  y = _ydist(goals, q)\n  if y <= cut:\n    first = (f\"Good: its goals are in the best {GOOD:.0%} of training rows \"\n             f\"(goal score {y:.2f} <= {cut:.2f}, where 0 is best).\")\n  else:\n    first = (f\"Bad: its goals fall outside the best {GOOD:.0%} of training rows \"\n             f\"(goal score {y:.2f} > {cut:.2f}, where 0 is best).\")\n  rec = _recommend(_settings(tbl, rows, good), base)\n  if not rec:\n    flags = (\"No input setting clearly separates good rows here, so the inputs \"\n             \"give no reason either way.\")\n  else:\n    met    = [s[1] for s in rec if s[2](q)]\n    missed = [s[1] for s in rec if not s[2](q)]\n    flags  = f\"Its inputs match {len(met)} of the {len(rec)} recommended settings\"\n    if missed: flags += f\"; it lacks {', '.join(missed[:2])}\"\n    flags += \".\"\n  return f\"{first} {flags}\"\n```",
+ "ttft_ms": 51800,
+ "type": "result",
+ "duration_ms": 60906,
+ "uuid": "4d1a4dbf-be14-4741-86fa-e7a7e26a0a76",
+ "ttft_stream_ms": 1399,
+ "time_to_request_ms": 89,
+ "queued_turn_count": 0
+}
