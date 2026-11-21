@@ -1,0 +1,10 @@
+{
+ "domain": "marketing",
+ "step": 29,
+ "skill": "spot",
+ "ok": true,
+ "score": 0.4,
+ "baseline": 0.05,
+ "better": "higher",
+ "extra": {}
+}
