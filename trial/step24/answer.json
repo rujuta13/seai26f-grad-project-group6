@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8118,
+ "stop_reason": "end_turn",
+ "session_id": "38f9aa3e-f5fe-40a2-9754-1f8097f17df4",
+ "total_cost_usd": 0.0521206,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 49457,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1366,
+  "output_tokens_details": {
+   "thinking_tokens": 832
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 49457,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1366,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 49457,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 49457
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 41471,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.041546,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1366,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 49457,
+   "webSearchRequests": 0,
+   "costUSD": 0.010574600000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 24: flow for new customer sign-ups.\n\nTwo questions from the client:\n\n1. \"As new customers sign up, tell me straight away who's worth a welcome\n   offer.\" stream(train_csv, rows) decides each sign-up as it arrives, using\n   only the training customers and the sign-ups before it. A sign-up is kept\n   when no known customer is at least as good on every goal.\n\n2. \"Warn me when this month's sign-ups stop looking like our usual customers.\"\n   drift(train_csv, rows) returns the index of the first sign-up after which\n   the new rows no longer match the training data, or None if they never do.\n\nBoth checks are the sequential procedures from step14, so they carry the same\nguarantees: a row is judged only against earlier information, and the\nfalse-warning chance over the whole stream is at most 0.05.\n\"\"\"\nfrom step14 import drift as _drift14\nfrom step14 import stream as _stream14\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide keep (True) or not (False) for each row, in arrival order.\n\n    A row is kept when no training customer and no earlier sign-up is at least\n    as good on every goal. Goals ending in '+' are maximised and goals ending\n    in '-' are minimised. Rows with a missing or non-numeric goal value are not\n    kept.\n    \"\"\"\n    return _stream14(train_csv, rows)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first sign-up at which new rows stop looking like train_csv.\n\n    Returns None if no warning is raised.\n    \"\"\"\n    return _drift14(train_csv, rows)\n```",
+ "ttft_ms": 5006,
+ "type": "result",
+ "duration_ms": 6816,
+ "uuid": "4c761693-864a-4ef7-8513-e5aa1c075219",
+ "ttft_stream_ms": 1219,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
