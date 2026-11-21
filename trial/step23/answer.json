@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7486,
+ "stop_reason": "end_turn",
+ "session_id": "de1c4213-26da-4235-b4be-a3ceda930e70",
+ "total_cost_usd": 0.03712,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 35614,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1238,
+  "output_tokens_details": {
+   "thinking_tokens": 894
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 35614,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1238,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 35614,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 35614
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29303,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029377999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1238,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 35614,
+   "webSearchRequests": 0,
+   "costUSD": 0.007742000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step23.py: certify the two customer comparisons.\n\n  1. Did the last campaign really lift purchases, or is that noise?\n  2. Do families with teenagers really shop differently, or does it just look\n     that way?\n\nBoth questions compare two groups of purchase numbers. Pass the two lists to\nsame(): it returns True when the gap is noise, and False only when the\ndifference is both statistically significant and practically large. The test\nis step13.same, which cleans the inputs (missing and non-finite values are\ndropped) and then calls step3.same. Standard library only.\n\"\"\"\nfrom step13 import same as _certify\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise),\n    False if the difference is real.\n\n    xs, ys: lists of numbers, e.g. purchase counts of two groups of customers.\n    Missing and non-finite entries are ignored. If either group is left empty,\n    there is no evidence of a difference, so the result is True.\n    \"\"\"\n    return bool(_certify(xs, ys))\n```",
+ "ttft_ms": 5313,
+ "type": "result",
+ "duration_ms": 6223,
+ "uuid": "b1b15325-71d7-4d8a-ac65-354f6b1028c8",
+ "ttft_stream_ms": 1613,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
