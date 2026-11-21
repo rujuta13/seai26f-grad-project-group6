@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 57921,
+ "stop_reason": "end_turn",
+ "session_id": "4ff54467-7ac6-453e-8957-dc940ea4642c",
+ "total_cost_usd": 0.0195534,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11921,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13742,
+  "output_tokens_details": {
+   "thinking_tokens": 10790
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11921,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13742,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11921,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11921
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10223,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010298,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13742,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11921,
+   "webSearchRequests": 0,
+   "costUSD": 0.0092554,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\nimport ezr\n\nGOOD = 0.25   # a row is good if its ydist is in the best quarter of training rows\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Load TRAIN_CSV as a table.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\ndef _goals(tbl: ezr.TBL) -> list:\n  \"The numeric goal columns of TBL (names ending + or -).\"\n  return [c for c in tbl.y if type(c) is ezr.Num]\n\ndef _complete(goals: list, q: ezr.ROW) -> bool:\n  \"True if every goal cell of Q is a number.\"\n  return all(isinstance(q[c.at], (int, float)) for c in goals)\n\ndef _ydist(goals: list, q: ezr.ROW) -> float:\n  \"How far Q's goals are from the best they could be (0 is best, 1 is worst).\"\n  return ezr.dist((abs(ezr.norm(c, q[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _align(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"\"\"Align ROW to TBL's columns. ROW is a dict by column name, or a list\n  either over every column or over the non-goal columns. Missing is '?'.\"\"\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name)) for at, name in enumerate(tbl.names)]\n  elif len(row) == len(tbl.names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(tbl.names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs:\n    if v is None or (isinstance(v, str) and v.strip() in (\"\", \"?\")): continue\n    q[at] = ezr.atom(v) if isinstance(v, str) else v\n  return q\n\ndef _rate(tbl: ezr.TBL, goals: list):\n  \"\"\"Rows with complete goals, whether each is good, the ydist cutoff for\n  good, and the share of good rows.\"\"\"\n  rows = [r for r in tbl.rows if _complete(goals, r)]\n  if not rows: return [], [], 0.0, 0.0\n  ys   = [_ydist(goals, r) for r in rows]\n  cut  = sorted(ys)[min(len(ys) - 1, int(GOOD * (len(ys) - 1)))]\n  good = [y <= cut for y in ys]\n  base = sum(good) / len(good)\n  return rows, good, cut, base\n\ndef _label(col: ezr.COL, name: str, v) -> str:\n  \"A readable name for one split of COL.\"\n  if type(col) is ezr.Sym: return f\"{name} = {ezr.say(v)}\"\n  return f\"{name} <= {ezr.say(v)}\"\n\ndef _settings(tbl: ezr.TBL, rows: ezr.ROWS, good: list) -> list:\n  \"\"\"Every input split with at least the.Leaf rows, as\n  (name, label, go, n, share_good).\"\"\"\n  out = []\n  for col in tbl.x:\n    name = tbl.names[col.at]\n    for v, go in ezr.candidates(col, rows):\n      hits = [i for i, r in enumerate(rows) if go(r)]\n      n    = len(hits)\n      if n < ezr.the.Leaf: continue\n      share = sum(good[i] for i in hits) / n\n      out.append((name, _label(col, name, v), go, n, share))\n  return out\n\ndef _recommend(settings: list, base: float) -> list:\n  \"For each input, its best setting, if it beats the baseline share of good.\"\n  best: dict[str, tuple] = {}\n  for s in settings:\n    if s[4] > base and (s[0] not in best or s[4] > best[s[0]][4]):\n      best[s[0]] = s\n  return sorted(best.values(), key=lambda s: -s[4])\n\ndef _flag_note(rec: list, q: ezr.ROW) -> str:\n  \"One sentence: how many recommended settings ROW's flags match.\"\n  if not rec:\n    return (\"No input setting separates good rows here, \"\n            \"so the flags give no reason either way.\")\n  met    = [s[1] for s in rec if s[2](q)]\n  missed = [s[1] for s in rec if not s[2](q)]\n  note   = f\"Its flags match {len(met)} of {len(rec)} recommended settings\"\n  if missed: note += f\"; it lacks {', '.join(missed[:2])}\"\n  return note + \".\"\n\ndef explain(train_csv: str) -> str:\n  \"Plain-words reasons, checkable by hand, for what makes rows good.\"\n  tbl   = _load(train_csv)\n  goals = _goals(tbl)\n  if not goals or not tbl.x:\n    return (\"Cannot explain: the file needs goal columns (ending + or -) \"\n            \"and input columns.\")\n  rows, good, cut, base = _rate(tbl, goals)\n  if not rows:\n    return \"Cannot explain: no training row has numeric values for every goal.\"\n  gnames   = \", \".join(tbl.names[c.at] for c in goals)\n  settings = _settings(tbl, rows, good)\n  rec      = _recommend(settings, base)\n  lines = [\n    f\"1. What 'good' means: a row is good when its goals ({gnames}) are in \"\n    f\"the best {GOOD:.0%} of the {len(rows)} training rows. Distance (ydist) \"\n    f\"is 0 at the best possible goal values and 1 at the worst, so good means \"\n    f\"ydist <= {cut:.2f}. Here {base:.0%} of rows are good.\",\n    \"2. Recommended flag set. For each input, the setting whose rows are good \"\n    \"most often, if it beats the baseline and has enough rows:\",\n  ]\n  if rec:\n    for _, label, _, n, share in rec:\n      lines.append(f\"   - {label}: {n} rows, {share:.0%} good \"\n                   f\"(baseline {base:.0%}).\")\n    hits = [i for i, r in enumerate(rows) if all(s[2](r) for s in rec)]\n    if hits:\n      hs = sum(good[i] for i in hits) / len(hits)\n      lines.append(f\"   Rows with all of these together: {len(hits)}, \"\n                   f\"{hs:.0%} good.\")\n    else:\n      lines.append(\"   No training row has all of these together, \"\n                   \"so the combined set is untested.\")\n  else:\n    lines.append(\"   No single setting beats the baseline, \"\n                 \"so no flag set is recommended from this data.\")\n  worst = sorted((s for s in settings if s[4] < base), key=lambda s: s[4])[:3]\n  lines.append(\"3. Settings linked to bad rows (lowest good share):\")\n  for _, label, _, n, share in worst:\n    lines.append(f\"   - {label}: {n} rows, {share:.0%} good.\")\n  if not worst: lines.append(\"   None.\")\n  lines.append(\"4. Limits: these are patterns in one training file, not proof \"\n               \"that a flag causes better goals. Confirm the recommended set by \"\n               \"building a few rows with and without each flag and measuring \"\n               \"the goals.\")\n  return \"\\n\".join(lines)\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: why ROW is good or bad, and which flags back that up.\"\n  tbl   = _load(train_csv)\n  goals = _goals(tbl)\n  if not goals or not tbl.x:\n    return \"Cannot rate this row: the file needs goal columns and input columns.\"\n  rows, good, cut, base = _rate(tbl, goals)\n  if not rows:\n    return \"Cannot rate this row: no training row has numeric goals.\"\n  q   = _align(tbl, row)\n  rec = _recommend(_settings(tbl, rows, good), base)\n  if not _complete(goals, q):\n    missing = [tbl.names[c.at] for c in goals\n               if not isinstance(q[c.at], (int, float))]\n    first = (f\"Cannot rate it as good or bad: its goal values are missing \"\n             f\"({', '.join(missing)}).\")\n  else:\n    y = _ydist(goals, q)\n    if y <= cut:\n      first = (f\"Good: its goals are within the best {GOOD:.0%} of training \"\n               f\"rows (ydist {y:.2f} <= {cut:.2f}, where 0 is best).\")\n    else:\n      first = (f\"Bad: its goals fall outside the best {GOOD:.0%} of training \"\n               f\"rows (ydist {y:.2f} > {cut:.2f}, where 0 is best).\")\n  return f\"{first} {_flag_note(rec, q)}\"\n```",
+ "ttft_ms": 48606,
+ "type": "result",
+ "duration_ms": 56986,
+ "uuid": "70660268-e1a2-4831-b9d0-9146c2e8318c",
+ "ttft_stream_ms": 1698,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
