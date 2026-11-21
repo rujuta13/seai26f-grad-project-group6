@@ -1,0 +1,15 @@
+{
+ "domain": "players",
+ "step": 14,
+ "skill": "flow",
+ "ok": true,
+ "score": 0.27577702091731787,
+ "baseline": 0.511310528308199,
+ "better": "lower",
+ "extra": {
+  "kept": 17,
+  "drift_at": null,
+  "drift_hit": false,
+  "false_alarm": false
+ }
+}
