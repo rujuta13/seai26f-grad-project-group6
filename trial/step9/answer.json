@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49484,
+ "stop_reason": "end_turn",
+ "session_id": "ceeb314d-492a-43e0-8a91-39299b3b099c",
+ "total_cost_usd": 0.024016299999999997,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17823,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10809,
+  "output_tokens_details": {
+   "thinking_tokens": 9293
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17823,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10809,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17823,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17823
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14967,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.015047,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10809,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17823,
+   "webSearchRequests": 0,
+   "costUSD": 0.0089693,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step9.py\n#!/usr/bin/env python3 -B\n\"Flag benchmark rows that look like glitches, typos, or are unlike anything in the training data, via ezr.\"\nimport math\nimport ezr\n\n_cache: dict[str, tuple] = {}   # train_csv -> (tbl, goal columns, input columns)\n\nGOAL_SCALE = 3.0    # a value this many sds from the training mean scores 1\nZ_CAP      = 10.0   # sds beyond this count as this many, so one cell cannot dominate\n\ndef _load(train_csv: str) -> tuple:\n  \"Read TRAIN_CSV once; return its table, its goal columns, and its input columns.\"\n  if train_csv not in _cache:\n    tbl   = ezr.Tbl(ezr.csv(train_csv))\n    goals = [c for c in tbl.y if c.txt[-1] in \"+-\"]\n    _cache[train_csv] = (tbl, goals, list(tbl.x))\n  return _cache[train_csv]\n\ndef _cell(v):\n  \"V as an atom: '?' if unknown, otherwise a number or the text itself (which may be a typo).\"\n  if v is None: return \"?\"\n  if isinstance(v, str): v = ezr.atom(v.strip() or \"?\")\n  return v\n\ndef _align(tbl, row: dict) -> list:\n  \"Turn a {name: value} dict into a list aligned with tbl.names; missing is '?'.\"\n  return [_cell(row.get(name, \"?\")) for name in tbl.names]\n\ndef _is_num(v) -> bool:\n  \"True for ints and floats, but not bools.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _unusual(col, v) -> float:\n  \"How unlike the training values of COL the value V is: 0 is typical, higher is stranger.\"\n  if v == \"?\": return 0.0                          # unknown is not, by itself, a glitch\n  if type(col) is ezr.Sym:\n    return 0.0 if v in col.has else 1.0            # a symbol never seen in training\n  if not _is_num(v) or not math.isfinite(v):\n    return Z_CAP / GOAL_SCALE                      # a word or nan/inf where a number belongs\n  if col.n == 0: return 0.0                        # nothing to compare with\n  if col.sd > 0: z = abs(v - col.mu) / col.sd\n  else:          z = 0.0 if v == col.mu else Z_CAP\n  return min(z, Z_CAP) / GOAL_SCALE\n\ndef _gap(col, v, w) -> float:\n  \"Distance between one row's value V and a training value W in COL, roughly 0 to 1.\"\n  if v == \"?\" or w == \"?\": return 1.0             # unknown = far, as in ezr\n  if type(col) is ezr.Sym: return 0.0 if v == w else 1.0\n  if not _is_num(v) or not math.isfinite(v): return 1.0\n  return abs(ezr.norm(col, v) - ezr.norm(col, w))\n\ndef _joint(tbl, xs, vals) -> float:\n  \"Distance from VALS to its nearest training row, over the input columns.\"\n  if not xs: return 0.0                           # no inputs: nothing to be unlike\n  if not tbl.rows: return 1.0                     # no training rows: unlike anything\n  return min(ezr.dist((_gap(c, vals[c.at], r[c.at]) for c in xs), len(xs))\n             for r in tbl.rows)\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS, goals included: higher means more likely\n  a glitch, a typo, or unlike anything in TRAIN_CSV. Each row's score is the largest of:\n  its joint distance to the nearest training row over the inputs; its most unusual\n  input cell; and its most unusual goal cell (goals far from the training mean,\n  non-numeric, or non-finite). Unknown cells ('?') never raise a score by themselves.\"\"\"\n  tbl, goals, xs = _load(train_csv)\n  out = []\n  for row in rows:\n    vals = _align(tbl, row)\n    s_joint = _joint(tbl, xs, vals)\n    s_input = max((_unusual(c, vals[c.at]) for c in xs), default=0.0)\n    s_goal  = max((_unusual(g, vals[g.at]) for g in goals), default=0.0)\n    out.append(float(max(s_joint, s_input, s_goal)))\n  return out\n```",
+ "ttft_ms": 43797,
+ "type": "result",
+ "duration_ms": 48431,
+ "uuid": "a1824c0e-4aaf-4fa2-9a3f-309632cb6f02",
+ "ttft_stream_ms": 1411,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
