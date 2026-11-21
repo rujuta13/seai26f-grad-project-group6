@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 24804,
+ "duration_api_ms": 24791,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step2.py: guess the goal values of an unseen flag set from the training data.\n\nReuses the loading and column-classification helpers from step1. The guess is a\nk-nearest-neighbour estimate in standardised input space: the estimate is the\nmedian goal value of the nearest training rows, and the range is their 10th to\n90th percentile.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _load, _to_value\n\n_K = 15          # number of neighbours used for the guess\n_LOW_Q = 0.10    # lower bound of the stated range\n_HIGH_Q = 0.90   # upper bound of the stated range\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of `row` as (estimate, low, high).\n\n    `row` is a dict {input column name: value} with the goal columns removed.\n    Returns {goal column name: (estimate, low, high)} for every goal in the\n    training file, in header order.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        raise ValueError(\"train_csv contains no data rows\")\n\n    _, _, inputs = _classify(header)\n    goal_cols = [i for i, name in enumerate(header) if name.endswith((\"+\", \"-\"))]\n    n = len(rows)\n\n    # Encode training inputs, keeping the mappings needed to encode the query row.\n    X = np.zeros((n, len(inputs)), dtype=float)\n    specs = []\n    for j, col in enumerate(inputs):\n        vals = [_to_value(r[col]) for r in rows]\n        if all(isinstance(v, float) for v in vals):\n            X[:, j] = vals\n            specs.append((\"num\", float(np.median(vals))))\n        else:\n            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}\n            X[:, j] = [codes[str(v)] for v in vals]\n            specs.append((\"cat\", codes))\n\n    # Encode the query row with the same mappings.\n    q = np.zeros(len(inputs), dtype=float)\n    for j, col in enumerate(inputs):\n        raw = row.get(header[col])\n        kind, info = specs[j]\n        if kind == \"num\":\n            v = _to_value(raw) if raw is not None else None\n            q[j] = v if isinstance(v, float) else info\n        else:\n            q[j] = info.get(str(raw), -1) if raw is not None else -1\n\n    # Standardise, then find the nearest training rows to the query.\n    if len(inputs) > 0:\n        scaler = StandardScaler().fit(X)\n        Z = scaler.transform(X)\n        zq = scaler.transform(q.reshape(1, -1))[0]\n        dist = np.sqrt(((Z - zq) ** 2).sum(axis=1))\n    else:\n        dist = np.zeros(n, dtype=float)\n    k = min(_K, n)\n    idx = np.argsort(dist, kind=\"stable\")[:k]\n\n    # Per goal: median of neighbours as the estimate, quantiles as the range.\n    result: dict[str, tuple[float, float, float]] = {}\n    for col in goal_cols:\n        y = np.array([float(r[col]) for r in rows], dtype=float)\n        neigh = y[idx]\n        estimate = float(np.median(neigh))\n        low = float(np.quantile(neigh, _LOW_Q))\n        high = float(np.quantile(neigh, _HIGH_Q))\n        result[header[col]] = (estimate, low, high)\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "6f237626-6885-4ff4-839c-8c7d9442e7ff",
+ "total_cost_usd": 0.002141525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3001,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3532,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3001,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3532,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3001,
+   "webSearchRequests": 0,
+   "costUSD": 0.002141525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c602fbe8-8f87-4fb0-a8f8-135da1e4089a"
+}
