@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4020,
+ "stop_reason": "end_turn",
+ "session_id": "a4fcdca5-1fb0-4c15-99e9-409f13a83f86",
+ "total_cost_usd": 0.0233008,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22118,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 390,
+  "output_tokens_details": {
+   "thinking_tokens": 205
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22118,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 390,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22118,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22118
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18622,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018682,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 390,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22118,
+   "webSearchRequests": 0,
+   "costUSD": 0.0046188,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step19.py\n\"\"\"\nstep19: spot.  Flag player records that look like data-entry mistakes, and\nplayers so unusual that their ratings deserve a second look.  Both asks are\nstep9's odd score, so this file reuses it unchanged.\n\"\"\"\nimport step9\n\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS (goals included): higher means more\n  likely a glitch, a typo, or unlike anything in TRAIN_CSV.\"\"\"\n  return step9.odd(train_csv, rows)\n```",
+ "ttft_ms": 2350,
+ "type": "result",
+ "duration_ms": 3000,
+ "uuid": "1b56b986-7560-40e1-9a92-0f045ac92422",
+ "ttft_stream_ms": 1412,
+ "time_to_request_ms": 38,
+ "queued_turn_count": 0
+}
