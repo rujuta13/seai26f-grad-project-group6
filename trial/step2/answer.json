@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 20658,
+ "stop_reason": "end_turn",
+ "session_id": "179aa82f-9017-417f-a3e0-f40f49199c4d",
+ "total_cost_usd": 0.0060095,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 3009,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4591,
+  "output_tokens_details": {
+   "thinking_tokens": 3055
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3009,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4591,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3009,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 3009
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 3042,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.003112,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4591,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3009,
+   "webSearchRequests": 0,
+   "costUSD": 0.0028975,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 2: guess each goal of a flag set before benchmarking it.\n\nEach guess is the median goal value of the k most similar training rows\n(similarity over the input/flag columns only). The range is the 10th to\n90th percentile of those neighbours. When the neighbourhood is far from\nthe query, the range is widened to the 5th to 95th percentile of the\nwhole training set, so the reported uncertainty grows with distance.\n\"\"\"\n\nimport math\nimport os\n\nfrom step1 import _load, _split_columns\n\nK = 15\nFAR_THRESHOLD = 0.25\n\n_CACHE = {}\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of an already sorted, non-empty list.\"\"\"\n    if len(sorted_vals) == 1:\n        return sorted_vals[0]\n    pos = q * (len(sorted_vals) - 1)\n    lo = math.floor(pos)\n    hi = math.ceil(pos)\n    frac = pos - lo\n    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * frac\n\n\ndef _load_cached(train_csv):\n    key = (train_csv, os.path.getmtime(train_csv))\n    if key not in _CACHE:\n        _CACHE[key] = _load(train_csv)\n    return _CACHE[key]\n\n\ndef _as_float(value):\n    if isinstance(value, float):\n        return value\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return None\n\n\ndef _spec(rows, inputs):\n    \"\"\"Per input column: ('num', lo, hi) if every training value is numeric, else ('cat', None, None).\"\"\"\n    spec = {}\n    for c in inputs:\n        vals = [r.get(c) for r in rows]\n        if vals and all(isinstance(v, float) for v in vals):\n            spec[c] = (\"num\", min(vals), max(vals))\n        else:\n            spec[c] = (\"cat\", None, None)\n    return spec\n\n\ndef _distance(train_row, row, inputs, spec):\n    \"\"\"Sum of per-column differences; numeric columns are scaled to [0, 1].\"\"\"\n    d = 0.0\n    for c in inputs:\n        kind, lo, hi = spec[c]\n        a = train_row.get(c)\n        b = row.get(c)\n        if kind == \"num\":\n            fa = _as_float(a)\n            fb = _as_float(b)\n            if fa is None or fb is None:\n                d += 1.0\n            else:\n                span = hi - lo\n                d += abs(fa - fb) / span if span > 0 else 0.0\n        else:\n            d += 0.0 if str(a) == str(b) else 1.0\n    return d\n\n\ndef guess(train_csv, row):\n    \"\"\"Return {goal: (estimate, low, high)} for every goal column of the training file.\n\n    `row` maps input column names to values; goal columns are absent.\n    low..high is the range the true value is expected to fall in.\n    \"\"\"\n    columns, rows = _load_cached(train_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n    goals = maximise + minimise\n    n = len(rows)\n\n    if n == 0 or not goals:\n        return {g: (0.0, -math.inf, math.inf) for g in goals}\n\n    spec = _spec(rows, inputs)\n    ranked = sorted(\n        ((_distance(rows[i], row, inputs, spec), i) for i in range(n)),\n        key=lambda t: (t[0], t[1]),\n    )\n    k = min(K, n)\n    near = ranked[:k]\n    neighbours = [i for _, i in near]\n\n    mean_d = sum(d for d, _ in near) / k\n    width = max(1, len(inputs))\n    far = (mean_d / width) > FAR_THRESHOLD\n\n    out = {}\n    for g in goals:\n        local = sorted(\n            v for v in (_as_float(rows[i].get(g)) for i in neighbours) if v is not None\n        )\n        everything = sorted(\n            v for v in (_as_float(r.get(g)) for r in rows) if v is not None\n        )\n\n        if not local:\n            local = everything\n        if not everything:\n            out[g] = (0.0, -math.inf, math.inf)\n            continue\n\n        estimate = _quantile(local, 0.5)\n        if far:\n            low = _quantile(everything, 0.05)\n            high = _quantile(everything, 0.95)\n        else:\n            low = _quantile(local, 0.10)\n            high = _quantile(local, 0.90)\n\n        estimate = min(max(estimate, low), high)\n        out[g] = (float(estimate), float(low), float(high))\n\n    return out\n```",
+ "ttft_ms": 15244,
+ "type": "result",
+ "duration_ms": 19911,
+ "uuid": "c98673ca-546f-4ee8-9050-4b1e92b10412",
+ "ttft_stream_ms": 1345,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
