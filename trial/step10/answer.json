@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 32728,
+ "duration_api_ms": 32712,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nimport step2\nimport step7\n\n\ndef _load(path):\n    with open(path, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef _average_ranks(values):\n    \"\"\"Ranks 1..N with ties replaced by their average rank.\"\"\"\n    values = np.asarray(values, dtype=float)\n    _, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)\n    starts = np.cumsum(counts) - counts\n    avg = starts + (counts + 1) / 2.0\n    return avg[inverse]\n\n\ndef _composite(M):\n    \"\"\"Mean normalised rank per row of a minimisation matrix (0 = best, 1 = worst).\"\"\"\n    m = M.shape[0]\n    if m == 0 or M.shape[1] == 0:\n        return np.zeros(m, dtype=float)\n    b = np.zeros(m, dtype=float)\n    for j in range(M.shape[1]):\n        b += (_average_ranks(M[:, j]) - 1.0) / max(m - 1, 1)\n    return b / M.shape[1]\n\n\ndef _min_matrix(rows, goal_min, goal_max):\n    \"\"\"Every goal as a minimisation value; '+' goals negated, missing = +inf.\"\"\"\n    goals = goal_min + goal_max\n    G = np.empty((len(rows), len(goals)), dtype=float)\n    for j, c in enumerate(goals):\n        v = np.array([_to_float(r.get(c)) for r in rows], dtype=float)\n        missing = ~np.isfinite(v)\n        if c.endswith(\"+\"):\n            v = -v\n        v[missing] = np.inf\n        G[:, j] = v\n    return G\n\n\ndef _features(rows, inputs):\n    n = len(rows)\n    if not inputs:\n        return np.zeros((n, 1), dtype=float)\n    X = np.array(\n        [[_to_float(r.get(c)) for c in inputs] for r in rows], dtype=float\n    ).reshape(n, len(inputs))\n    return np.where(np.isfinite(X), X, 0.0)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare the client's tuner and guesser with standard rivals on test_csv.\n\n    Every method picks one row of test_csv. Its score is the chosen build's\n    composite normalised rank over all test rows (mean rank across goals,\n    0 = best, 1 = worst), so LOWER IS BETTER. Missing goal values count as worst.\n\n    Methods:\n      \"ours\"             step7 tuner: label budget of 30 test builds.\n      \"ours_guesser\"     step2 guesser: predicts every goal per test build,\n                         picks the build with the best predicted composite.\n      \"random_search\"    30 test builds drawn at random, best measured one wins.\n      \"sklearn_forest\"   off-the-shelf RandomForestRegressor per goal, trained\n                         on train_csv, picks the best predicted composite.\n    \"\"\"\n    cols_tr, train_rows = _load(train_csv)\n    cols_te, test_rows = _load(test_csv)\n    inputs, goal_max, goal_min = _split_columns(cols_te)\n    goals = goal_min + goal_max\n    signs = [1.0 if g.endswith(\"-\") else -1.0 for g in goals]\n    m = len(test_rows)\n    budget = 30\n\n    if m == 0 or not goals:\n        return {k: math.nan for k in (\"ours\", \"ours_guesser\",\n                                      \"random_search\", \"sklearn_forest\")}\n\n    # Ground truth on the test set, used only to score choices.\n    G_true = _min_matrix(test_rows, goal_min, goal_max)\n    comp_true = _composite(G_true)\n\n    scores: dict[str, float] = {}\n\n    # ---- ours: step7 tuner, measured through the label budget ----\n    def label(i):\n        return {g: test_rows[i].get(g) for g in goals}\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind_path = os.path.join(tmp, \"blind.csv\")\n        with open(blind_path, \"w\", newline=\"\") as f:\n            writer = csv.DictWriter(f, fieldnames=cols_te)\n            writer.writeheader()\n            for r in test_rows:\n                br = dict(r)\n                for g in goals:\n                    br[g] = \"?\"\n                writer.writerow(br)\n        pick = step7.choose(blind_path, label, budget=budget)\n    scores[\"ours\"] = float(comp_true[pick])\n\n    # ---- ours_guesser: step2 predictions for every test build ----\n    P_guess = np.empty((m, len(goals)), dtype=float)\n    for i, r in enumerate(test_rows):\n        est = step2.guess(train_csv, r)\n        for j, g in enumerate(goals):\n            e = est.get(g, (math.nan, 0.0, 0.0))[0]\n            P_guess[i, j] = signs[j] * e\n    pick = int(np.argmin(_composite(P_guess)))\n    scores[\"ours_guesser\"] = float(comp_true[pick])\n\n    # ---- random_search: same budget, random test builds ----\n    rng = np.random.default_rng(0)\n    sample = rng.permutation(m)[:min(budget, m)]\n    pick = int(sample[int(np.argmin(comp_true[sample]))])\n    scores[\"random_search\"] = float(comp_true[pick])\n\n    # ---- sklearn_forest: off-the-shelf model trained on train_csv ----\n    X_tr = _features(train_rows, inputs)\n    X_te = _features(test_rows, inputs)\n    P_rf = np.empty((m, len(goals)), dtype=float)\n    for j, g in enumerate(goals):\n        y = np.array([_to_float(r.get(g)) for r in train_rows], dtype=float)\n        ok = np.isfinite(y)\n        if ok.sum() >= 10 and inputs:\n            model = RandomForestRegressor(\n                n_estimators=100, min_samples_leaf=2, random_state=0\n            )\n            model.fit(X_tr[ok], y[ok])\n            pred = model.predict(X_te)\n        else:\n            fill = float(np.median(y[ok])) if ok.any() else 0.0\n            pred = np.full(m, fill)\n        P_rf[:, j] = signs[j] * pred\n    pick = int(np.argmin(_composite(P_rf)))\n    scores[\"sklearn_forest\"] = float(comp_true[pick])\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "448ff45f-2967-4621-89af-d91cf01a11e7",
+ "total_cost_usd": 0.004997525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 17461,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5629,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17461,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5629,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17461,
+   "webSearchRequests": 0,
+   "costUSD": 0.004997525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "6b1f5743-88ce-4a6a-b4ce-3f6abe59a2c4"
+}
