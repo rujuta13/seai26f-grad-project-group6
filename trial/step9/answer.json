@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 32110,
+ "duration_api_ms": 32096,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.ensemble import IsolationForest\nfrom sklearn.neighbors import NearestNeighbors\n\nfrom step1 import _read, _columns, _to_float_column\nfrom step2 import _encode_inputs\n\n_K = 5\n_MISSING_PENALTY = 3.0\n_UNSEEN_PENALTY = 2.0\n_SEED = 0\n_MIN_ISO = 8\n\n\ndef _is_numeric(values):\n    try:\n        for v in values:\n            float(v)\n    except (TypeError, ValueError):\n        return False\n    return True\n\n\ndef _float_or_nan(v):\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return float(\"nan\")\n    return f if np.isfinite(f) else float(\"nan\")\n\n\ndef _robust_center_scale(vals):\n    \"\"\"Median and MAD-based scale over the finite values, with safe fallbacks.\"\"\"\n    vals = np.asarray(vals, dtype=float)\n    fin = vals[np.isfinite(vals)]\n    if fin.size == 0:\n        return 0.0, 1.0\n    med = float(np.median(fin))\n    scale = 1.4826 * float(np.median(np.abs(fin - med)))\n    if not scale > 0:\n        scale = float(fin.std())\n    if not scale > 0:\n        scale = 1.0\n    return med, scale\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row: higher means more likely a glitch or\n    a value unlike anything in the training data.\n\n    Components (all added together, each non-negative):\n      - input-space isolation: an IsolationForest on standardised inputs,\n        scored robustly against the training rows' own scores;\n      - input-space novelty: mean distance to the nearest training rows,\n        scored robustly against the same statistic for training rows;\n      - goal outliers: for every goal, log(1 + robust |z|) against the\n        training median and MAD, with a fixed penalty for missing or\n        non-numeric goal values;\n      - unseen categories: a fixed penalty per categorical input whose\n        value never appears in the training data.\n    \"\"\"\n    fieldnames, train_rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    m = len(rows)\n    if m == 0:\n        return []\n    n = len(train_rows)\n    if n == 0:\n        return [0.0] * m\n\n    score = np.zeros(m, dtype=float)\n\n    # 1. Input-space features: isolation and novelty.\n    if inputs:\n        X, encode_row = _encode_inputs(train_rows, inputs)\n        Xf = np.array(X, dtype=float, copy=True)\n        for j in range(Xf.shape[1]):\n            col = Xf[:, j]\n            fin = np.isfinite(col)\n            fill = float(col[fin].mean()) if np.any(fin) else 0.0\n            Xf[~fin, j] = fill\n\n        R = np.vstack([encode_row(r) for r in rows]).astype(float)\n        R = np.where(np.isfinite(R), R, 0.0)\n\n        mu = Xf.mean(axis=0)\n        sd = Xf.std(axis=0)\n        sd = np.where(sd > 0, sd, 1.0)\n        Ztr = (Xf - mu) / sd\n        Zr = (R - mu) / sd\n    else:\n        Ztr = np.zeros((n, 1))\n        Zr = np.zeros((m, 1))\n\n    # Novelty: distance to nearest training rows.\n    if n >= 2:\n        k_tr = min(_K + 1, n)\n        nn_tr = NearestNeighbors(n_neighbors=k_tr).fit(Ztr)\n        d_tr, _ = nn_tr.kneighbors(Ztr)\n        ref = d_tr[:, 1:].mean(axis=1)  # drop self-match\n        med, scale = _robust_center_scale(ref)\n\n        k_r = min(_K, n)\n        nn_r = NearestNeighbors(n_neighbors=k_r).fit(Ztr)\n        d_r, _ = nn_r.kneighbors(Zr)\n        d_r = d_r.mean(axis=1)\n        score += np.maximum(0.0, (d_r - med) / scale)\n\n    # Isolation: unusual combinations of flags.\n    if n >= _MIN_ISO:\n        iso = IsolationForest(random_state=_SEED).fit(Ztr)\n        tr_anom = -iso.score_samples(Ztr)\n        r_anom = -iso.score_samples(Zr)\n        med, scale = _robust_center_scale(tr_anom)\n        score += np.maximum(0.0, (r_anom - med) / scale)\n\n    # 2. Unseen categorical values.\n    if inputs:\n        unseen = np.zeros(m, dtype=float)\n        for c in inputs:\n            tv = [r.get(c) for r in train_rows]\n            if _is_numeric(tv):\n                continue\n            seen = set(tv)\n            for i, r in enumerate(rows):\n                if r.get(c) not in seen:\n                    unseen[i] += 1.0\n        score += _UNSEEN_PENALTY * unseen\n\n    # 3. Goal outliers and missing goal values.\n    for name, _sign in goals:\n        tcol = _to_float_column(train_rows, name)\n        med, scale = _robust_center_scale(tcol)\n        for i, r in enumerate(rows):\n            v = _float_or_nan(r.get(name))\n            if not np.isfinite(v):\n                score[i] += _MISSING_PENALTY\n            else:\n                score[i] += float(np.log1p(abs(v - med) / scale))\n\n    return [float(x) for x in score]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "92d5df1a-8eb9-4e75-87e9-c7706702a995",
+ "total_cost_usd": 0.005243775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 11263,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7671,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11263,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7671,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11263,
+   "webSearchRequests": 0,
+   "costUSD": 0.005243775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "0d66e206-1d0a-452a-bf5b-0c0729121e36"
+}
