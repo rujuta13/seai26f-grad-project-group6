@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 154924,
+ "duration_api_ms": 154912,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step9.py: flag benchmark rows that look like glitches or are unlike the training data.\n\nodd() returns one suspicion score per row (higher = more suspicious). Two signals are\nmeasured against train_csv and the larger one is kept:\n\n* Goal glitch: a goal value that is far from what the training builds with similar\n  inputs measured (robust z-score against the k nearest training rows), or far from\n  every training goal (global robust z-score). Missing, non-numeric or non-finite\n  goals score inf.\n* Unlike anything seen: distance to the nearest training row in standardised input\n  space, relative to the typical leave-one-out distance among training rows (the\n  reference used by step4.drift). Unseen categorical values and unparseable numeric\n  inputs score inf.\n\nEncoding, reference distances and value coercion are reused from step1 and step4.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _load, _to_value\nfrom step4 import _encode_row, _encode_train, _loo_nearest\n\n_K = 5               # training neighbours used for the local goal check\n_MAD_TO_SD = 1.4826  # scale factor turning a median absolute deviation into a sd-like unit\n\n\ndef _robust_scale(v):\n    \"\"\"Median and a robust spread (falls back to sd, then 1.0, if the spread is zero).\"\"\"\n    med = float(np.median(v))\n    mad = _MAD_TO_SD * float(np.median(np.abs(v - med)))\n    if mad > 0:\n        return med, mad\n    sd = float(np.std(v))\n    return med, (sd if sd > 0 else 1.0)\n\n\ndef _goal_values(row, goal_names):\n    \"\"\"Goal values of one row as floats, or None if any is missing or not finite.\"\"\"\n    out = []\n    for name in goal_names:\n        try:\n            v = float(row.get(name))\n        except (TypeError, ValueError):\n            return None\n        if not math.isfinite(v):\n            return None\n        out.append(v)\n    return out\n\n\ndef _input_unusable(row, header, inputs, specs):\n    \"\"\"True if an input cell is an unseen category or an unparseable/non-finite number.\"\"\"\n    for j, col in enumerate(inputs):\n        raw = row.get(header[col])\n        kind, info = specs[j]\n        if kind == \"num\":\n            v = _to_value(raw) if raw is not None else None\n            if not isinstance(v, float) or not math.isfinite(v):\n                return True\n        else:\n            if raw is None or str(raw) not in info:\n                return True\n    return False\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more suspicious.\n\n    A score of inf marks a row with a missing or non-finite goal, an unparseable or\n    non-finite numeric input, or a categorical input value never seen in train_csv.\n    \"\"\"\n    if not rows:\n        return []\n\n    header, train_rows = _load(train_csv)\n    maximise, minimise, inputs = _classify(header)\n    goal_cols = minimise + maximise\n    goal_names = [header[c] for c in goal_cols]\n    m = len(goal_cols)\n    n = len(train_rows)\n\n    if n == 0:\n        return [math.inf] * len(rows)\n\n    # Training goals (raw values, so the sign of maximised goals does not matter here).\n    Y = np.array([[float(r[c]) for c in goal_cols] for r in train_rows],\n                 dtype=float).reshape(n, m)\n    gscale = [_robust_scale(Y[:, j]) for j in range(m)]\n\n    # Training inputs: encoded, standardised, and the leave-one-out reference distance.\n    X, specs = _encode_train(train_rows, inputs)\n    if inputs:\n        scaler = StandardScaler().fit(X)\n        Z = scaler.transform(X)\n    else:\n        scaler = None\n        Z = np.zeros((n, 0), dtype=float)\n    ref = np.asarray(_loo_nearest(Z), dtype=float)\n    typical = float(np.median(ref)) if n >= 2 else 1.0\n    if not (0.0 < typical < math.inf):\n        typical = 1.0\n\n    scores: list[float] = []\n    for row in rows:\n        g = _goal_values(row, goal_names)\n        if g is None or (inputs and _input_unusable(row, header, inputs, specs)):\n            scores.append(math.inf)\n            continue\n\n        # Input novelty: distance to the nearest training row, in typical-spread units.\n        if inputs:\n            q = _encode_row(row, header, inputs, specs)\n            zq = scaler.transform(q.reshape(1, -1))[0]\n            dist = np.sqrt(((Z - zq) ** 2).sum(axis=1))\n        else:\n            dist = np.zeros(n, dtype=float)\n        novelty = float(dist.min()) / typical\n\n        # Goal glitch: compare each goal with the global training spread and with the\n        # goals of the nearest training rows (same flags, different number?).\n        k = min(_K, n)\n        idx = np.argsort(dist, kind=\"stable\")[:k]\n        goal_score = 0.0\n        gv = np.asarray(g, dtype=float)\n        for j in range(m):\n            med, scale = gscale[j]\n            glob = abs(gv[j] - med) / scale\n            local_med = float(np.median(Y[idx, j]))\n            loc = abs(gv[j] - local_med) / scale\n            goal_score = max(goal_score, glob, loc)\n\n        scores.append(float(max(novelty, goal_score)))\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4f5ff9fb-8460-46b6-9271-94f8f46685a3",
+ "total_cost_usd": 0.005244024999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 14841,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6777,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14841,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6777,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14841,
+   "webSearchRequests": 0,
+   "costUSD": 0.005244024999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "9993b5a1-920b-4612-889a-197847437127"
+}
