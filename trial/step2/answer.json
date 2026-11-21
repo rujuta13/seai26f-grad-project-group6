@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 15252,
+ "duration_api_ms": 15241,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a flag set `row` (goal columns removed).\n\n    Returns {goal: (estimate, low, high)} where low..high is an approximate\n    90% interval built from out-of-bag residuals of a random forest.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    goals = [c for c in cols if c.endswith((\"+\", \"-\"))]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n\n    result: dict[str, tuple[float, float, float]] = {}\n\n    if not rows or not goals:\n        for g in goals:\n            result[g] = (0.0, -math.inf, math.inf)\n        return result\n\n    # Feature matrix for training rows; missing cells become 0.0 (as in step1).\n    X = np.array(\n        [[_to_float(r.get(c, math.nan)) for c in inputs] for r in rows],\n        dtype=float,\n    ).reshape(len(rows), len(inputs))\n    X = np.where(np.isnan(X), 0.0, X)\n\n    # Feature vector for the query row.\n    x = np.array(\n        [[_to_float(row.get(c, math.nan)) for c in inputs]], dtype=float\n    ).reshape(1, len(inputs))\n    x = np.where(np.isnan(x), 0.0, x)\n\n    for g in goals:\n        y = np.array([_to_float(r.get(g, math.nan)) for r in rows], dtype=float)\n        finite = np.isfinite(y)\n        Xg, yg = X[finite], y[finite]\n\n        if len(yg) == 0:\n            result[g] = (0.0, -math.inf, math.inf)\n            continue\n\n        if len(yg) < 10 or not inputs:\n            # Too little data for a model: use the empirical distribution.\n            est = float(np.median(yg))\n            lo = float(np.quantile(yg, 0.05))\n            hi = float(np.quantile(yg, 0.95))\n            result[g] = (est, min(lo, est), max(hi, est))\n            continue\n\n        model = RandomForestRegressor(\n            n_estimators=300,\n            min_samples_leaf=2,\n            bootstrap=True,\n            oob_score=True,\n            random_state=0,\n        )\n        model.fit(Xg, yg)\n\n        est = float(model.predict(x)[0])\n\n        oob = np.asarray(model.oob_prediction_, dtype=float)\n        ok = np.isfinite(oob)\n        if ok.sum() >= 10:\n            resid = yg[ok] - oob[ok]\n            q_lo, q_hi = np.quantile(resid, [0.05, 0.95])\n        else:\n            q_lo, q_hi = np.quantile(yg, [0.05, 0.95]) - np.median(yg)\n\n        low = est + float(q_lo)\n        high = est + float(q_hi)\n        low = min(low, est)\n        high = max(high, est)\n        result[g] = (est, low, high)\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d5c3c4a1-3cba-463c-9ef5-e23d94634ac9",
+ "total_cost_usd": 0.00156965,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 2090,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2616,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2090,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2616,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2090,
+   "webSearchRequests": 0,
+   "costUSD": 0.00156965,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f13ade42-81b5-4697-b8a0-6e9287454633"
+}
