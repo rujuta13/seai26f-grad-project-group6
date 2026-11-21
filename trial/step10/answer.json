@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 57301,
+ "stop_reason": "end_turn",
+ "session_id": "0dad48f3-8360-4939-b15c-39a70bcc06df",
+ "total_cost_usd": 0.0241776,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 16992,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12448,
+  "output_tokens_details": {
+   "thinking_tokens": 10614
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16992,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12448,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 16992,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 16992
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14480,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014555,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12448,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16992,
+   "webSearchRequests": 0,
+   "costUSD": 0.0096226,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\n\"\"\"\nstep10: race.  Our tuner against random search, and our guesser against an\noff-the-shelf model, on the same test rows and the same yardstick.\n\nEach method picks ONE row of TEST_CSV as its best flag set. The score is\nezr.wins of that row, using the test rows' own goals: 100 at the best test\nrow, 0 at an average one, higher is better.\n\nMethods:\n  ours        our tuner: step7.choose, labelling at most the.Stop rows.\n  random      random search: label the same budget at random, keep the best.\n  ours_guess  our guesser: step4's predicted ydist (step2.guess fills the\n              goals), ranking every test row with no labels at all.\n  knn         off-the-shelf stand-in: k-nearest-neighbour regression on the\n              training rows, written with the stdlib only.\n\nThe standard library ships no tuner, so the tuner's rival is random search.\nNo third-party model is used, since only the stdlib and ezr are allowed.\n\nReuses step2 (model), step4 (_ydist), step7 (choose), and ezr (Tbl, csv,\nclone, ydist, xdist, wins, the).\n\"\"\"\nimport heapq\nimport os\nimport random\nimport tempfile\nimport ezr\nimport step2\nimport step4\nimport step7\n\nKNN_K = 5     # neighbours the knn stand-in averages\n\n\ndef _write_blind(tbl, goals) -> str:\n  \"Write TBL to a temp csv with every goal cell '?'; return its path.\"\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(str(n) for n in tbl.names) + \"\\n\")\n    for r in tbl.rows:\n      cells = [\"?\" if at in goals else v for at, v in enumerate(r)]\n      f.write(\",\".join(str(v) for v in cells) + \"\\n\")\n  return path\n\n\ndef _blind(row, goals) -> list:\n  \"ROW with its goal cells replaced by '?'.\"\n  return [\"?\" if at in goals else v for at, v in enumerate(row)]\n\n\ndef _label(tbl, goals):\n  \"An oracle for step7: row index -> {goal name: true value}.\"\n  def label(i):\n    r = tbl.rows[i]\n    return {tbl.names[at]: r[at] for at in goals}\n  return label\n\n\ndef _ours(path, tbl, goals, budget) -> int:\n  \"Our tuner: step7.choose on the blind csv. Returns a test row index.\"\n  return step7.choose(path, _label(tbl, goals), budget=budget)\n\n\ndef _random(tbl, budget, seed) -> int:\n  \"Random search: label BUDGET random rows, keep the best of them.\"\n  rng = random.Random(seed)\n  idx = rng.sample(range(len(tbl.rows)), min(budget, len(tbl.rows)))\n  lab = ezr.clone(tbl, [tbl.rows[i] for i in idx])   # stats from labelled rows\n  return min(idx, key=lambda i: ezr.ydist(lab, tbl.rows[i]))\n\n\ndef _ours_guess(train_csv, tbl, goals) -> int:\n  \"Our guesser: rank every test row by its predicted ydist. No labels.\"\n  blinds = [_blind(r, goals) for r in tbl.rows]\n  preds  = [step4._ydist(train_csv, b) for b in blinds]\n  return min(range(len(preds)), key=lambda i: preds[i])\n\n\ndef _knn(train_tbl, tbl, goals) -> int:\n  \"Off-the-shelf stand-in: kNN regression of each goal, then rank by ydist.\"\n  def predict(row) -> float:\n    near = heapq.nsmallest(KNN_K, train_tbl.rows,\n                           key=lambda t: ezr.xdist(train_tbl, row, t))\n    filled = list(row)\n    for at in goals:\n      vs = [t[at] for t in near if t[at] != \"?\"]\n      filled[at] = sum(vs) / len(vs) if vs else train_tbl.cols[at].mu\n    return ezr.ydist(train_tbl, filled)\n  preds = [predict(_blind(r, goals)) for r in tbl.rows]\n  return min(range(len(preds)), key=lambda i: preds[i])\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"Each method's pick on TEST_CSV, scored by ezr.wins. Higher is better.\"\n  test  = ezr.Tbl(ezr.csv(test_csv))\n  goals = {c.at for c in test.y}\n  if not goals:\n    raise ValueError(\"race: test_csv has no goal columns\")\n  if not test.rows:\n    raise ValueError(\"race: test_csv has no rows\")\n\n  budget = min(ezr.the.Stop, len(test.rows))\n  score  = ezr.wins(test)\n  train_tbl, _ = step2._model(train_csv)\n\n  path = _write_blind(test, goals)\n  try:\n    picks = {\n      \"ours\":       _ours(path, test, goals, budget),\n      \"random\":     _random(test, budget, ezr.the.Seed),\n      \"ours_guess\": _ours_guess(train_csv, test, goals),\n      \"knn\":        _knn(train_tbl, test, goals),\n    }\n  finally:\n    os.remove(path)\n\n  return {m: float(score(test.rows[i])) for m, i in picks.items()}\n```",
+ "ttft_ms": 50649,
+ "type": "result",
+ "duration_ms": 56335,
+ "uuid": "1689c0e4-0f36-40df-8219-1ebae159fc43",
+ "ttft_stream_ms": 1233,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
