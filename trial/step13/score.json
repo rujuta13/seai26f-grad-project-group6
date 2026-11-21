@@ -1,0 +1,10 @@
+{
+ "domain": "players",
+ "step": 13,
+ "skill": "certify",
+ "ok": true,
+ "score": 0.025,
+ "baseline": 0.5,
+ "better": "lower",
+ "extra": {}
+}
