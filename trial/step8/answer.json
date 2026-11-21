@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46391,
+ "stop_reason": "end_turn",
+ "session_id": "1a6aa3e1-447f-4c32-af52-012a7ae20304",
+ "total_cost_usd": 0.022286800000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 16503,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9840,
+  "output_tokens_details": {
+   "thinking_tokens": 8683
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16503,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9840,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 16503,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 16503
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 13976,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014066,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9840,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16503,
+   "webSearchRequests": 0,
+   "costUSD": 0.0082208,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step8.py\nimport ezr\n\nGOOD = 0.25   # a row is good if its ydist is in the best quarter of training rows\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"The inputs of ROW, with as few values changed as possible so it becomes\n  good. Each candidate is a training row whose goals are known, so every fix\n  is a configuration observed to be good. Columns named in FROZEN keep their\n  values. Returns {input name: value} over the table's input columns.\"\"\"\n  tbl    = ezr.Tbl(ezr.csv(train_csv))\n  names  = tbl.names\n  goals  = [c for c in tbl.y if type(c) is ezr.Num]\n  ins    = [c.at for c in tbl.x]\n  frozen = {frozen} if isinstance(frozen, str) else set(frozen)\n  unknown = frozen - set(names)\n  if unknown: raise ValueError(f\"fix: no column named {sorted(unknown)}\")\n  fixed  = {at for at in ins if names[at] in frozen}\n\n  def cell(v):\n    if v is None: return \"?\"\n    if isinstance(v, str):\n      s = v.strip()\n      return \"?\" if s in (\"\", \"?\") else ezr.atom(s)\n    return v\n\n  def out(v):\n    if isinstance(v, bool): return v\n    if isinstance(v, (int, float)): return float(v)\n    return v\n\n  # the query, aligned to every column; goals (if given) are ignored\n  q = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name)) for at, name in enumerate(names)]\n  elif len(row) == len(names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs: q[at] = cell(v)\n\n  # training rows with every goal known, and the ydist cutoff for good\n  def done(r): return all(isinstance(r[c.at], (int, float)) for c in goals)\n  full = [r for r in tbl.rows if goals and done(r)]\n  if not full:\n    return {names[at]: out(q[at]) for at in ins}\n  ys  = [ezr.ydist(tbl, r) for r in full]\n  cut = sorted(ys)[min(len(ys) - 1, int(GOOD * (len(ys) - 1)))]\n\n  # candidates: known rows that agree with every frozen input, and whose\n  # changed values are real (never a blank \"?\")\n  cands = []\n  for y, g in zip(ys, full):\n    if any(g[at] != q[at] for at in fixed): continue\n    diff = [at for at in ins if at not in fixed and g[at] != q[at]]\n    if any(g[at] == \"?\" for at in diff): continue\n    cands.append((y, len(diff), g))\n\n  good = [c for c in cands if c[0] <= cut]\n  if good:                  # fewest changed values first, then lowest ydist\n    _, _, g = min(good, key=lambda c: (c[1], c[0]))\n  elif cands:               # no fix reaches good: the closest one we can get\n    _, _, g = min(cands, key=lambda c: (c[0], c[1]))\n  else:                     # no known row fits the frozen columns: no change\n    g = q\n\n  return {names[at]: out(g[at]) for at in ins}\n```",
+ "ttft_ms": 41857,
+ "type": "result",
+ "duration_ms": 45434,
+ "uuid": "c3585f4b-e3e7-4685-b041-18c40293f49f",
+ "ttft_stream_ms": 1547,
+ "time_to_request_ms": 135,
+ "queued_turn_count": 0
+}
