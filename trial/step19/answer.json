@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 22335,
+ "stop_reason": "end_turn",
+ "session_id": "d02e408d-23ad-434c-9f03-3830cfa1e795",
+ "total_cost_usd": 0.044270199999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 39510,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5786,
+  "output_tokens_details": {
+   "thinking_tokens": 3458
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39510,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5786,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 39510,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 39510
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33400,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033475,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5786,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39510,
+   "webSearchRequests": 0,
+   "costUSD": 0.010795200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 19: spot rows that look like data-entry mistakes or are unlike the training data.\n\nodd(train_csv, rows) returns one suspicion score per row, goals included.\nHigher means more likely a glitch, a typo, or a build unlike anything in\ntrain_csv. Two parts are added:\n\n1. Goal glitches. Each goal is centred on its training median and scaled by\n   its training median absolute deviation (times 1.4826, so it matches a\n   standard deviation for normal data). The part of a robust z-score beyond\n   _TOL is added to the score. A goal cell that is missing, non-numeric or\n   not finite adds _BAD_CELL, since a measurement that did not parse is a\n   likely glitch.\n2. Input novelty. The row's inputs are compared with every training row\n   (numeric inputs are scaled by their training range, other values must\n   match exactly). The distance to the nearest training row is divided by\n   the typical leave-one-out nearest-neighbour distance among training rows,\n   so about 1 is ordinary and larger means unlike anything measured.\n\nThe scores rank rows for checking first. They are not calibrated probabilities.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\n_TOL = 3.0          # robust z-scores up to this are normal variation\n_BAD_CELL = 10.0    # penalty for a goal cell that is missing or not a finite number\n_PROBES = 200       # training rows used to estimate typical nearest-neighbour distance\n_MAD_TO_SD = 1.4826 # scales a median absolute deviation to a standard deviation\n_MEAN_AD_TO_SD = 1.2533\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not (_is_goal(c) or c.endswith(\"X\"))\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _level(v):\n    \"\"\"Comparable key for an input cell: finite float, non-blank string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _median(vals):\n    \"\"\"Median of a non-empty list.\"\"\"\n    s = sorted(vals)\n    m = len(s)\n    mid = m // 2\n    if m % 2:\n        return s[mid]\n    return (s[mid - 1] + s[mid]) / 2.0\n\n\ndef _goal_stats(train, goals):\n    \"\"\"Return {goal: (median, robust scale)} from the training rows.\"\"\"\n    stats = {}\n    for c in goals:\n        vals = [f for f in (_finite(r.get(c)) for r in train) if f is not None]\n        if not vals:\n            continue\n        med = _median(vals)\n        scale = _MAD_TO_SD * _median([abs(v - med) for v in vals])\n        if scale <= 0.0:\n            # Fall back to mean absolute deviation, scaled to sd for normal data.\n            scale = _MEAN_AD_TO_SD * sum(abs(v - med) for v in vals) / len(vals)\n        if scale <= 0.0:\n            # Constant column: any real change is still a large deviation.\n            scale = 0.01 * max(abs(med), 1.0)\n        stats[c] = (med, scale)\n    return stats\n\n\ndef _goal_part(r, goals, stats):\n    \"\"\"Goal-glitch part of the suspicion score for one row.\"\"\"\n    total = 0.0\n    for c in goals:\n        f = _finite(r.get(c))\n        if f is None:\n            total += _BAD_CELL\n            continue\n        if c not in stats:\n            continue\n        med, scale = stats[c]\n        z = abs(f - med) / scale\n        if z > _TOL:\n            total += z - _TOL\n    return total\n\n\ndef _spans(train, inputs):\n    \"\"\"Training range of each numeric input column (0.0 if none).\"\"\"\n    spans = {}\n    for c in inputs:\n        nums = [v for v in (_level(r.get(c)) for r in train) if isinstance(v, float)]\n        spans[c] = (max(nums) - min(nums)) if nums else 0.0\n    return spans\n\n\ndef _dist(a, b, inputs, spans):\n    \"\"\"Mean per-column difference in [0, 1] between two level dicts.\"\"\"\n    if not inputs:\n        return 0.0\n    d = 0.0\n    for c in inputs:\n        x = a[c]\n        y = b[c]\n        if isinstance(x, float) and isinstance(y, float):\n            s = spans[c]\n            if s > 0.0:\n                d += min(1.0, abs(x - y) / s)\n            elif x != y:\n                d += 1.0\n        elif x != y:\n            d += 1.0\n    return d / len(inputs)\n\n\ndef _typical_nn(tl, inputs, spans):\n    \"\"\"Typical leave-one-out nearest-neighbour distance among training rows.\n\n    Estimated on a spread of probe rows and floored so duplicate flag sets\n    do not make the novelty ratio blow up.\n    \"\"\"\n    n = len(tl)\n    if not inputs or n == 0:\n        return 1.0\n    step = max(1, n // _PROBES)\n    probes = list(range(0, n, step))[:_PROBES]\n    nn = []\n    for p in probes:\n        best = math.inf\n        for j in range(n):\n            if j != p:\n                d = _dist(tl[p], tl[j], inputs, spans)\n                if d < best:\n                    best = d\n        if best < math.inf:\n            nn.append(best)\n    floor = 0.5 / len(inputs)\n    return max(_median(nn) if nn else 0.0, floor)\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included), in input order.\n\n    Higher means more likely a glitch, a typo, or unlike anything in\n    train_csv. Each score is the sum of a goal-glitch part and an input\n    novelty part (see the module docstring). An empty `rows` gives [].\n    \"\"\"\n    header, train = _load(train_csv)\n    rows = list(rows)\n    if not rows:\n        return []\n\n    goals = [c for c in header if _is_goal(c)]\n    inputs = [c for c in header if _is_input(c)]\n\n    stats = _goal_stats(train, goals)\n    spans = _spans(train, inputs)\n    tl = [{c: _level(r.get(c)) for c in inputs} for r in train]\n    typical = _typical_nn(tl, inputs, spans)\n\n    out = []\n    for r in rows:\n        total = _goal_part(r, goals, stats)\n        if inputs and tl:\n            rl = {c: _level(r.get(c)) for c in inputs}\n            nn = min(_dist(rl, t, inputs, spans) for t in tl)\n            total += nn / typical\n        out.append(float(total))\n    return out\n```",
+ "ttft_ms": 14587,
+ "type": "result",
+ "duration_ms": 21108,
+ "uuid": "96228c0a-c63e-4580-be4c-21bcb2a9c5e7",
+ "ttft_stream_ms": 1437,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
