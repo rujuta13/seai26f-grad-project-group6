@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 35639,
+ "stop_reason": "end_turn",
+ "session_id": "f52dc37d-3dc9-4e53-bb41-ee18fba01697",
+ "total_cost_usd": 0.0313962,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26340,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8070,
+  "output_tokens_details": {
+   "thinking_tokens": 6523
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26340,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8070,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26340,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26340
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22023,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022093,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8070,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26340,
+   "webSearchRequests": 0,
+   "costUSD": 0.009303200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step12.py: guess the goals of an unbenchmarked row, with calibrated confidence.\n\nStandard library only (Python 3.13). Reuses step2 (training model, the kNN\npoint estimate guess() and _K, _model, _quantile) and nothing else.\n\nstep2.guess gives each goal's median over the nearest training rows and a\n10th..90th percentile band. That band only reflects how much those rows\ndisagree with each other, which is often too narrow: a build can be unlike\nits neighbours on a goal without the neighbours disagreeing at all.\n\nThis step widens the band using the training file itself. For a sample of\ntraining rows, each goal is predicted from the other rows (leave one out)\nand the absolute errors are recorded. Their 80th percentile is a half-width\nthat should hold for about 4 in 5 unseen rows. The reported band is the\nestimate plus or minus the larger of that half-width and the neighbours' own\nspread, so low..high is meant to be a range the true value falls in about\n80% of the time. When a goal has no usable neighbour values, the estimate\nand both bounds are nan.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport random\n\nfrom step2 import _K, _model, _quantile\nfrom step2 import guess as _neighbour_guess\n\n_COVER = 0.80       # share of unseen rows the band should hold\n_CAL_SAMPLE = 300   # training rows used for the leave-one-out errors\n_SEED = 1\n\n_cal_cache: dict[str, dict[str, float]] = {}\n\n\ndef _knn_median(order: list[tuple[float, int]], values: list[float | None],\n                skip: int) -> float | None:\n    \"\"\"Median of the goal values of the _K nearest rows, skipping row `skip`.\"\"\"\n    picked: list[float] = []\n    for _, i in order:\n        if i == skip:\n            continue\n        v = values[i]\n        if v is not None:\n            picked.append(v)\n            if len(picked) == _K:\n                break\n    if not picked:\n        return None\n    return _quantile(sorted(picked), 0.5)\n\n\ndef _widths(key: str) -> dict[str, float]:\n    \"\"\"Calibrated half-width per goal, from leave-one-out errors on training.\"\"\"\n    cached = _cal_cache.get(key)\n    if cached is not None:\n        return cached\n\n    model = _model(key)\n    Z = model[\"Z\"]\n    goal_vals = model[\"goal_vals\"]\n    names = model[\"goal_names\"]\n    n = len(Z)\n\n    errors: list[list[float]] = [[] for _ in names]\n    if n >= 2:\n        rng = random.Random(_SEED)\n        idx = sorted(rng.sample(range(n), min(n, _CAL_SAMPLE)))\n        for i in idx:\n            zi = Z[i]\n            order = sorted((math.dist(zi, z), j) for j, z in enumerate(Z))\n            for g, values in enumerate(goal_vals):\n                truth = values[i]\n                if truth is None:\n                    continue\n                pred = _knn_median(order, values, i)\n                if pred is not None:\n                    errors[g].append(abs(pred - truth))\n\n    widths: dict[str, float] = {}\n    for g, name in enumerate(names):\n        errs = sorted(errors[g])\n        widths[name] = _quantile(errs, _COVER) if errs else math.nan\n\n    _cal_cache[key] = widths\n    return widths\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of an unbenchmarked row, with a confidence band.\n\n    `row` is a dict {input column name: value} with the goal columns removed.\n    Returns {goal: (estimate, low, high)}. The estimate is the kNN median from\n    step2.guess. low..high is meant to hold the true value about 80% of the\n    time: it is the estimate plus or minus the larger of the neighbours'\n    spread and the leave-one-out error of the training file. A goal with no\n    usable neighbour values gets (nan, nan, nan).\n    \"\"\"\n    key = os.fspath(train_csv)\n    widths = _widths(key)\n    base = _neighbour_guess(key, row)\n\n    out: dict[str, tuple[float, float, float]] = {}\n    for name, (est, lo, hi) in base.items():\n        if math.isnan(est):\n            out[name] = (math.nan, math.nan, math.nan)\n            continue\n        spread = max(est - lo, hi - est, 0.0)\n        cal = widths.get(name, math.nan)\n        half = max(spread, cal) if math.isfinite(cal) else spread\n        out[name] = (est, est - half, est + half)\n    return out\n```",
+ "ttft_ms": 29987,
+ "type": "result",
+ "duration_ms": 34526,
+ "uuid": "b36e53f0-6876-4db6-a559-2e3d8c575d7c",
+ "ttft_stream_ms": 1355,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
