@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28867,
+ "stop_reason": "end_turn",
+ "session_id": "a8eb5e63-3e5a-45c9-83ae-ba52d2935c02",
+ "total_cost_usd": 0.0360818,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 31658,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7032,
+  "output_tokens_details": {
+   "thinking_tokens": 5177
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 31658,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7032,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 31658,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 31658
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26169,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026234,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7032,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 31658,
+   "webSearchRequests": 0,
+   "costUSD": 0.0098478,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep30.py: race.  Our targeting and our response guesser against the rivals\nthe client named, on test_csv.\n\n  \"Does our targeting beat simply mailing our highest-income customers?\"\n      ours        step7.choose (ezr.acquire under a label budget); score is\n                  the true ydist of the chosen customer (0 is ideal).\n      income_top  the BUDGET customers with the highest INCOME, labelled, and\n                  the best one picked by the same rule as step7.\n      random      a random sample of BUDGET customers, best one picked.\n\n  \"Does our response guesser beat an off-the-shelf model?\"\n      response_ours  step2.guess's median estimate of RESPONSE+.\n      response_ols   the ridge model's predicted RESPONSE+ (step10).\n\nEvery score is lower-is-better.  Targeting scores are the true ydist of the\nchosen customer (0 is ideal).  Response scores are the mean |guess - truth|\nfor RESPONSE+, in training standard-deviation units.\nReuses step2 (guess), step7 (choose), step10 (blind writer, ridge model) and\nezr for tables and distance.\n\"\"\"\nimport os, random, tempfile\nimport ezr\nimport step2, step7, step10\n\nINCOME = \"INCOME\"      # the simple rival's rating column (an input)\nRESP   = \"RESPONSE+\"   # the goal the response guesser is judged on\n\ndef _at(tbl, name: str) -> int:\n  \"Column index of the column named NAME in TBL, or raise.\"\n  if name not in tbl.names:\n    raise ValueError(f\"no column named {name!r} in {tbl.names}\")\n  return tbl.names.index(name)\n\ndef _resp_col(tbl):\n  \"The RESPONSE+ goal column of TBL, or raise.\"\n  for c in tbl.y:\n    if c.txt == RESP: return c\n  raise ValueError(f\"no goal named {RESP!r} in {[c.txt for c in tbl.y]}\")\n\ndef _top_income(full, budget: int) -> list[int]:\n  \"Indices of the BUDGET rows with the highest INCOME: the simple rival.\"\n  at = _at(full, INCOME)\n  def income(i):\n    v = full.rows[i][at]\n    return v if v != \"?\" else float(\"-inf\")\n  return sorted(range(len(full.rows)), key=income, reverse=True)[:budget]\n\ndef _pick(full, idx: list[int]) -> int:\n  \"The best of the labelled rows IDX, judged on those labels alone (as step7 does).\"\n  scorer = ezr.clone(full, [full.rows[i] for i in idx])\n  return min(idx, key=lambda i: ezr.ydist(scorer, full.rows[i]))\n\ndef _score(full, i: int) -> float:\n  \"The real ydist of test row I (all goals known here): lower is better.\"\n  return ezr.ydist(full, full.rows[i])\n\ndef _resp_error(train, full, guesses: list[float]) -> float:\n  \"Mean |guess - truth| for RESPONSE+, in training sd units.\"\n  truth = _resp_col(full).at\n  sd    = _resp_col(train).sd or 1\n  errs  = [abs(g - r[truth]) / sd\n           for r, g in zip(full.rows, guesses) if r[truth] != \"?\"]\n  return sum(errs) / len(errs) if errs else 0.0\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Targeting and response scores on test_csv, one entry per method; lower is better.\"\n  random.seed(ezr.the.Seed)\n  train   = ezr.Tbl(ezr.csv(train_csv))\n  full    = ezr.Tbl(ezr.csv(test_csv))\n  n       = len(full.rows)\n  if n == 0: raise ValueError(\"no rows in test_csv\")\n  names   = full.names\n  goal_at = [c.at for c in full.y]\n  goal_nm = {names[at] for at in goal_at}\n  budget  = min(ezr.the.Stop, n)\n\n  def label(i) -> dict:\n    \"Reveal test row I's goals, in the form step7's oracle expects.\"\n    return {names[at]: full.rows[i][at] for at in goal_at}\n\n  out = {}\n\n  # ours: ezr.acquire under a label budget, via step7.choose\n  with tempfile.TemporaryDirectory() as d:\n    blind = os.path.join(d, \"blind.csv\")\n    step10._write_blind(full, goal_at, blind)\n    out[\"ours\"] = _score(full, step7.choose(blind, label, budget))\n\n  # rivals for targeting\n  out[\"income_top\"] = _score(full, _pick(full, _top_income(full, budget)))\n  out[\"random\"]     = _score(full, _pick(full, random.sample(range(n), budget)))\n\n  # response guesser: ours versus the ridge model\n  inputs = [{names[at]: v for at, v in enumerate(r) if names[at] not in goal_nm}\n            for r in full.rows]\n  ours_resp = [step2.guess(train_csv, inp)[RESP][0] for inp in inputs]\n  feats, betas = step10._ols(train)\n  ols_resp = [step10._predict(feats, betas, r)[RESP] for r in full.rows]\n\n  out[\"response_ours\"] = _resp_error(train, full, ours_resp)\n  out[\"response_ols\"]  = _resp_error(train, full, ols_resp)\n  return out\n```",
+ "ttft_ms": 22427,
+ "type": "result",
+ "duration_ms": 27573,
+ "uuid": "e5c7957b-1465-4efd-908f-c4514b55e750",
+ "ttft_stream_ms": 1207,
+ "time_to_request_ms": 21,
+ "queued_turn_count": 0
+}
