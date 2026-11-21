@@ -1,0 +1,16 @@
+{
+ "domain": "ssw",
+ "step": 10,
+ "skill": "race",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "ours": 0.8368677960051105,
+  "random_search": 0.6778328766950354,
+  "hill_climb": 0.7553270591378536,
+  "guesser_ours": -0.10274029050259229,
+  "guesser_ridge": -0.07103830863246328
+ }
+}

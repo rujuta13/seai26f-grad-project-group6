@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 74411,
+ "stop_reason": "end_turn",
+ "session_id": "61be98c1-cb6f-414f-b367-2307c238cc87",
+ "total_cost_usd": 0.0254985,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 16069,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 17533,
+  "output_tokens_details": {
+   "thinking_tokens": 14463
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16069,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 17533,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 16069,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 16069
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 13428,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.013518,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 17533,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16069,
+   "webSearchRequests": 0,
+   "costUSD": 0.011980500000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 10: race. Our tuner and guesser against stdlib-only rivals.\n\nTuner race (higher is better): each method gets BUDGET label calls on the\nrows of test_csv and returns the build it picks. The score is that build's\nmean normalised goal value over all test rows (0 = worst, 1 = best), so\n\"ours\" is step 7's choose(). Rivals:\n  - random_search: BUDGET distinct random builds, same answer rule.\n  - hill_climb: Python's standard library ships no autotuner, so this\n    stand-in uses only `random`: a nearest-neighbour local search with random\n    restarts, ranked by the same answer rule.\n\nGuesser race (higher is better): the score is the negative mean absolute\nerror, in units of each goal's training span, of predicted goal values on\ntest_csv. The guesser is step 2's guess(). Its rival is a ridge regression\nfitted on the same encoded inputs. The standard library has no off-the-shelf\nregression model, so the ridge fit is implemented here with the normal\nequations and Gaussian elimination.\n\nScores in one dict are on different scales (tuner in [0, 1], guesser at most\n0). Compare methods within each family only.\n\"\"\"\n\nimport random\n\nfrom step1 import (\n    SEED,\n    _load,\n    _columns,\n    _input_matrix,\n    _normalised_goals,\n    _pareto_layers,\n    _sqdist,\n)\nfrom step2 import _model, guess\nfrom step4 import _goal_bounds\nfrom step7 import choose, _bounds as _measured_bounds, _mean_scaled\n\n\nBUDGET = 30          # benchmark calls given to every tuner\nRESTART_PROB = 0.2   # hill climber: chance of a random (not nearest) next pick\nRIDGE = 1e-3         # ridge penalty of the off-the-shelf regression\n\nTUNER_KEYS = (\"ours\", \"random_search\", \"hill_climb\")\nGUESS_KEYS = (\"guesser_ours\", \"guesser_ridge\")\n\n\ndef _pick(measured, goals):\n    \"\"\"Step 7's answer rule on {row index: goal values}: Pareto front first,\n    then highest mean normalised score, then lowest index.\"\"\"\n    done = sorted(measured)\n    norm = _normalised_goals([measured[i] for i in done], goals)\n    layer_of = _pareto_layers(norm)\n    score = [sum(p) / len(p) for p in norm]\n    front = [k for k in range(len(done)) if layer_of[k] == 0]\n    best_k = min(front, key=lambda k: (-score[k], done[k]))\n    return done[best_k]\n\n\ndef _hill_climb(points, label, goals, budget, rng):\n    \"\"\"Nearest-neighbour local search with random restarts.\n\n    Each step moves to the unmeasured build nearest the best build so far\n    (or, with probability RESTART_PROB, to a random unmeasured build).\n    Returns {row index: goal values} for the measured builds.\"\"\"\n    n = len(points)\n    m = len(goals)\n    limit = min(budget, n)\n    measured = {}\n\n    def measure(i):\n        if i not in measured:\n            measured[i] = {name: float(v) for name, v in label(i).items()}\n\n    def signed(i):\n        return [sign * measured[i][name] for name, sign in goals]\n\n    def incumbent():\n        done = sorted(measured)\n        lo, hi = _measured_bounds([signed(i) for i in done], m)\n        return max(done, key=lambda i: (_mean_scaled(signed(i), lo, hi), -i))\n\n    measure(rng.randrange(n))\n    while len(measured) < limit:\n        unmeasured = [i for i in range(n) if i not in measured]\n        if rng.random() < RESTART_PROB:\n            pick = rng.choice(unmeasured)\n        else:\n            cur = points[incumbent()]\n            pick = min(unmeasured, key=lambda i: (_sqdist(points[i], cur), i))\n        measure(pick)\n    return measured\n\n\ndef _solve(A, B):\n    \"\"\"Solve A X = B by Gauss-Jordan elimination with partial pivoting.\n    A is d x d, B is d x m; returns X as d x m.\"\"\"\n    d = len(A)\n    M = [A[i][:] + B[i][:] for i in range(d)]\n    for col in range(d):\n        piv = max(range(col, d), key=lambda r: abs(M[r][col]))\n        M[col], M[piv] = M[piv], M[col]\n        p = M[col][col]\n        if p == 0.0:\n            continue\n        M[col] = [v / p for v in M[col]]\n        for r in range(d):\n            if r != col and M[r][col] != 0.0:\n                f = M[r][col]\n                M[r] = [a - f * b for a, b in zip(M[r], M[col])]\n    return [row[d:] for row in M]\n\n\ndef _ridge_fit(X, Y, lam):\n    \"\"\"Ridge coefficients W (d x m) for rows X (with bias column first) and\n    targets Y. The bias is not penalised.\"\"\"\n    d = len(X[0])\n    m = len(Y[0])\n    A = [[0.0] * d for _ in range(d)]\n    B = [[0.0] * m for _ in range(d)]\n    for x, y in zip(X, Y):\n        for a in range(d):\n            xa = x[a]\n            if xa:\n                ra = A[a]\n                for b in range(d):\n                    ra[b] += xa * x[b]\n                rb = B[a]\n                for g in range(m):\n                    rb[g] += xa * y[g]\n    for a in range(1, d):\n        A[a][a] += lam\n    return _solve(A, B)\n\n\ndef _linear_predict(W, x):\n    m = len(W[0])\n    return [sum(xa * W[a][g] for a, xa in enumerate(x)) for g in range(m)]\n\n\ndef _guesser_scores(train_csv, rows, inputs, names):\n    \"\"\"Negative mean absolute error (in training spans) of step 2's guess\n    and of the ridge rival, on the rows of the test file.\"\"\"\n    model = _model(train_csv)\n    spans = [hi - lo if hi - lo > 0 else 1.0 for lo, hi in _goal_bounds(model)]\n    total = len(rows) * len(names)\n\n    err = 0.0\n    for r in rows:\n        probe = {c: r[c] for c in inputs}\n        est = guess(train_csv, probe)\n        for g, name in enumerate(names):\n            err += abs(est[name][0] - r[name]) / spans[g]\n    ours = -err / total\n\n    # Encode train and test together so that training codes match\n    # model[\"points\"], as step 2 does.\n    train_rows = model[\"rows\"]\n    k = len(train_rows)\n    feats = _input_matrix(train_rows + rows, inputs)\n    X = [[1.0] + x for x in feats[:k]]\n    W = _ridge_fit(X, model[\"targets\"], RIDGE)\n\n    err = 0.0\n    for x, r in zip(feats[k:], rows):\n        pred = _linear_predict(W, [1.0] + x)\n        for g, name in enumerate(names):\n            err += abs(pred[g] - r[name]) / spans[g]\n    ridge = -err / total\n\n    return {\"guesser_ours\": ours, \"guesser_ridge\": ridge}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores for our tuner and guesser and their rivals on test_csv.\n\n    Tuner keys (mean normalised goal value of the build picked, higher is\n    better): \"ours\", \"random_search\", \"hill_climb\".\n    Guesser keys (negative mean normalised absolute error, higher is better):\n    \"guesser_ours\", \"guesser_ridge\".\n    \"\"\"\n    header, rows = _load(test_csv)\n    inputs, goals = _columns(header)\n    n = len(rows)\n    names = [name for name, _ in goals]\n    keys = TUNER_KEYS + GUESS_KEYS\n    if n == 0 or not goals:\n        return {k: 0.0 for k in keys}\n\n    # True quality of every test build, normalised over the test file.\n    truth = [sum(p) / len(p) for p in _normalised_goals(rows, goals)]\n\n    def label(i):\n        return {name: rows[i][name] for name in names}\n\n    results = {}\n\n    # Our tuner (step 7).\n    results[\"ours\"] = truth[choose(test_csv, label, budget=BUDGET)]\n\n    # Random search with the same budget and answer rule.\n    rng = random.Random(SEED)\n    picks = rng.sample(range(n), min(BUDGET, n))\n    results[\"random_search\"] = truth[_pick({i: label(i) for i in picks}, goals)]\n\n    # Stdlib-only hill climber.\n    rng = random.Random(SEED)\n    points = _input_matrix(rows, inputs)\n    results[\"hill_climb\"] = truth[\n        _pick(_hill_climb(points, label, goals, BUDGET, rng), goals)\n    ]\n\n    # Guesser (step 2) against the ridge regression rival.\n    results.update(_guesser_scores(train_csv, rows, inputs, names))\n\n    return {k: float(results[k]) for k in keys}\n```",
+ "ttft_ms": 63918,
+ "type": "result",
+ "duration_ms": 73360,
+ "uuid": "9018e1d5-d18e-4f6c-b90e-8a1ebb16e84f",
+ "ttft_stream_ms": 2210,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
