@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 79175,
+ "stop_reason": "end_turn",
+ "session_id": "82df34c6-70fe-433a-80ba-e1e2be11b9e3",
+ "total_cost_usd": 0.0322666,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 22242,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 18230,
+  "output_tokens_details": {
+   "thinking_tokens": 14909
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22242,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 18230,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 22242,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 22242
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18638,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018702999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 18230,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22242,
+   "webSearchRequests": 0,
+   "costUSD": 0.013563600000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\n\"\"\"Step 10: race.  Race our tuner against random search and a stdlib-only\nlocal search, and our guesser against an off-the-shelf linear model.\n\nEvery score is lower-is-better.  Tuner scores are the ydist (distance from\nthe ideal, 0 is best) of the build each method picks from TEST_CSV.  Guesser\nscores are the mean normalised goal error over test rows (0 is best).  The\nkeys are: \"ours\" (our tuner, step7), \"random_search\", \"local_search\",\n\"guess_ours\" (our guesser, step2) and \"linear_ridge\".\n\nThe client's \"build speed\" is not a column of its own, so the guesser score\naverages over every goal column.\n\nUses only the standard library plus ezr, and our earlier steps 2 and 7.\nThe standard library ships no tuner or regressor, so the rivals are:\n  random_search  label BUDGET random builds, keep the best.\n  local_search   start at a random build, then repeatedly label the\n                 unlabelled build nearest the best one so far.\n  linear_ridge   least-squares linear regression with a small ridge\n                 penalty, solved in pure Python.\n\"\"\"\nimport math\nimport os\nimport random\nimport statistics\nimport tempfile\nimport ezr\nimport step2\nimport step7\n\nBUDGET = 30     # labels each tuner may spend, as in step7\nRIDGE  = 1e-3   # ridge penalty for the linear rival\nKEYS   = (\"ours\", \"random_search\", \"local_search\",\n          \"guess_ours\", \"linear_ridge\")\n\n\ndef _load(path: str) -> ezr.TBL:\n  \"Read PATH into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(path))\n\n\ndef _mean(xs: list[float]) -> float:\n  \"Mean of XS, or infinity if there is nothing to score.\"\n  return sum(xs) / len(xs) if xs else math.inf\n\n\ndef _blind(tbl: ezr.TBL, path: str) -> None:\n  \"Write TBL to PATH with every goal cell '?', so the tuner cannot peek.\"\n  goal_at = {c.at for c in tbl.y}\n  with open(path, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(str(n) for n in tbl.names) + \"\\n\")\n    for row in tbl.rows:\n      cells = [\"?\" if at in goal_at else str(v)\n               for at, v in enumerate(row)]\n      f.write(\",\".join(cells) + \"\\n\")\n\n\ndef _near(tbl: ezr.TBL, a: int, b: int) -> float:\n  \"Distance between rows A and B of TBL over the x columns (0 if none).\"\n  return ezr.xdist(tbl, tbl.rows[a], tbl.rows[b]) if tbl.x else 0.0\n\n\ndef _local(tbl: ezr.TBL, ys: list[float], budget: int,\n           rng: random.Random) -> float:\n  \"Local search: label the nearest unlabelled build to the best so far.\"\n  n    = len(tbl.rows)\n  best = rng.randrange(n)\n  done = {best}\n  while len(done) < budget:\n    nxt = min((z for z in range(n) if z not in done),\n              key=lambda z: (_near(tbl, best, z), z))\n    done.add(nxt)\n    if ys[nxt] < ys[best]: best = nxt\n  return min(ys[i] for i in done)\n\n\ndef _guess_error(train_csv: str, train: ezr.TBL,\n                 test: ezr.TBL) -> float:\n  \"Mean normalised goal error of step2's guesses over the test rows.\"\n  errs = []\n  for r in test.rows:\n    d    = dict(zip(test.names, r))\n    flags = {c.txt: d.get(c.txt, \"?\") for c in train.x}\n    est  = step2.guess(train_csv, flags)\n    for c in train.y:\n      if not isinstance(c, ezr.Num) or c.txt not in est: continue\n      actual = d.get(c.txt, \"?\")\n      if not isinstance(actual, (int, float)): continue\n      errs.append(abs(ezr.norm(c, est[c.txt][0])\n                      - ezr.norm(c, actual)))\n  return _mean(errs)\n\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [A[i][:] + [b[i]] for i in range(n)]\n  for col in range(n):\n    piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n    M[col], M[piv] = M[piv], M[col]\n    if abs(M[col][col]) < 1e-12: continue\n    for r in range(n):\n      if r != col and M[r][col] != 0.0:\n        f = M[r][col] / M[col][col]\n        M[r] = [a - f * c for a, c in zip(M[r], M[col])]\n  return [M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n          for i in range(n)]\n\n\ndef _ridge(X: list[list[float]], y: list[float]) -> list[float]:\n  \"Ridge least squares: weights w minimising |Xw - y|^2 + RIDGE |w|^2.\"\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  b = [0.0] * p\n  for x, t in zip(X, y):\n    for i in range(p):\n      b[i] += x[i] * t\n      xi, Ai = x[i], A[i]\n      for j in range(p):\n        Ai[j] += xi * x[j]\n  for i in range(p): A[i][i] += RIDGE\n  return _solve(A, b)\n\n\ndef _linear(train: ezr.TBL, test: ezr.TBL) -> float:\n  \"Off-the-shelf rival: linear regression on the flags, one model per goal.\"\n  xs     = list(train.x)\n  levels = {c.txt: sorted({r[c.at] for r in train.rows if r[c.at] != \"?\"},\n                          key=str)\n            for c in xs if not isinstance(c, ezr.Num)}\n  means  = {}\n  for c in xs:\n    if isinstance(c, ezr.Num):\n      known = [r[c.at] for r in train.rows\n               if isinstance(r[c.at], (int, float))]\n      means[c.txt] = sum(known) / len(known) if known else 0.0\n\n  def feats(d: dict) -> list[float]:\n    \"Numbers for one row: a bias, numeric cells, and one-hot symbols.\"\n    out = [1.0]\n    for c in xs:\n      v = d.get(c.txt, \"?\")\n      if isinstance(c, ezr.Num):\n        out.append(float(v) if isinstance(v, (int, float))\n                   else means[c.txt])\n      else:\n        out += [1.0 if v == s else 0.0 for s in levels[c.txt]]\n    return out\n\n  X      = [feats(dict(zip(train.names, r))) for r in train.rows]\n  models = {}\n  for c in train.y:\n    if not isinstance(c, ezr.Num): continue\n    pairs = [(x, r[c.at]) for x, r in zip(X, train.rows)\n             if isinstance(r[c.at], (int, float))]\n    if not pairs: continue\n    gs = [g for _, g in pairs]\n    mu = sum(gs) / len(gs)\n    sd = statistics.pstdev(gs) or 1.0\n    w  = _ridge([x for x, _ in pairs], [(g - mu) / sd for g in gs])\n    models[c.txt] = (w, mu, sd)\n\n  errs = []\n  for r in test.rows:\n    d = dict(zip(test.names, r))\n    x = feats(d)\n    for c in train.y:\n      if c.txt not in models: continue\n      actual = d.get(c.txt, \"?\")\n      if not isinstance(actual, (int, float)): continue\n      w, mu, sd = models[c.txt]\n      pred = mu + sd * sum(a * b for a, b in zip(w, x))\n      errs.append(abs(ezr.norm(c, pred) - ezr.norm(c, actual)))\n  return _mean(errs)\n\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"\"\"Score each method on TEST_CSV, lower is better.  The tuners each spend\n  at most BUDGET labels picking a build; \"ours\" is step7.choose.  The\n  guessers are scored on how close their goal guesses land to the truth.\n  TRAIN_CSV is used only by the guessers.  Always includes the key \"ours\".\"\"\"\n  train = _load(train_csv)\n  test  = _load(test_csv)\n  if not test.rows or not test.y or not train.y:\n    return {k: math.inf for k in KEYS}\n  rng    = random.Random(ezr.the.Seed)\n  n      = len(test.rows)\n  budget = min(BUDGET, n)\n  ys     = [ezr.ydist(test, r) for r in test.rows]\n  out    = {}\n\n  with tempfile.TemporaryDirectory() as tmp:\n    path = os.path.join(tmp, \"blind.csv\")\n    _blind(test, path)\n\n    def label(i: int) -> dict:\n      \"Reveal the goals of test build I, as an oracle would.\"\n      return {c.txt: test.rows[i][c.at] for c in test.y}\n\n    out[\"ours\"] = ys[step7.choose(path, label, budget=budget)]\n\n  out[\"random_search\"] = min(ys[i] for i in rng.sample(range(n), budget))\n  out[\"local_search\"]  = _local(test, ys, budget, rng)\n  out[\"guess_ours\"]    = _guess_error(train_csv, train, test)\n  out[\"linear_ridge\"]  = _linear(train, test)\n  return out\n```",
+ "ttft_ms": 68552,
+ "type": "result",
+ "duration_ms": 78210,
+ "uuid": "554437bc-b458-4d32-8aac-cf99cca52846",
+ "ttft_stream_ms": 1232,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
