@@ -1,0 +1,13 @@
+{
+ "domain": "players",
+ "step": 18,
+ "skill": "fix",
+ "ok": true,
+ "score": 0.8607407369876292,
+ "baseline": 0.8607407369876292,
+ "better": "lower",
+ "extra": {
+  "mean_changes": 0.8,
+  "frozen_respected": true
+ }
+}
