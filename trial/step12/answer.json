@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 14926,
+ "stop_reason": "end_turn",
+ "session_id": "f975ba18-a0ed-4de0-b513-008a0176a3f0",
+ "total_cost_usd": 0.022339700000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20260,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2697,
+  "output_tokens_details": {
+   "thinking_tokens": 2182
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20260,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2697,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20260,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20260
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16854,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016939000000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2697,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20260,
+   "webSearchRequests": 0,
+   "costUSD": 0.0054007,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 12: guess. Estimate each goal of an unseen player and say how sure we are.\n\nStandard library only. The estimator, the calibrated confidence band and the\ninput encoding are reused from step2 (which uses step1). This module adds only\nthe checks the client needs:\n\n- Only the input columns of the query are used, so goal cells are never read.\n- A query that is missing an input column is rejected with a clear error,\n  instead of silently filling that column with 0 as step2.guess does.\n\nThe band low..high is the 5th to 95th percentile of leave-one-out residuals\nmeasured on the training data, so it is the range the true value should fall\nin for about 90% of players like this one.\n\"\"\"\n\nfrom step2 import _model, guess as _guess\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for an unseen player.\n\n    `row` holds the input columns only (goal columns removed). Returns\n    {goal: (estimate, low, high)} for every goal column of train_csv.\n    Raises ValueError if an input column of train_csv is absent from row.\n    \"\"\"\n    model = _model(train_csv)\n    inputs = model[\"inputs\"]\n    goal_names = [name for name, _ in model[\"goals\"]]\n\n    missing = [c for c in inputs if c not in row]\n    if missing:\n        raise ValueError(\"row is missing input columns: \" + \", \".join(missing))\n\n    query = {c: row[c] for c in inputs}\n    result = _guess(train_csv, query)\n    return {name: result[name] for name in goal_names}\n```",
+ "ttft_ms": 12095,
+ "type": "result",
+ "duration_ms": 13801,
+ "uuid": "9db2fd66-18e5-4ca7-abc6-18e7c1b33f44",
+ "ttft_stream_ms": 1436,
+ "time_to_request_ms": 90,
+ "queued_turn_count": 0
+}
