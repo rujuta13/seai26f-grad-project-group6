@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49751,
+ "stop_reason": "end_turn",
+ "session_id": "be2e0653-4c76-4960-9fc6-32cbf4719a1d",
+ "total_cost_usd": 0.020424499999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14159,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11241,
+  "output_tokens_details": {
+   "thinking_tokens": 9350
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14159,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11241,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14159,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14159
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11882,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011972,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11241,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14159,
+   "webSearchRequests": 0,
+   "costUSD": 0.0084525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 9: spot. Suspicion scores for benchmark rows.\n\nStandard library only. The cached training model and kNN predictor are reused\nfrom step2, the input encoding, input-space nearest-neighbour distances and\nreference distances from step4.\n\nodd() adds up four kinds of evidence for each row. Higher means more suspicious:\n  - input_part: the flag set is far from every training flag set. The distance\n    is divided by the typical leave-one-out nearest-neighbour distance of the\n    training data, so a typical row scores about 1.\n  - goal_part: a goal value disagrees with what the nearest training builds\n    predict, in units of the calibrated residual spread from step2. Only the\n    worst goal counts.\n  - range_part: a goal value lies outside the training range, in units of that\n    range (or of the residual spread when the range is zero).\n  - unseen_part and bad_cell: a flag-like input (at most FLAG_LIKE distinct\n    training values) takes a value never seen in training or is missing, and a\n    goal cell is missing, not a number, or not finite.\n\"\"\"\n\nimport math\nimport statistics\n\nfrom step2 import _model, _predict\nfrom step4 import _encode, _nearest_sq, _reference\n\n\nFLAG_LIKE = 10          # inputs with at most this many training values count as flags\nUNSEEN_COST = 1.0       # points per flag-like input that is unseen or missing\nBAD_CELL = 10.0         # points per goal cell that is missing, not a number, or not finite\nSIGMA_PER_BAND = 3.29   # width of a 5%..95% band of a normal, in standard deviations\n\n\ndef _input_scale(ref):\n    \"\"\"Typical nearest-neighbour distance of training rows: the median, or the\n    smallest positive distance when the median is zero (duplicate flag sets).\"\"\"\n    if not ref:\n        return None\n    med = statistics.median(ref)\n    if med > 0:\n        return med\n    positive = [d for d in ref if d > 0]\n    return min(positive) if positive else 1.0\n\n\ndef _goal_sigmas(model):\n    \"\"\"Per goal, a residual spread: the calibrated 5..95% band divided by\n    SIGMA_PER_BAND when usable, else the training standard deviation, else 1.\"\"\"\n    sigmas = []\n    for g, (lo, hi) in enumerate(model[\"bands\"]):\n        s = 0.0\n        if math.isfinite(lo) and math.isfinite(hi):\n            s = (hi - lo) / SIGMA_PER_BAND\n        if not s > 0:\n            vals = [t[g] for t in model[\"targets\"]]\n            s = statistics.pstdev(vals) if len(vals) > 1 else 0.0\n        sigmas.append(s if s > 0 else 1.0)\n    return sigmas\n\n\ndef _flag_values(model):\n    \"\"\"For each flag-like input column, the set of values seen in training.\"\"\"\n    flags = {}\n    for c in model[\"inputs\"]:\n        vals = {r[c] for r in model[\"rows\"]}\n        if len(vals) <= FLAG_LIKE:\n            flags[c] = vals\n    return flags\n\n\ndef _goal_cells(row, goals):\n    \"\"\"Per goal, the raw float value, or None when missing, not a number or not\n    finite. Also returns how many cells were bad.\"\"\"\n    cells = []\n    bad = 0\n    for name, _ in goals:\n        try:\n            x = float(row.get(name))\n        except (TypeError, ValueError):\n            x = None\n        if x is None or not math.isfinite(x):\n            cells.append(None)\n            bad += 1\n        else:\n            cells.append(x)\n    return cells, bad\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included): higher means more\n    likely a glitch, a typo, or unlike anything in train_csv.\"\"\"\n    model = _model(train_csv)\n    goals = model[\"goals\"]\n    targets = model[\"targets\"]\n    if not rows:\n        return []\n    if not targets:\n        return [math.inf] * len(rows)\n\n    m = len(goals)\n    points = model[\"points\"]\n    ref = _reference(train_csv, model)\n    scale = _input_scale(ref)\n    sigmas = _goal_sigmas(model)\n    flags = _flag_values(model)\n    lo = [min(t[g] for t in targets) for g in range(m)]\n    hi = [max(t[g] for t in targets) for g in range(m)]\n\n    out = []\n    for row in rows:\n        score = 0.0\n        q = _encode(model, row)\n\n        # Input-space novelty, relative to the typical training distance.\n        if scale is not None and points:\n            score += math.sqrt(_nearest_sq(q, points)) / scale\n\n        # Flag-like inputs with values never seen in training, or missing.\n        for c, vals in flags.items():\n            v = row.get(c)\n            if v is None or v not in vals:\n                score += UNSEEN_COST\n\n        # Goal cells: bad cells, range excess, and disagreement with neighbours.\n        cells, bad = _goal_cells(row, goals)\n        score += BAD_CELL * bad\n\n        if m and any(x is not None for x in cells):\n            pred = _predict(q, points, targets)\n            resid = []\n            for g, x in enumerate(cells):\n                if x is None:\n                    continue\n                span = hi[g] - lo[g]\n                unit = span if span > 0 else sigmas[g]\n                score += max(lo[g] - x, x - hi[g], 0.0) / unit\n                if pred is not None:\n                    resid.append(abs(x - pred[g]) / sigmas[g])\n            if resid:\n                score += max(resid)\n\n        out.append(float(score))\n    return out\n```",
+ "ttft_ms": 42644,
+ "type": "result",
+ "duration_ms": 48162,
+ "uuid": "e4ec9eb8-731d-41fb-8ff8-7e382dec504b",
+ "ttft_stream_ms": 1664,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
