@@ -1,0 +1,16 @@
+{
+ "domain": "players",
+ "step": 15,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.23967750065664495,
+ "baseline": 0.1979853070788994,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "Heading Accuracy",
+   "Ball Control",
+   "Dribbling"
+  ]
+ }
+}
