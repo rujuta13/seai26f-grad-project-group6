@@ -1,0 +1,13 @@
+{
+ "domain": "marketing",
+ "step": 21,
+ "skill": "remember",
+ "ok": true,
+ "score": 0.5763241405426149,
+ "baseline": 0.733136528257226,
+ "better": "lower",
+ "extra": {
+  "families": 8,
+  "within_family_spread": 0.9643892723916343
+ }
+}
