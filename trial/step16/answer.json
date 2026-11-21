@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 81137,
+ "stop_reason": "end_turn",
+ "session_id": "7a927605-8acf-47da-add8-948d4e06d5fa",
+ "total_cost_usd": 0.032174,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21039,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 19986,
+  "output_tokens_details": {
+   "thinking_tokens": 15998
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21039,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 19986,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21039,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21039
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17908,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017973,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 19986,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21039,
+   "webSearchRequests": 0,
+   "costUSD": 0.014201000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\nfrom collections import Counter\n\nimport step1\nimport step2\nimport step5\n\n_KEEP = 5          # most separating inputs reported by explain()\n_TOP = 8           # strongest inputs tested for significance by explain()\n_MIN_EFFECT = 0.2  # gaps below this are not worth a test\n_ALPHA = 0.05      # family-wise level, Bonferroni-corrected over all tested inputs\n_PERMS = 2000      # permutations per test (p-value resolution ~ 1/2001)\n_SEED = 0          # fixed seed so the same inputs always give the same answer\n_MIN_Z = 1.0       # in why(): smallest standardised gap worth mentioning\n\n\ndef _signed(row, goals):\n    \"\"\"Goal values signed so higher is better; missing values count as worst.\"\"\"\n    out = []\n    for name, sign in goals:\n        v = step1._to_num(row.get(name, \"\"))\n        out.append(sign * v if v is not None else -math.inf)\n    return tuple(out)\n\n\ndef _goal_text(row, goals):\n    parts = []\n    for name, sign in goals:\n        v = step1._to_num(row.get(name, \"\"))\n        shown = \"missing\" if v is None else f\"{v:.6g}\"\n        aim = \"maximise\" if sign > 0 else \"minimise\"\n        parts.append(f\"{name} {shown} ({aim})\")\n    return \", \".join(parts)\n\n\ndef _nums(rows, idx, c):\n    \"\"\"Finite numeric values of column c over the rows in idx.\"\"\"\n    out = []\n    for i in idx:\n        v = step1._to_num(rows[i].get(c, \"\"))\n        if v is not None and math.isfinite(v):\n            out.append(v)\n    return out\n\n\ndef _mean(xs):\n    return sum(xs) / len(xs)\n\n\ndef _is_identifier(rows, c):\n    \"\"\"True for columns that label rows rather than describe them.\n\n    A column counts as an identifier when every row has a different value and\n    the values are either whole numbers (row numbers, ranks) or text (names,\n    links). Such columns cannot be a reason, so they are not tested.\n    \"\"\"\n    if len(rows) <= 2:\n        return False\n    raw = [str(r.get(c, \"\")) for r in rows]\n    if len(set(raw)) < len(rows):\n        return False\n    nums = [step1._to_num(v) for v in raw]\n    if all(x is not None and x.is_integer() for x in nums):\n        return True\n    return all(x is None for x in nums)\n\n\ndef _perm_p(a, b):\n    \"\"\"Two-sided permutation p-value for the difference in means (add-one).\"\"\"\n    na, nb = len(a), len(b)\n    if na == 0 or nb == 0:\n        return 1.0\n    obs = abs(sum(a) / na - sum(b) / nb)\n    if obs <= 1e-12:\n        return 1.0\n    pooled = list(a) + list(b)\n    rng = random.Random(_SEED)\n    hits = 0\n    for _ in range(_PERMS):\n        rng.shuffle(pooled)\n        d = abs(sum(pooled[:na]) / na - sum(pooled[na:]) / nb)\n        if d >= obs - 1e-12:\n            hits += 1\n    return (hits + 1) / (_PERMS + 1)\n\n\ndef _top_category(fv, rv):\n    \"\"\"The value whose frequency differs most between the two groups.\"\"\"\n    nf, nr = len(fv), len(rv)\n    cf, cr = Counter(fv), Counter(rv)\n    best_v, best_gap = None, -1.0\n    for v in sorted(set(cf) | set(cr), key=str):\n        gap = abs(cf.get(v, 0) / nf - cr.get(v, 0) / nr)\n        if gap > best_gap:\n            best_v, best_gap = v, gap\n    return best_v\n\n\ndef _input_gap(row, rows, idx, inputs):\n    \"\"\"The numeric input where `row` differs most from the rows in idx.\n\n    Returns (column, z, row value, group mean) or None if no gap reaches _MIN_Z.\n    \"\"\"\n    best = None\n    for c in inputs:\n        if _is_identifier(rows, c):\n            continue\n        v = step1._to_num(row.get(c, \"\"))\n        if v is None or not math.isfinite(v):\n            continue\n        vals = _nums(rows, idx, c)\n        if len(vals) < 2:\n            continue\n        mean = _mean(vals)\n        var = sum((x - mean) ** 2 for x in vals) / (len(vals) - 1)\n        sd = math.sqrt(var)\n        if sd <= 1e-12:\n            continue\n        z = (v - mean) / sd\n        if abs(z) >= _MIN_Z and (best is None or abs(z) > abs(best[1])):\n            best = (c, z, v, mean)\n    return best\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons for what makes rows good, for a skeptical reader.\"\"\"\n    rows, inputs, goals = step1._load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return \"There are no training rows, so there is nothing to explain.\"\n    if not goals:\n        return (\"The file has no goal columns (names ending in + or -), so nothing \"\n                \"counts as good and there are no reasons to give.\")\n\n    goal_names = \", \".join(name for name, _ in goals)\n\n    scores = [_signed(r, goals) for r in rows]\n    undominated = [\n        i for i in range(n)\n        if not any(step1._dominates(scores[j], scores[i])\n                   for j in range(n) if j != i)\n    ]\n\n    chosen = step1.best(train_csv)\n    if not chosen:\n        return (f\"No rows are recommended: the set is capped at 5% of the rows, which \"\n                f\"rounds down to zero below 20 rows. This file has {n}.\")\n    chosen_set = set(chosen)\n    rest = [i for i in range(n) if i not in chosen_set]\n\n    lines = [\n        f\"A row counts as good here if no other row is at least as good on every goal \"\n        f\"({goal_names}) and better on at least one. {len(undominated)} of the {n} rows \"\n        f\"meet that test. The {len(chosen)} recommended rows are capped at 5% of the \"\n        f\"file; if more rows pass the test, the ones with the highest combined rank \"\n        f\"across goals are kept.\"\n    ]\n\n    for name, sign in goals:\n        fv = _nums(rows, chosen, name)\n        rv = _nums(rows, rest, name)\n        if fv and rv:\n            aim = \"higher is better\" if sign > 0 else \"lower is better\"\n            lines.append(\n                f\"{name} ({aim}): recommended rows average {_mean(fv):.4g} \"\n                f\"(from {len(fv)} values), the rest average {_mean(rv):.4g} \"\n                f\"(from {len(rv)}). A recommended row can sit below average on one \"\n                f\"goal because it was chosen on the goals together.\"\n            )\n\n    tested = [c for c in inputs if not _is_identifier(rows, c)]\n    m = max(1, len(tested))\n\n    candidates = []\n    for c in tested:\n        kind, vals = step5._column_values(rows, c)\n        fv = [vals[i] for i in chosen]\n        rv = [vals[i] for i in rest]\n        if not fv or not rv:\n            continue\n        if kind == \"num\":\n            if len(fv) < 2 or len(rv) < 2:\n                continue\n            eff = step5._numeric_effect(fv, rv)\n        else:\n            eff = step5._categorical_effect(fv, rv)\n        if eff >= _MIN_EFFECT:\n            candidates.append((eff, c, kind, vals))\n    candidates.sort(key=lambda t: (-t[0], t[1]))\n\n    reported = []\n    for eff, c, kind, vals in candidates[:_TOP]:\n        if len(reported) >= _KEEP:\n            break\n        fv = [vals[i] for i in chosen]\n        rv = [vals[i] for i in rest]\n        if kind == \"num\":\n            p = _perm_p(fv, rv)\n            mf, mr = _mean(fv), _mean(rv)\n            way = \"higher\" if mf > mr else \"lower\"\n            desc = (f\"{c}: recommended rows are {way} ({mf:.3g} against {mr:.3g} \"\n                    f\"elsewhere; standardised gap {eff:.2f})\")\n        else:\n            v = _top_category(fv, rv)\n            ind_f = [1.0 if x == v else 0.0 for x in fv]\n            ind_r = [1.0 if x == v else 0.0 for x in rv]\n            p = _perm_p(ind_f, ind_r)\n            pf = fv.count(v) / len(fv)\n            pr = rv.count(v) / len(rv)\n            desc = (f\"{c} = {v!r}: present in {pf:.0%} of recommended rows against \"\n                    f\"{pr:.0%} elsewhere\")\n        adj = min(1.0, p * m)\n        if adj < _ALPHA:\n            reported.append(\n                f\"{desc}; permutation p = {p:.3g}, corrected for {m} inputs = {adj:.3g}.\"\n            )\n\n    if reported:\n        lines.append(\"Attributes that separate the recommended rows from the rest. \"\n                     \"Where they are visible on video, they are concrete things to check:\")\n        lines.extend(\"  - \" + s for s in reported)\n    else:\n        lines.append(\n            f\"No attribute separates the recommended rows from the rest once the {m} \"\n            f\"tested inputs are corrected for multiple testing, so the set is not \"\n            f\"explained by any single attribute in this file.\"\n        )\n\n    lines.append(\n        f\"These are associations within the {n} rows of the training file, not tested \"\n        f\"interventions. The file measures only {goal_names}; nothing outside those goals \"\n        f\"is judged. A difference here is a reason to look, not proof of how any player \"\n        f\"will perform, and this summary does not by itself establish that a particular \"\n        f\"player should be signed.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on whether this row (goals included) is good or bad.\"\"\"\n    rows, inputs, goals = step1._load(train_csv)\n    if not goals:\n        return \"This file has no goal columns, so the row cannot be rated good or bad.\"\n    desc = _goal_text(row, goals)\n    n = len(rows)\n    if n == 0:\n        return (f\"There are no training rows to compare with, so this row ({desc}) \"\n                f\"cannot be rated.\")\n\n    s = _signed(row, goals)\n    beaters = [i for i, r in enumerate(rows)\n               if step1._dominates(_signed(r, goals), s)]\n    if not beaters:\n        return (f\"Good: none of the {n} training rows is at least as good on every goal \"\n                f\"and better on one ({desc}).\")\n\n    k = len(beaters)\n    kinds = step2._prep(rows, inputs)\n    parsed = [step2._parse(r, inputs, kinds) for r in rows]\n    q = step2._parse(row, inputs, kinds)\n    j = min(beaters, key=lambda i: (step2._dist(q, parsed[i], kinds), i))\n\n    first = (f\"Bad: {k} of {n} training rows beat it on every goal ({desc}); the most \"\n             f\"similar of them, row {j} ({_goal_text(rows[j], goals)}), is at least as \"\n             f\"good on each goal and better on at least one.\")\n\n    gap = _input_gap(row, rows, beaters, inputs)\n    if gap is None:\n        return first\n    c, _z, v, mean = gap\n    way = \"higher\" if v > mean else \"lower\"\n    return (first + f\" Among those {k} rows, its clearest difference is in {c}: this row \"\n            f\"is {way} ({v:.3g} against an average of {mean:.3g}), which is worth \"\n            f\"checking on video.\")\n```",
+ "ttft_ms": 69113,
+ "type": "result",
+ "duration_ms": 80104,
+ "uuid": "4bf1f9d8-9aea-4a32-907e-09588fb44e6c",
+ "ttft_stream_ms": 1424,
+ "time_to_request_ms": 78,
+ "queued_turn_count": 0
+}
