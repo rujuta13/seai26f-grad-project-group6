@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 51803,
+ "stop_reason": "end_turn",
+ "session_id": "b5fce4f7-0d17-46a2-8105-b4867112c872",
+ "total_cost_usd": 0.019100600000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12647,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11616,
+  "output_tokens_details": {
+   "thinking_tokens": 10092
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12647,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11616,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12647,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12647
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10673,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010763,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11616,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12647,
+   "webSearchRequests": 0,
+   "costUSD": 0.0083376,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 8: fix. The fewest input changes that make a bad build good.\n\nStandard library only. Model loading and the kNN predictor are reused from\nstep2, and the 0-to-1 build score with its training-median threshold from\nstep6 (the rule used by why). Encoding follows step1: text values get codes\nby first appearance in the training rows.\n\nMethod: a build is good when its predicted mean goal score is at least the\ntraining median, the same rule as step6.why. Candidate fixes change k\nnon-frozen input columns to values seen in the training data, for k = 1, 2,\n... . The first k with any predicted-good candidate wins, and within that k\nthe candidate with the highest predicted score wins. The search stops after\nMAX_EVALS predictions. If no good candidate is found, the best predicted\nbuild is returned.\n\"\"\"\n\nimport itertools\nimport statistics\n\nfrom step2 import _model, _predict\nfrom step6 import _bounds, _scaled\n\n\nMAX_EVALS = 2000     # predictions allowed in one search\nMAX_CHOICES = 8      # values tried per changed column (evenly spaced if more)\n\n\ndef _codes(model):\n    \"\"\"Per input column, the training code of each text value (step1 order:\n    by first appearance in the training rows).\"\"\"\n    tables = {}\n    for c in model[\"inputs\"]:\n        table = {}\n        for r in model[\"rows\"]:\n            v = r[c]\n            if not isinstance(v, (int, float)):\n                table.setdefault(v, len(table))\n        tables[c] = table\n    return tables\n\n\ndef _encode(inputs, tables, values):\n    \"\"\"One row encoded as step1 encodes it; unseen text gets a fresh code.\"\"\"\n    vec = []\n    for c in inputs:\n        v = values[c]\n        if isinstance(v, (int, float)):\n            vec.append(float(v))\n        else:\n            table = tables[c]\n            vec.append(float(table.get(v, len(table))))\n    return vec\n\n\ndef _choices(model, base, c):\n    \"\"\"Values column c may take in a fix: training values other than the current one.\"\"\"\n    seen = dict.fromkeys(r[c] for r in model[\"rows\"])\n    opts = [v for v in seen if v != base[c]]\n    if len(opts) > MAX_CHOICES:\n        step = len(opts) / MAX_CHOICES\n        opts = [opts[int(i * step)] for i in range(MAX_CHOICES)]\n    return opts\n\n\ndef _variants(base, free, choices, k):\n    \"\"\"Every build that differs from base in exactly k free columns.\"\"\"\n    for cols in itertools.combinations(free, k):\n        for combo in itertools.product(*(choices[c] for c in cols)):\n            values = dict(base)\n            values.update(zip(cols, combo))\n            yield values\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of row with as few values changed as possible so the build is\n    predicted good. Columns named in frozen keep their values.\"\"\"\n    model = _model(train_csv)\n    inputs = model[\"inputs\"]\n    goals = model[\"goals\"]\n    targets = model[\"targets\"]\n    base = {c: row[c] if c in row else 0.0 for c in inputs}\n    if not targets or not goals:\n        return base\n\n    names = [name for name, _ in goals]\n    bounds = _bounds(model)\n    train_scores = [\n        sum(_scaled(dict(zip(names, t)), goals, bounds)) / len(goals)\n        for t in targets\n    ]\n    median = statistics.median(train_scores)\n\n    tables = _codes(model)\n    points = model[\"points\"]\n\n    def score(values):\n        pred = _predict(_encode(inputs, tables, values), points, targets)\n        return sum(_scaled(dict(zip(names, pred)), goals, bounds)) / len(goals)\n\n    current = score(base)\n    if current >= median:\n        return base\n\n    frozen_set = set(frozen)\n    free = [c for c in inputs if c not in frozen_set]\n    choices = {c: _choices(model, base, c) for c in free}\n\n    best_score, best = current, base   # fallback: best prediction seen\n    evals = 0\n    for k in range(1, len(free) + 1):\n        if evals >= MAX_EVALS:\n            break\n        winner = None\n        for values in _variants(base, free, choices, k):\n            if evals >= MAX_EVALS:\n                break\n            evals += 1\n            s = score(values)\n            if s > best_score:\n                best_score, best = s, values\n            if s >= median and (winner is None or s > winner[0]):\n                winner = (s, values)\n        if winner is not None:\n            return dict(winner[1])\n    return dict(best)\n```",
+ "ttft_ms": 46654,
+ "type": "result",
+ "duration_ms": 50782,
+ "uuid": "80371bb3-3820-41b8-b1f2-e6ec1fbdc6ac",
+ "ttft_stream_ms": 1553,
+ "time_to_request_ms": 26,
+ "queued_turn_count": 0
+}
