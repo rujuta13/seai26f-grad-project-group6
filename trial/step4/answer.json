@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 68699,
+ "stop_reason": "end_turn",
+ "session_id": "75385438-e33f-45f7-89d5-8f2b78f47325",
+ "total_cost_usd": 0.0182176,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9887,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15246,
+  "output_tokens_details": {
+   "thinking_tokens": 13698
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9887,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15246,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9887,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9887
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8542,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008617,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15246,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9887,
+   "webSearchRequests": 0,
+   "costUSD": 0.009600599999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py: flow. Keep the good rows as they stream in; warn when they drift.\n\"step4.py: keep the good rows as they stream in; warn when they drift.\"\nimport collections\nimport functools\nimport math\nimport ezr\n\nKEEP_PCT = 5     # keep rows whose ydist is in the best 5% of training\nQ        = 0.95  # a row is novel if its nearest-training gap exceeds this quantile\nWIN      = 40    # how many recent rows drift looks at\nNOVEL    = 10    # warn when this many of the last WIN rows are novel\nSAMPLE   = 100   # training rows used to measure the normal gap\n\ndef _val(v):\n  \"Cells from dicts may still be strings: coerce them the way csv does.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _align(tbl, row):\n  \"ROW in TBL's column order, from a dict by column name or from a list.\"\n  if isinstance(row, dict):\n    return [_val(row.get(n, \"?\")) for n in tbl.names]\n  return [_val(v) for v in row]\n\ndef _ydist(tbl, row):\n  \"How far ROW's goals are from ideal; infinite if any goal is unknown.\"\n  if any(row[c.at] == \"?\" for c in tbl.y): return math.inf\n  return ezr.ydist(tbl, row)\n\n@functools.lru_cache(maxsize=8)\ndef _keep_model(train_csv):\n  \"The table, and the ydist at or below which a row is kept (best KEEP_PCT of train).\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  ys  = sorted(y for y in (_ydist(tbl, r) for r in tbl.rows) if y < math.inf)\n  cap = max(1, len(tbl.rows) * KEEP_PCT // 100)\n  cut = ys[min(cap, len(ys)) - 1] if ys else -math.inf\n  return tbl, cut\n\ndef _vec(cs, row):\n  \"ROW as one entry per column: 0..1 for nums, the symbol for syms, None if unknown.\"\n  return [None if row[c.at] == \"?\" else\n          row[c.at] if type(c) is ezr.Sym else ezr.norm(c, row[c.at])\n          for c in cs]\n\ndef _gap2(cs, a, b):\n  \"Squared distance between two _vecs, column by column.\"\n  total = 0\n  for c, x, y in zip(cs, a, b):\n    if x is None or y is None: g = 1\n    elif type(c) is ezr.Sym:   g = x != y\n    else:                      g = abs(x - y)\n    total += g * g\n  return total\n\n@functools.lru_cache(maxsize=8)\ndef _drift_model(train_csv):\n  \"\"\"The table, its columns, its rows as _vecs, and the normal gap:\n  a high quantile of leave-one-out nearest-neighbour gaps within train.\"\"\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  cs  = [tbl.cols[at] for at in sorted(tbl.cols)]\n  vs  = [_vec(cs, r) for r in tbl.rows]\n  if len(vs) < 2: return tbl, cs, vs, math.inf\n  step = max(1, len(vs) // SAMPLE)\n  base = sorted(min(_gap2(cs, vs[i], vs[j]) for j in range(len(vs)) if j != i)\n                for i in range(0, len(vs), step))\n  return tbl, cs, vs, base[min(len(base) - 1, int(Q * len(base)))]\n\ndef stream(train_csv, rows):\n  \"\"\"For each of ROWS (arriving one at a time), True if it is worth keeping:\n  its goals are in the best of train_csv's rows. Uses only train and the row itself.\"\"\"\n  tbl, cut = _keep_model(train_csv)\n  return [_ydist(tbl, _align(tbl, row)) <= cut for row in rows]\n\ndef drift(train_csv, rows):\n  \"\"\"Index into ROWS of the row at which the recent rows first stop looking\n  like train_csv (too many nearest-neighbour gaps beyond normal), or None.\"\"\"\n  tbl, cs, vs, cut = _drift_model(train_csv)\n  recent = collections.deque(maxlen=WIN)\n  for i, row in enumerate(rows):\n    v    = _vec(cs, _align(tbl, row))\n    near = min((_gap2(cs, v, u) for u in vs), default=math.inf)\n    recent.append(near > cut)\n    if sum(recent) >= NOVEL: return i\n  return None\n```",
+ "ttft_ms": 63389,
+ "type": "result",
+ "duration_ms": 67757,
+ "uuid": "7ffa2273-32e6-4638-a2a6-a1f1782c11b2",
+ "ttft_stream_ms": 1330,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
