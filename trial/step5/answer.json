@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17068,
+ "stop_reason": "end_turn",
+ "session_id": "4eefc34c-bb5b-40cc-a697-ac82d604b2b9",
+ "total_cost_usd": 0.0133531,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10882,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3429,
+  "output_tokens_details": {
+   "thinking_tokens": 2834
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10882,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3429,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10882,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10882
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9382,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009462,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3429,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10882,
+   "webSearchRequests": 0,
+   "costUSD": 0.0038910999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step5.py: blame. Which input columns best separate the bad rows from the good ones?\"\nfrom ezr import Tbl, csv, ydist, candidates\nfrom step1 import best\n\nBAD = 0.25   # worst fraction of rows, by ydist, counted as bad\n\ndef blame(train_csv) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl  = Tbl(csv(str(train_csv)))\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: return []\n  good_ix = set(best(str(train_csv)))\n  ranked  = sorted(range(n), key=lambda i: ydist(tbl, rows[i]), reverse=True)\n  bad_ix  = ranked[:max(1, int(BAD * n))]\n  good    = [rows[i] for i in good_ix]\n  bad     = [rows[i] for i in bad_ix if i not in good_ix]\n  if not good or not bad: return [tbl.names[c.at] for c in tbl.x]\n\n  def score(col) -> float:\n    \"The biggest gap, over this column's splits, between bad and good rows that fall on the split's yes side.\"\n    gap = 0.0\n    for _, go in candidates(col, rows):\n      pb = sum(1 for r in bad  if go(r)) / len(bad)\n      pg = sum(1 for r in good if go(r)) / len(good)\n      gap = max(gap, pb - pg)\n    return gap\n\n  scored = [(score(c), tbl.names[c.at]) for c in tbl.x]\n  scored.sort(key=lambda t: -t[0])   # stable: ties keep header order\n  return [name for _, name in scored]\n```",
+ "ttft_ms": 14319,
+ "type": "result",
+ "duration_ms": 16116,
+ "uuid": "a1211738-af00-4b70-a356-ade01b75ed7a",
+ "ttft_stream_ms": 1494,
+ "time_to_request_ms": 26,
+ "queued_turn_count": 0
+}

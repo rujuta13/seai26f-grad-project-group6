@@ -1,0 +1,16 @@
+{
+ "domain": "ssw",
+ "step": 5,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.07212226993872328,
+ "baseline": 0.03650847748636027,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "called_value_propagation",
+   "ee_instrument",
+   "inline"
+  ]
+ }
+}
