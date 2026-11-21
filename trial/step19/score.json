@@ -1,0 +1,10 @@
+{
+ "domain": "players",
+ "step": 19,
+ "skill": "spot",
+ "ok": true,
+ "score": 0.0,
+ "baseline": 0.05,
+ "better": "higher",
+ "extra": {}
+}
