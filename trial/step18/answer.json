@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4719,
+ "stop_reason": "end_turn",
+ "session_id": "4979aff9-8935-41db-90b2-9b4309c5723d",
+ "total_cost_usd": 0.0259448,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24618,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 592,
+  "output_tokens_details": {
+   "thinking_tokens": 286
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24618,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 592,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24618,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24618
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20645,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020725,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 592,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24618,
+   "webSearchRequests": 0,
+   "costUSD": 0.0052198,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step18.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep18.py: fix.  Given a player who is not yet on the shortlist (goals\nremoved), find the fewest input attributes to change so that the player\nbecomes good.  The work is step8.fix: it tries one changed attribute, then\ntwo, and so on, and judges each candidate by its predicted goals against\nthe keep cut from step4.  Attributes named in FROZEN are never changed,\nso a coach can lock traits that are fixed, such as age or height.\nNothing here is new code; this file fixes the client-facing signature.\n\"\"\"\nimport step8\n\ndef fix(train_csv: str, row: dict, frozen=()) -> dict:\n  \"\"\"Return ROW's inputs with as few values changed as possible so the\n  player becomes good.  Columns named in FROZEN are never changed.\"\"\"\n  return step8.fix(train_csv, row, frozen=frozen)\n```",
+ "ttft_ms": 2419,
+ "type": "result",
+ "duration_ms": 3551,
+ "uuid": "344c84fe-70be-4daa-b1a2-717269bd62b1",
+ "ttft_stream_ms": 1262,
+ "time_to_request_ms": 32,
+ "queued_turn_count": 0
+}
