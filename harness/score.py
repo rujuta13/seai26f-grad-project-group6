@@ -2,8 +2,8 @@
 
     python3 harness/score.py --domain ssw --step 2 --code runs/t2-r1/
 
-Imports <code>/step<N>.py (with <code> on sys.path so earlier steps can be imported),
-calls the contract's functions, and prints one JSON line. A crash is a result, not an
+Imports <code>/step<N>.py (with <code> on sys.path so earlier steps can be imported,
+and harness/libs so `import ezr` works), calls the contract's functions, and prints one JSON line. A crash is a result, not an
 error: {"ok": false, "error": "..."}. The runner calls this in a subprocess with a timeout.
 """
 import argparse
@@ -16,6 +16,9 @@ import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
+# T5/T6 code does `import ezr` (the prompt promises it); its source lives in harness/libs.
+# Appended, not prepended, so it can never shadow the standard library or a step file.
+sys.path.append(os.path.join(HERE, "libs"))
 
 from harness import contracts as c          # noqa: E402
 from harness import data                    # noqa: E402
