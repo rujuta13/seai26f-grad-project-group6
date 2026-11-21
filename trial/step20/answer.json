@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 73097,
+ "stop_reason": "end_turn",
+ "session_id": "2b48f2ea-054b-45ce-b284-9ff3c09784b5",
+ "total_cost_usd": 0.060732600000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 50382,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 18034,
+  "output_tokens_details": {
+   "thinking_tokens": 14474
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 50382,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 18034,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 50382,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 50382
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 41574,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.041639,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 18034,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 50382,
+   "webSearchRequests": 0,
+   "costUSD": 0.019093600000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 20: race. Two client questions, answered on test_csv.\n\n  - \"Does our shortlist beat a simple top overall rating list?\"\n  - \"Does our penalty guesser beat an off-the-shelf model?\"\n\nShortlist race. Every method picks K players, where K is the step11 shortlist cap\n(5% of test rows, at least one). The score is the mean step1-scale goal score of the\npicked players on test_csv: each goal is min-max scaled over the test players with\ncomplete goal values (0 = worst, 1 = best) and the scaled values are averaged.\n  - ours: rank players by the goal score estimated by step12.guess from their inputs\n    alone. The test goal cells are never read for ranking.\n  - top_overall_rating: the K players with the highest OVR input column. If the file\n    has no OVR column, the first K rows in file order.\n  - random_shortlist: K seeded random players.\n  - oracle: the true top K (an upper bound, since it reads the test goals).\nThe *_precision keys give the share of each shortlist that is in the true top K.\n\nPenalty race. The goal is PENALTY_GOAL, or else the first goal present in both files.\nScores are R^2 on test_csv, higher is better.\n  - ours_penalty_r2: the step12.guess point estimate.\n  - linear_penalty_r2: stdlib ridge regression on the numeric inputs only (median-filled,\n    standardised). Text columns and identifier-like numbers are not used, so this is a\n    plain off-the-shelf linear model.\n  - ours_penalty_coverage: the share of test players whose true value lies inside the\n    guess low..high range. Only players with a finite range and a true value count.\n\nAll returned values are higher-is-better.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load\nfrom step10 import _finite, _r2, _ridge, _true_scores\nfrom step12 import guess\n\nSEED = 1                 # fixed seed so results are reproducible\nSHORTLIST_FRAC = 0.05    # shortlist size as a share of test rows (as in step11.best)\nRATING_COLUMN = \"OVR\"    # input column used as the top overall rating\nPENALTY_GOAL = \"Penalties+\"\nNUMERIC_FRAC = 0.9       # a column is numeric if this share of its cells parse as numbers\nID_FRAC = 0.9            # numeric column with more distinct values than this share is an id\n\n_KEYS = (\"ours\", \"top_overall_rating\", \"random_shortlist\", \"oracle\",\n         \"ours_precision\", \"top_overall_rating_precision\", \"random_precision\",\n         \"ours_penalty_r2\", \"linear_penalty_r2\", \"ours_penalty_coverage\")\n\n\ndef _zero():\n    return {k: 0.0 for k in _KEYS}\n\n\ndef _train_ranges(train_rows, goals):\n    \"\"\"Oriented (min, max) of each goal over training rows with a usable cell.\"\"\"\n    out = []\n    for c, sign in goals:\n        vals = [sign * y for y in (_finite(r.get(c)) for r in train_rows) if y is not None]\n        out.append((min(vals), max(vals)) if vals else (0.0, 0.0))\n    return out\n\n\ndef _est_score(est, goals, ranges):\n    \"\"\"Step1-style score of a guess() result, using only goals with a finite range.\n    Returns None if no goal can be used.\"\"\"\n    total = 0.0\n    used = 0\n    for (c, sign), (lo, hi) in zip(goals, ranges):\n        e = est.get(c)\n        if e is None:\n            continue\n        value, low, high = e\n        if not (math.isfinite(low) and math.isfinite(high)):\n            continue\n        used += 1\n        span = hi - lo\n        if span > 0:\n            total += (sign * value - lo) / span\n    return total / used if used else None\n\n\ndef _mean_truth(picks, truth):\n    \"\"\"Mean true score of the picked rows; unusable rows count as 0.\"\"\"\n    total = 0.0\n    for i in picks:\n        t = truth[i]\n        if t is not None:\n            total += t\n    return total / len(picks) if picks else 0.0\n\n\ndef _precision(picks, top, k):\n    \"\"\"Share of the picks that are in the true top set.\"\"\"\n    return len(set(picks) & top) / k if k else 0.0\n\n\ndef _numeric_plan(rows, inputs):\n    \"\"\"(column, median, mean, sd) for each numeric input usable as a linear feature.\"\"\"\n    n = len(rows)\n    plan = []\n    for c in inputs:\n        vals = [_finite(r.get(c)) for r in rows]\n        present = [x for x in vals if x is not None]\n        if not present or len(present) < NUMERIC_FRAC * n:\n            continue\n        if n >= 20 and len(set(present)) > ID_FRAC * n:\n            continue  # identifier-like numeric column\n        median = sorted(present)[len(present) // 2]\n        filled = [x if x is not None else median for x in vals]\n        mean = sum(filled) / n\n        sd = math.sqrt(sum((x - mean) ** 2 for x in filled) / n)\n        if sd > 0:\n            plan.append((c, median, mean, sd))\n    return plan\n\n\ndef _linear_features(row, plan):\n    \"\"\"Intercept followed by the standardised numeric inputs of one row.\"\"\"\n    x = [1.0]\n    for c, median, mean, sd in plan:\n        v = _finite(row.get(c))\n        if v is None:\n            v = median\n        x.append((v - mean) / sd)\n    return x\n\n\ndef _linear_predictions(train_rows, train_inputs, test_rows, pen):\n    \"\"\"Ridge regression of the penalty goal on numeric inputs, predicted for test_rows.\"\"\"\n    plan = _numeric_plan(train_rows, train_inputs)\n    tr_x, tr_y = [], []\n    for r in train_rows:\n        y = _finite(r.get(pen))\n        if y is not None:\n            tr_x.append(_linear_features(r, plan))\n            tr_y.append(y)\n    if not tr_y:\n        return [0.0] * len(test_rows)\n    w = _ridge(tr_x, tr_y, 1 + len(plan))\n    return [sum(a * b for a, b in zip(w, _linear_features(r, plan))) for r in test_rows]\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Score the shortlist and penalty methods on test_csv (higher is better).\n\n    Returns a dict with keys 'ours', 'top_overall_rating', 'random_shortlist', 'oracle',\n    the '*_precision' keys, 'ours_penalty_r2', 'linear_penalty_r2' and\n    'ours_penalty_coverage'.\n    \"\"\"\n    train_rows, train_inputs, train_goals = _load(train_csv)\n    test_rows, test_inputs, test_goals = _load(test_csv)\n    n = len(test_rows)\n    if n == 0 or not test_goals or not train_goals:\n        return _zero()\n\n    results = _zero()\n\n    # Shortlist race.\n    truth = _true_scores(test_rows, test_goals)\n    k = max(1, min(n, int(SHORTLIST_FRAC * n)))\n\n    def _neg_truth(i):\n        t = truth[i]\n        return math.inf if t is None else -t\n\n    oracle_order = sorted(range(n), key=lambda i: (_neg_truth(i), i))\n    top = set(oracle_order[:k])\n\n    # Our shortlist: rank by the goal score estimated from inputs only.\n    ests = [guess(train_csv, row) for row in test_rows]\n    ranges = _train_ranges(train_rows, train_goals)\n    ours_key = []\n    for est in ests:\n        s = _est_score(est, train_goals, ranges)\n        ours_key.append(math.inf if s is None else -s)\n    ours_order = sorted(range(n), key=lambda i: (ours_key[i], i))\n    ours_pick = ours_order[:k]\n\n    # Rival: top overall rating (OVR), or file order if there is no OVR column.\n    if any(c == RATING_COLUMN for c in test_inputs):\n        rating_key = []\n        for r in test_rows:\n            v = _finite(r.get(RATING_COLUMN))\n            rating_key.append(math.inf if v is None else -v)\n        rating_order = sorted(range(n), key=lambda i: (rating_key[i], i))\n    else:\n        rating_order = list(range(n))\n    rating_pick = rating_order[:k]\n\n    # Rival: random shortlist.\n    rng = random.Random(SEED)\n    random_pick = rng.sample(range(n), k)\n\n    results[\"oracle\"] = _mean_truth(oracle_order[:k], truth)\n    results[\"ours\"] = _mean_truth(ours_pick, truth)\n    results[\"top_overall_rating\"] = _mean_truth(rating_pick, truth)\n    results[\"random_shortlist\"] = _mean_truth(random_pick, truth)\n    results[\"ours_precision\"] = _precision(ours_pick, top, k)\n    results[\"top_overall_rating_precision\"] = _precision(rating_pick, top, k)\n    results[\"random_precision\"] = _precision(random_pick, top, k)\n\n    # Penalty race.\n    train_names = [c for c, _ in train_goals]\n    test_names = {c for c, _ in test_goals}\n    if PENALTY_GOAL in train_names and PENALTY_GOAL in test_names:\n        pen = PENALTY_GOAL\n    else:\n        pen = next((c for c in train_names if c in test_names), None)\n\n    if pen is not None:\n        idx = [i for i, r in enumerate(test_rows) if _finite(r.get(pen)) is not None]\n        if idx:\n            ys = [_finite(test_rows[i].get(pen)) for i in idx]\n            ours_pred = [ests[i][pen][0] for i in idx]\n            lin_all = _linear_predictions(train_rows, train_inputs, test_rows, pen)\n            lin_pred = [lin_all[i] for i in idx]\n\n            covered = 0\n            judged = 0\n            for i, y in zip(idx, ys):\n                _, low, high = ests[i][pen]\n                if math.isfinite(low) and math.isfinite(high):\n                    judged += 1\n                    if low <= y <= high:\n                        covered += 1\n\n            results[\"ours_penalty_r2\"] = _r2(ys, ours_pred)\n            results[\"linear_penalty_r2\"] = _r2(ys, lin_pred)\n            results[\"ours_penalty_coverage\"] = covered / judged if judged else 0.0\n\n    return {k: float(v) for k, v in results.items()}\n```",
+ "ttft_ms": 61693,
+ "type": "result",
+ "duration_ms": 71872,
+ "uuid": "a7f77f8d-ec12-428c-85ef-3ac0cf9d6443",
+ "ttft_stream_ms": 1505,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
