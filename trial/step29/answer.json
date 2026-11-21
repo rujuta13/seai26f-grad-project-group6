@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7330,
+ "stop_reason": "end_turn",
+ "session_id": "122d215f-101c-42c8-bfd6-86a42af8bf30",
+ "total_cost_usd": 0.037667,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 36629,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1064,
+  "output_tokens_details": {
+   "thinking_tokens": 601
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 36629,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1064,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 36629,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 36629
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 29699,
+   "outputTokens": 22,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.029809,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1064,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 36629,
+   "webSearchRequests": 0,
+   "costUSD": 0.007858,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step29.py: spot, for the two client questions.\n\nQ1: \"Flag customer records that look wrong: impossible ages, odd incomes, typos.\"\nQ2: \"Which customers behave unlike anyone else? Are they fraud, or just unusual?\"\n\nBoth questions are answered by the suspicion score in step9.odd, which step19.odd\nalready wraps so that every score is a finite float. A high score means the flag\nset lies far from every training flag set (unusual inputs, such as an impossible\nage or an odd income), or the goal values disagree with training customers who\nhave the same flags (a likely typo or glitch). The score does not prove fraud.\nA high score only says the record deserves a manual check.\n\nNothing new is computed here, so this module reuses step19.odd and only fixes\nthe return type.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step19 import odd as _spot\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included). Higher means more\n    likely a glitch, a typo, or a customer unlike anyone in train_csv.\n\n    Each score is a finite, non-negative float. Scores of 0.0 mean nothing\n    unusual was found, or that there were too few training rows to compare\n    against. A high score is a reason to check the record, not proof of fraud.\n    \"\"\"\n    return [float(s) for s in _spot(train_csv, rows)]\n```",
+ "ttft_ms": 4221,
+ "type": "result",
+ "duration_ms": 6005,
+ "uuid": "3fbc765e-15ff-4e65-963c-f01eaaeff4d7",
+ "ttft_stream_ms": 1373,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
