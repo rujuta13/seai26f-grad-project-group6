@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 30496,
+ "stop_reason": "end_turn",
+ "session_id": "5c9a3928-3f39-4243-9a21-0b8e3e447960",
+ "total_cost_usd": 0.028919100000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24427,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6681,
+  "output_tokens_details": {
+   "thinking_tokens": 5023
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24427,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6681,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24427,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24427
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20608,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020693000000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6681,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24427,
+   "webSearchRequests": 0,
+   "costUSD": 0.0082261,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step12.py\n\"Step 12: guess. Estimate each goal of a build from its nearest training builds, with a range we are fairly sure of.\"\nimport math\nimport os\nimport ezr\n\nK    = 20     # nearest training builds consulted\nMINK = 5      # fewer known neighbours than this: widen to all training builds\nLO   = 0.10   # low end of the \"fairly sure\" range\nHI   = 0.90   # high end of the \"fairly sure\" range\n\n_CACHE: dict = {}   # (path, mtime) -> (table, input columns used for distance)\n\nNAN3 = (math.nan, math.nan, math.nan)\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _inputs(tbl) -> list:\n  \"\"\"Input columns used for distance: all numbers, and symbols that repeat.\n  A symbol where every value is distinct is an identifier (a row number or\n  url), so it says nothing about how builds relate.\"\"\"\n  return [c for c in tbl.x\n          if type(c) is ezr.Num or len(c.has) < c.n]\n\ndef _load(train_csv: str):\n  \"Train table and its distance columns, cached per file version.\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl = ezr.Tbl(ezr.csv(train_csv))\n    _CACHE[key] = (tbl, _inputs(tbl))\n  return _CACHE[key]\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict,\n  a full-width list, or a list with goal columns removed (header order).\n  Any cell not given is '?'. Non-numeric cells in numeric columns become '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row: out[at] = _coerce(row[n])\n  else:\n    row = list(row)\n    if len(row) == len(names):\n      out = [_coerce(v) for v in row]\n    else:\n      keep = [i for i, n in enumerate(names) if n[-1] not in \"+-!\"]\n      for i, v in zip(keep, row): out[i] = _coerce(v)\n  for c in tbl.x:\n    if type(c) is ezr.Num and not _isnum(out[c.at]):\n      out[c.at] = \"?\"\n  return out\n\ndef _pct(xs: list, p: float) -> float:\n  \"Percentile P (0..1) of sorted XS, by linear interpolation.\"\n  i  = p * (len(xs) - 1)\n  lo = int(i)\n  hi = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal, goal names as in the\n  header (with their suffix). ROW has its goal columns removed. The estimate\n  is the median goal value of the K training builds nearest to ROW over the\n  input columns; low..high is the LO..HI percentile band of those neighbours.\n  A goal no nearby build has gets a band from all training builds. A goal\n  with no data at all, or a non-numeric goal, gets NaN.\"\"\"\n  tbl, cols = _load(train_csv)\n  q         = _full(tbl, row)\n  rows      = tbl.rows\n\n  def dist2(r) -> float:\n    return sum(ezr.gap(c, q[c.at], r[c.at]) ** 2 for c in cols)\n\n  near = sorted(rows, key=dist2)[:K]\n  out  = {}\n  for c in tbl.y:\n    if type(c) is not ezr.Num:             # symbolic goal: no number to give\n      out[c.txt] = NAN3\n      continue\n    xs = sorted(r[c.at] for r in near if _isnum(r[c.at]))\n    if len(xs) < MINK:                      # too few neighbours know this goal\n      xs = sorted(r[c.at] for r in rows if _isnum(r[c.at]))\n    if not xs:\n      out[c.txt] = NAN3\n      continue\n    out[c.txt] = (float(_pct(xs, 0.5)),\n                  float(_pct(xs, LO)),\n                  float(_pct(xs, HI)))\n  return out\n```",
+ "ttft_ms": 24329,
+ "type": "result",
+ "duration_ms": 29190,
+ "uuid": "8e7c790b-6f33-49f1-8477-3d279345fb12",
+ "ttft_stream_ms": 1426,
+ "time_to_request_ms": 86,
+ "queued_turn_count": 0
+}
