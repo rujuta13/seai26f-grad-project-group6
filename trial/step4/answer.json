@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 33430,
+ "duration_api_ms": 33416,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _load\nfrom step2 import _columns, _as_float\nfrom step3 import same\n\n_WINDOW = 20  # recent rows compared against the training reference\n\n\ndef _goal_layout(train_csv):\n    \"\"\"Goal columns in the same order step1._load uses: maximised, then minimised.\"\"\"\n    _, goals = _columns(train_csv)\n    maxg = [g for g in goals if g.endswith(\"+\")]\n    ming = [g for g in goals if g.endswith(\"-\")]\n    return maxg, ming\n\n\ndef _goal_vec(row, maxg, ming):\n    return ([_as_float(row.get(g, 0.0)) for g in maxg]\n            + [-_as_float(row.get(g, 0.0)) for g in ming])\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a row if no earlier row (training or streamed) dominates it on the\n    standardized goals, and its average standardized score is in the top 5% of\n    the reference rows. Only training data and earlier rows are used.\"\"\"\n    maxg, ming = _goal_layout(train_csv)\n    if not (maxg or ming):\n        return [False] * len(rows)\n\n    G0 = _load(train_csv)[\"G\"]\n    if len(G0) == 0:\n        return [False] * len(rows)\n\n    mu = G0.mean(axis=0)\n    sd = G0.std(axis=0)\n    sd[sd == 0] = 1.0\n    ref = (G0 - mu) / sd  # higher is better on every column\n\n    decisions = []\n    for row in rows:\n        z = (np.array(_goal_vec(row, maxg, ming), dtype=float) - mu) / sd\n        dominated = bool(np.any(np.all(ref >= z, axis=1) & np.any(ref > z, axis=1)))\n        threshold = float(np.quantile(ref.mean(axis=1), 0.95))\n        keep = (not dominated) and float(z.mean()) >= threshold\n        decisions.append(bool(keep))\n        # Every row, kept or not, becomes part of the reference for later rows.\n        ref = np.vstack([ref, z.reshape(1, -1)])\n    return decisions\n\n\ndef _nn_distances(A, B):\n    \"\"\"Distance from each row of A to its nearest row of B (Euclidean).\"\"\"\n    sq = (A ** 2).sum(axis=1)[:, None] + (B ** 2).sum(axis=1)[None, :] - 2.0 * (A @ B.T)\n    return np.sqrt(np.maximum(sq, 0.0)).min(axis=1)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Warn at the first index where the last _WINDOW rows' nearest-training-row\n    distances differ from the training set's own leave-one-out nearest-neighbour\n    distances (permutation test from step3). Uses only rows up to that index.\"\"\"\n    inputs, _ = _columns(train_csv)\n    X0 = _load(train_csv)[\"X\"]\n    n = len(X0)\n    if n < 2 or not inputs or not rows:\n        return None\n\n    # Leave-one-out nearest-neighbour distances within the training set.\n    sq0 = (X0 ** 2).sum(axis=1)\n    D0 = np.sqrt(np.maximum(sq0[:, None] + sq0[None, :] - 2.0 * (X0 @ X0.T), 0.0))\n    np.fill_diagonal(D0, np.inf)\n    ref_nn = D0.min(axis=1)\n\n    Xn = np.array(\n        [[_as_float(r.get(c, 0.0)) for c in inputs] for r in rows], dtype=float\n    ).reshape(len(rows), len(inputs))\n    new_nn = _nn_distances(Xn, X0)\n\n    for i in range(_WINDOW - 1, len(rows)):\n        window = new_nn[i - _WINDOW + 1:i + 1]\n        if not same(ref_nn, window):\n            return i\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5c1d6bd1-b3f4-4224-919f-2f4cfef72210",
+ "total_cost_usd": 0.0032570249999999998,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3757,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5574,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3757,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5574,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3757,
+   "webSearchRequests": 0,
+   "costUSD": 0.0032570249999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "832101e9-4875-428b-b3ca-89f17a8242db"
+}
