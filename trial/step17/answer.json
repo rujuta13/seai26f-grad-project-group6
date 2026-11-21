@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28332,
+ "stop_reason": "end_turn",
+ "session_id": "2e8556d2-4c5e-489f-b8cb-b24465284290",
+ "total_cost_usd": 0.0423952,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 38000,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6294,
+  "output_tokens_details": {
+   "thinking_tokens": 4697
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 38000,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6294,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 38000,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 38000
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 31583,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.031648,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6294,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 38000,
+   "webSearchRequests": 0,
+   "costUSD": 0.0107472,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step17.py\n\"\"\"Step 17: choose.  Find the best flag set while benchmarking at most BUDGET\nbuilds, and optionally optimise only one goal.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nfrom collections.abc import Callable\nimport ezr\n\n\ndef choose(blind_csv: str, label: Callable[[int], dict],\n           budget: int = 30, goal: str | None = None) -> int:\n  \"\"\"Index of the best row found.  BLIND_CSV has every goal cell '?'.\n  LABEL(i) returns row i's goals as a dict, and is called at most BUDGET\n  times.  If GOAL names one goal, only that goal is optimised.\"\"\"\n\n  def key(name: str) -> str:\n    \"A goal name without its direction sign, lower-cased: 'Cpu-' -> 'cpu'.\"\n    return name.rstrip(\"+-!\").lower()\n\n  tbl  = ezr.Tbl(ezr.csv(blind_csv))\n  rows = tbl.rows\n  if not rows: raise ValueError(\"choose: blind_csv has no rows\")\n  if budget < 1: raise ValueError(\"choose: budget must be at least 1\")\n  if not tbl.y: raise ValueError(\"choose: blind_csv has no goal columns\")\n\n  if goal is None:\n    active = list(tbl.y)\n  else:\n    active = [c for c in tbl.y if key(c.txt) == key(goal)]\n    if not active:\n      names = \", \".join(c.txt for c in tbl.y)\n      raise ValueError(f\"choose: no goal named {goal!r} (goals are: {names})\")\n\n  ats  = [c.at for c in active]\n  n    = len(rows)\n  rng  = random.Random(ezr.the.Seed)       # local rng: no global side effects\n  done: dict[int, ezr.ROW] = {}            # row index -> row with goals known\n  dists: dict[int, list[float]] = {}       # labelled row -> xdist to every row\n\n  def xd(z: int, j: int) -> float:\n    \"How far row Z is from row J over the x columns (0 if there are none).\"\n    return ezr.xdist(tbl, rows[z], rows[j]) if tbl.x else 0.0\n\n  def ask(i: int) -> None:\n    \"Label row I, once, and remember its goals and its distances.\"\n    if len(done) >= budget:\n      raise RuntimeError(f\"choose: budget of {budget} labels exhausted\")\n    got = label(i)\n    row = list(rows[i])\n    for c in tbl.y:\n      if c.txt in got:\n        v = got[c.txt]\n        v = ezr.atom(v) if isinstance(v, str) else v\n        row[c.at] = v if (isinstance(v, (int, float))\n                          and not isinstance(v, bool)) else \"?\"\n    done[i]  = row\n    dists[i] = [xd(z, i) for z in range(n)]\n\n  def score(lab: ezr.TBL, row: ezr.ROW) -> float:\n    \"Distance from the ideal on the chosen goals; lower is better, inf if unknown.\"\n    gaps = []\n    for at in ats:\n      c, v = lab.cols[at], row[at]\n      if v == \"?\" or isinstance(v, str): return math.inf\n      gaps.append(abs(ezr.norm(c, v) - c.goal))\n    return ezr.dist(gaps, len(gaps))\n\n  def scores() -> dict[int, float]:\n    \"Score of every labelled row, normalised by the labelled rows so far.\"\n    ids = sorted(done)\n    lab = ezr.clone(tbl, [done[i] for i in ids])\n    return {i: score(lab, done[i]) for i in ids}\n\n  def predict(z: int, sc: dict[int, float]) -> float:\n    \"Mean score of the nearest labelled rows to unlabelled row Z.\"\n    k    = max(1, int(math.sqrt(len(sc))))\n    near = sorted(sc, key=lambda j: (dists[j][z], j))[:k]\n    return sum(sc[j] for j in near) / len(near)\n\n  # Start with a few random labels, then label the predicted best rows,\n  # with a random row now and then so the search does not stall.\n  start = min(budget, n, max(4, budget // 4))\n  for i in rng.sample(range(n), start): ask(i)\n  step = 0\n  while len(done) < min(budget, n):\n    step += 1\n    todo = [z for z in range(n) if z not in done]\n    if step % 4 == 0:\n      ask(rng.choice(todo))\n      continue\n    sc = scores()\n    ask(min(todo, key=lambda z: (predict(z, sc), z)))\n\n  sc = scores()\n  return min(sc, key=lambda i: (sc[i], i))\n```",
+ "ttft_ms": 22680,
+ "type": "result",
+ "duration_ms": 27005,
+ "uuid": "8ed25502-a066-4010-a468-05f15c276e17",
+ "ttft_stream_ms": 1245,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
