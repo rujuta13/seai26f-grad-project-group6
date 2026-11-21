@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 67364,
+ "stop_reason": "end_turn",
+ "session_id": "368a7a48-518d-4abc-b035-8783f837f83c",
+ "total_cost_usd": 0.048011700000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 38745,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 16719,
+  "output_tokens_details": {
+   "thinking_tokens": 12927
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 38745,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 16719,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 38745,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 38745
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 31828,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.031903,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 16719,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 38745,
+   "webSearchRequests": 0,
+   "costUSD": 0.016108700000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step26.py: justify the high-value group for a campaign, and explain one customer's value.\n\nStandard library only (Python 3.13). Reuses step1 (csv helpers and goal\nclassification), step2 (cell parsing and the training model), step4 (training\ncontext and row scoring), step5 (input blame), step11 (the scalable Pareto\ngroup, best()) and step12 (calibrated kNN goal estimates for goals a customer\nhas not yet been measured on).\n\nexplain() gives reasons a sceptical sales director can check against the\nfile. why() gives a value verdict, then the inputs a team can act on, so\nthe second sentence can be checked against the customer's own records.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport statistics\n\nfrom step1 import _classify, _read\nfrom step2 import _model, _num\nfrom step4 import _context, _score\nfrom step5 import blame\nfrom step11 import best\nfrom step12 import guess as _calibrated_guess\n\n_TOP_PROFILE = 5    # input columns listed in explain()\n_TOP_ACTION = 3     # actionable input columns named in why()\n_MIN_GAP = 0.10     # differences below 10% of the training range are ignored\n_ACTIONABLE = (\"RECENCY\", \"MNT\", \"ACCEPTEDCMP\")  # inputs a team can change\n\n\ndef _nums(rows: list[list[str]], j: int) -> list[float]:\n    \"\"\"Numeric values of column j, skipping blank, text and NaN cells.\"\"\"\n    out: list[float] = []\n    for r in rows:\n        v = _num(r[j])\n        if v is not None:\n            out.append(v)\n    return out\n\n\ndef _is_actionable(name: str) -> bool:\n    \"\"\"True for inputs a team can influence (recency, spend, past offers).\"\"\"\n    return name.startswith(_ACTIONABLE)\n\n\ndef _profile(header: list[str], rows: list[list[str]],\n             group: list[list[str]], inputs: list[int]\n             ) -> list[tuple[float, int, str, float, float]]:\n    \"\"\"Inputs where the group's median differs most from all customers.\"\"\"\n    found: list[tuple[float, int, str, float, float]] = []\n    for pos, j in enumerate(inputs):\n        all_vals = _nums(rows, j)\n        grp = _nums(group, j)\n        if len(all_vals) < 2 or not grp:\n            continue\n        span = max(all_vals) - min(all_vals)\n        if span <= 0:\n            continue\n        g = statistics.median(grp)\n        a = statistics.median(all_vals)\n        gap = (g - a) / span\n        if abs(gap) >= _MIN_GAP:\n            found.append((abs(gap), pos, header[j], g, a))\n    found.sort(key=lambda t: (-t[0], t[1]))\n    return found\n\n\ndef _row_gaps(header: list[str], rows: list[list[str]],\n              group: list[list[str]], inputs: list[int],\n              row: dict) -> list[tuple[str, float, float]]:\n    \"\"\"Inputs where this customer differs most from the typical group member.\n\n    Actionable inputs come first, then the rest, each ordered by gap size.\n    \"\"\"\n    found: list[tuple[int, float, int, str, float, float]] = []\n    for pos, j in enumerate(inputs):\n        name = header[j]\n        v = _num(row.get(name))\n        if v is None:\n            continue\n        all_vals = _nums(rows, j)\n        grp = _nums(group, j)\n        if len(all_vals) < 2 or not grp:\n            continue\n        span = max(all_vals) - min(all_vals)\n        if span <= 0:\n            continue\n        g = statistics.median(grp)\n        gap = (v - g) / span\n        if abs(gap) >= _MIN_GAP:\n            rank = 0 if _is_actionable(name) else 1\n            found.append((rank, -abs(gap), pos, name, v, g))\n    found.sort(key=lambda t: (t[0], t[1], t[2]))\n    return [(name, v, g) for _, _, _, name, v, g in found]\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons the high-value group should get the campaign,\n    with checks a sceptical reader can repeat.\"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    if not rows or not goals or not inputs:\n        return (\"Nothing to explain: the file needs customer rows, goal columns \"\n                \"and input columns.\")\n    picked = best(key)\n    if not picked:\n        return \"Nothing to explain: too few customers to pick a group.\"\n\n    group = [rows[i] for i in picked]\n    points: list[str] = []\n\n    outcomes = \", \".join(\n        f\"{header[j]} ({'higher' if sign > 0 else 'lower'} is better)\"\n        for j, sign in goals\n    )\n    points.append(f\"We judge customers on these outcomes: {outcomes}.\")\n    points.append(\n        f\"The high-value group is {len(picked)} of {len(rows)} customers. \"\n        \"Each is one that no other customer is at least as good as on every \"\n        \"outcome while being better on at least one. If that set is larger \"\n        \"than 5% of customers, the group keeps those with the highest overall \"\n        \"average. To check: take any customer in the group and confirm that \"\n        \"no other customer is at least as good on every outcome and better \"\n        \"on one.\"\n    )\n\n    for j, _ in goals:\n        gv = _nums(group, j)\n        av = _nums(rows, j)\n        if gv and av:\n            points.append(\n                f\"{header[j]}: the group's median is \"\n                f\"{statistics.median(gv):.4g}, against \"\n                f\"{statistics.median(av):.4g} for all customers.\"\n            )\n\n    for j, _ in goals:\n        gv = _nums(group, j)\n        av = _nums(rows, j)\n        if (header[j].startswith(\"RESPONSE\") and gv and av\n                and set(av) <= {0.0, 1.0}):\n            points.append(\n                \"Campaign response: \"\n                f\"{statistics.fmean(gv):.0%} of the group responded to the \"\n                \"campaign recorded in this file, against \"\n                f\"{statistics.fmean(av):.0%} of all customers. (The column is \"\n                \"a 0/1 flag, so its mean is the response rate.)\"\n            )\n\n    profile = _profile(header, rows, group, inputs)\n    if profile:\n        lines: list[str] = []\n        for _, _, name, g, a in profile[:_TOP_PROFILE]:\n            direction = \"higher\" if g > a else \"lower\"\n            tag = \"actionable\" if _is_actionable(name) else \"background trait\"\n            lines.append(\n                f\"   {name} ({tag}): group customers are {direction} \"\n                f\"(median {g:.4g} against {a:.4g} for all customers).\"\n            )\n        points.append(\n            \"Input values that differ most between the group and all \"\n            \"customers (checkable in the data):\\n\" + \"\\n\".join(lines)\n        )\n    else:\n        points.append(\n            \"No input differs by a meaningful amount between the group and \"\n            \"all customers.\"\n        )\n\n    top = blame(key)[:_TOP_PROFILE]\n    points.append(\n        \"Inputs most associated with low value (association, not proof of \"\n        \"cause), strongest first: \" + \", \".join(top) + \".\"\n    )\n    points.append(\n        \"Caveat: these patterns come from one file of customers. Check them \"\n        \"on a separate file, and compare the group against a held-back control \"\n        \"group, before committing the campaign budget.\"\n    )\n\n    return \"\\n\".join(f\"{i}. {p}\" for i, p in enumerate(points, 1))\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"Two sentences: the value verdict with outcome scores, then the inputs\n    a team can act on, compared with high-value customers.\n\n    `row` is a dict {column name: value}; goal columns may be included. Goals\n    not recorded for the customer are estimated from similar customers.\n    \"\"\"\n    key = os.fspath(train_csv)\n    header, rows = _read(key)\n    inputs, goals = _classify(header)\n    if not rows or not goals:\n        return \"Cannot judge: the training file has no customers or no goal columns.\"\n\n    ctx = _context(key)\n    goal_vals = _model(key)[\"goal_vals\"]\n    train_means: list[float] = []\n    for i in range(len(rows)):\n        s = _score([col[i] for col in goal_vals], ctx)\n        train_means.append(sum(s) / len(s))\n    threshold = statistics.median(train_means)\n\n    names = ctx[\"goal_names\"]\n    raw = [_num(row.get(name)) for name in names]\n    estimated: list[str] = []\n    unscored: list[str] = []\n    if any(v is None for v in raw):\n        est = _calibrated_guess(key, row)\n        for k, name in enumerate(names):\n            if raw[k] is not None:\n                continue\n            e = est.get(name, (math.nan, math.nan, math.nan))[0]\n            if math.isfinite(e):\n                raw[k] = e\n                estimated.append(name)\n            else:\n                unscored.append(name)\n\n    s = _score(raw, ctx)\n    m = sum(s) / len(s)\n    verdict = \"HIGH VALUE\" if m >= threshold else \"LOW VALUE\"\n    strong_name, strong = max(zip(names, s), key=lambda p: p[1])\n    weak_name, weak = min(zip(names, s), key=lambda p: p[1])\n\n    first = (\n        f\"{verdict}: average normalised outcome score {m:.2f} against a typical \"\n        f\"customer's {threshold:.2f} (1 is best on every outcome); weakest on \"\n        f\"{weak_name} ({weak:.2f}), strongest on {strong_name} ({strong:.2f})\"\n    )\n    notes: list[str] = []\n    if estimated:\n        notes.append(\n            f\"{', '.join(estimated)} estimated from similar customers because \"\n            \"not recorded\"\n        )\n    if unscored:\n        notes.append(\n            f\"no estimate for {', '.join(unscored)}, so counted as worst\"\n        )\n    if notes:\n        first += \"; \" + \"; \".join(notes)\n    first += \".\"\n\n    group_idx = best(key)\n    if not group_idx:\n        return first + \" Too few customers to compare inputs with high-value customers.\"\n\n    group = [rows[i] for i in group_idx]\n    gaps = _row_gaps(header, rows, group, inputs, row)\n    acts = [(name, v, g) for name, v, g in gaps if _is_actionable(name)]\n    rest = [(name, v, g) for name, v, g in gaps if not _is_actionable(name)]\n\n    def describe(items: list[tuple[str, float, float]]) -> str:\n        return \"; \".join(\n            f\"{name} is {v:g} where high-value customers typically have {g:g}\"\n            for name, v, g in items\n        )\n\n    if acts:\n        second = \"Levers to act on: \" + describe(acts[:_TOP_ACTION]) + \".\"\n    elif rest:\n        second = (\n            \"No actionable input differs meaningfully from high-value customers; \"\n            \"the differences are background traits: \"\n            + describe(rest[:_TOP_ACTION]) + \".\"\n        )\n    else:\n        second = \"No input differs meaningfully from the typical high-value customer.\"\n    return first + \" \" + second\n```",
+ "ttft_ms": 55264,
+ "type": "result",
+ "duration_ms": 66188,
+ "uuid": "9067363a-fbe1-4157-8c31-fc6ab1703886",
+ "ttft_stream_ms": 1020,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
