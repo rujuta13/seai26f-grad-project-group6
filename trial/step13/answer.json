@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9961,
+ "stop_reason": "end_turn",
+ "session_id": "ed4013cd-17a7-47f4-bcda-df9762df3650",
+ "total_cost_usd": 0.0327687,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30680,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1881,
+  "output_tokens_details": {
+   "thinking_tokens": 1132
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30680,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1881,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30680,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30680
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25612,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.025692,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1881,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30680,
+   "webSearchRequests": 0,
+   "costUSD": 0.0070767,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 13: certify. Decide whether a gap between two groups is real or noise.\n\nsame(xs, ys) runs a two-sided two-sample permutation test on the difference of\nmeans. If the two groups were really alike, shuffling the pooled values between\nthe groups would often produce a gap at least as large as the observed one.\nBoth client questions use this check: whether the shortlist differs from the\nleague average, and whether strikers differ from midfielders on penalty taking.\n\nStandard library only. A fixed seed keeps results reproducible. Non-numeric and\nnon-finite values are dropped before testing.\n\"\"\"\nimport math\nimport random\n\nALPHA = 0.05         # below this p-value, the gap is treated as real\nPERMUTATIONS = 4000  # number of label shuffles in the permutation test\nSEED = 1             # fixed seed so results are reproducible\n\n\ndef _clean(values):\n    \"\"\"Floats from values, leaving out anything that is not a finite number.\"\"\"\n    out = []\n    for v in values:\n        try:\n            x = float(v)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(x):\n            out.append(x)\n    return out\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the gap between xs and ys is noise, False if the difference is real.\"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        return True  # nothing to compare, so no evidence of a difference\n\n    na = len(a)\n    nb = len(b)\n    pooled = a + b\n    total = sum(pooled)\n\n    observed = abs(sum(a) / na - sum(b) / nb)\n    if observed == 0.0:\n        return True\n\n    tol = 1e-12 * max(1.0, observed)\n    rng = random.Random(SEED)\n    count = 0\n    for _ in range(PERMUTATIONS):\n        rng.shuffle(pooled)\n        sa = sum(pooled[:na])\n        ma = sa / na\n        mb = (total - sa) / nb\n        if abs(ma - mb) >= observed - tol:\n            count += 1\n\n    # Add-one correction keeps the p-value away from exactly zero.\n    p = (count + 1) / (PERMUTATIONS + 1)\n    return p >= ALPHA\n```",
+ "ttft_ms": 6386,
+ "type": "result",
+ "duration_ms": 8799,
+ "uuid": "08f5a720-5702-49f7-86fd-1c832b19fe8e",
+ "ttft_stream_ms": 1184,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
