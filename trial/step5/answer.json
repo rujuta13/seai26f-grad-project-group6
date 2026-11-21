@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 25402,
+ "stop_reason": "end_turn",
+ "session_id": "6083e4cf-5f76-4937-b31f-25234abed89d",
+ "total_cost_usd": 0.0147398,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11403,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5170,
+  "output_tokens_details": {
+   "thinking_tokens": 4360
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11403,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5170,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11403,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11403
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9789,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009874,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5170,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11403,
+   "webSearchRequests": 0,
+   "costUSD": 0.0048658,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step5.py\n\"Step 5: blame. Which input columns are most to blame for bad rows?\"\nimport ezr\n\nMIN  = 2     # smallest group (rows) a split may isolate\nCUTS = 4     # thresholds tried per numeric column\n\ndef _ydist(tbl, row):\n  \"Distance of ROW's numeric goals from their best; None if no goal is known.\"\n  sq, n = 0.0, 0\n  for c in tbl.y:\n    if type(c) is not ezr.Num: continue\n    v = row[c.at]\n    if v == \"?\": continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else None\n\ndef _splits(col, xs: list):\n  \"Yield (label, test) pairs: one per symbol value, or CUTS thresholds per number.\"\n  if type(col) is ezr.Sym:\n    for v in sorted(set(xs), key=str):\n      yield v, (lambda x, v=v: x == v)\n  else:\n    ys = sorted(xs)\n    for i in range(1, CUTS + 1):\n      t = ys[(i * (len(ys) - 1)) // (CUTS + 1)]\n      yield t, (lambda x, t=t: x <= t)\n      yield t, (lambda x, t=t: x > t)\n\ndef blame(train_csv) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  seen = []\n  for r in tbl.rows:\n    d = _ydist(tbl, r)\n    if d is not None: seen.append((r, d))\n  score = {}\n  for col in tbl.x:\n    vals = [(r[col.at], d) for r, d in seen if r[col.at] != \"?\"]\n    best = 0.0\n    if vals:\n      for _, test in _splits(col, [x for x, _ in vals]):\n        yes = [d for x, d in vals if test(x)]\n        no  = [d for x, d in vals if not test(x)]\n        if len(yes) < MIN or len(no) < MIN: continue\n        gap = sum(yes) / len(yes) - sum(no) / len(no)\n        best = max(best, gap * len(yes) ** .5)\n    score[col.txt] = best\n  return sorted(score, key=lambda k: -score[k])\n```",
+ "ttft_ms": 22283,
+ "type": "result",
+ "duration_ms": 24420,
+ "uuid": "6e21cf0a-45b8-4ba5-b993-baff7ecca7b5",
+ "ttft_stream_ms": 1498,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
