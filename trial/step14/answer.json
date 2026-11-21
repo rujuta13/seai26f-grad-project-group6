@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 20289,
+ "stop_reason": "end_turn",
+ "session_id": "30a18acd-beb9-4f06-9ab4-260c293d12ba",
+ "total_cost_usd": 0.029672200000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26370,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4258,
+  "output_tokens_details": {
+   "thinking_tokens": 2550
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26370,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4258,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26370,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26370
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22204,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022269,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4258,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26370,
+   "webSearchRequests": 0,
+   "costUSD": 0.0074032,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step14.py\n\"Step 14: flow. Keep good rows as they stream in; warn when they drift from train.\"\nimport math\nimport os\nimport random\nimport ezr\n\nQUANTILE = 0.25   # a row is \"worth keeping\" if its goal distance is in train's best 25%\nWINDOW   = 15     # recent rows compared against the train baseline, for drift\nBASE_N   = 60     # train rows sampled to build the drift baseline\nSEED     = 1234567891\n\n_CACHE: dict = {}  # (path, mtime) -> (table, keep threshold, drift baseline)\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict,\n  a full-width list, or a list with goal columns removed (header order).\n  Any cell not given is '?'. Non-numeric cells in numeric columns become '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row: out[at] = _coerce(row[n])\n  else:\n    row = list(row)\n    if len(row) == len(names):\n      out = [_coerce(v) for v in row]\n    else:\n      keep = [i for i, n in enumerate(names) if n[-1] not in \"+-!\"]\n      for i, v in zip(keep, row): out[i] = _coerce(v)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _isnum(out[c.at]):\n      out[c.at] = \"?\"\n  return out\n\ndef _ydist(tbl, row):\n  \"Distance of ROW's numeric goals from their best; None if no goal is known.\"\n  sq, n = 0.0, 0\n  for c in tbl.y:\n    if type(c) is not ezr.Num: continue\n    v = row[c.at]\n    if not _isnum(v): continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else None\n\ndef _nn(tbl, row, skip: int | None = None) -> float:\n  \"Distance from ROW to its nearest train row over the x columns (ignoring train row SKIP).\"\n  return min((ezr.xdist(tbl, row, t)\n              for j, t in enumerate(tbl.rows) if j != skip),\n             default=1.0)\n\ndef _load(train_csv: str):\n  \"Train table, keep threshold (None if no train goals), and drift baseline; cached per file version.\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl = ezr.Tbl(ezr.csv(train_csv))\n    ys  = sorted(d for d in (_ydist(tbl, r) for r in tbl.rows)\n                 if d is not None)\n    thr = ys[int(QUANTILE * (len(ys) - 1))] if ys else None\n    n    = len(tbl.rows)\n    rng  = random.Random(SEED)\n    pick = rng.sample(range(n), min(BASE_N, n))\n    base = [_nn(tbl, tbl.rows[i], skip=i) for i in pick]\n    _CACHE[key] = (tbl, thr, base)\n  return _CACHE[key]\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"\"\"One keep decision per row, in order. A row is kept if its goals are\n  among the best QUANTILE of the train rows. Decisions use only TRAIN_CSV\n  and the row at hand.\"\"\"\n  tbl, thr, _ = _load(train_csv)\n  out = []\n  for r in rows:\n    d = _ydist(tbl, _full(tbl, r))\n    out.append(thr is not None and d is not None and d <= thr)\n  return out\n\ndef drift(train_csv, rows) -> int | None:\n  \"\"\"Index into ROWS of the first row at which the last WINDOW rows no\n  longer look like train (by nearest-train distance over the x columns),\n  or None if they never do. Uses only TRAIN_CSV and rows up to that index.\"\"\"\n  tbl, _, base = _load(train_csv)\n  if not base: return None\n  recent: list[float] = []\n  for i, r in enumerate(rows):\n    recent.append(_nn(tbl, _full(tbl, r)))\n    if len(recent) > WINDOW: recent.pop(0)\n    if len(recent) == WINDOW and not ezr.same(base, recent):\n      return i\n  return None\n```",
+ "ttft_ms": 13464,
+ "type": "result",
+ "duration_ms": 18162,
+ "uuid": "54014873-1df9-404d-b299-06a5b06e84ef",
+ "ttft_stream_ms": 1311,
+ "time_to_request_ms": 85,
+ "queued_turn_count": 0
+}
