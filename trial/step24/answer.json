@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 36099,
+ "stop_reason": "end_turn",
+ "session_id": "b15cce48-9e19-4d06-b35e-e8e949c8443e",
+ "total_cost_usd": 0.046725199999999995,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 41170,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8286,
+  "output_tokens_details": {
+   "thinking_tokens": 5607
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 41170,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8286,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 41170,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 41170
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 34273,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.034348,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8286,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 41170,
+   "webSearchRequests": 0,
+   "costUSD": 0.0123772,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step24.py\nimport math\nimport random\nimport statistics\nimport ezr\n\nGOOD = 0.25   # keep a sign-up if its predicted goal score is in the best quarter of training\nK_MIN = 5     # fewest nearest training rows that count as evidence\nWIN = 10      # drift: new rows are judged in blocks of this many\nBASE = 100    # drift: training rows used to measure normal novelty\n\n_trains: dict[str, ezr.TBL] = {}      # load each training file once\n_knowns: dict[str, ezr.ROWS] = {}     # cleaned training rows, once per file\n_cuts: dict[str, float] = {}          # keep cutoff on ydist, once per file\n_bases: dict[str, list[float]] = {}   # normal novelty, once per file\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Load TRAIN_CSV, and remember it for later calls.\"\n  if train_csv not in _trains:\n    _trains[train_csv] = ezr.Tbl(ezr.csv(train_csv))\n  return _trains[train_csv]\n\ndef _is_num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _cell(v):\n  \"A raw cell as an ezr atom; None, blank and '?' become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return \"?\" if s in (\"\", \"?\") else ezr.atom(s)\n  return v\n\ndef _align(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"\"\"Align ROW to TBL's columns. ROW is a dict by column name (with or\n  without its + or - sign), or a list over every column or over the\n  non-goal columns. Missing is '?'.\"\"\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):\n    pairs = [(at, row.get(name, row.get(name.rstrip(\"+-\"))))\n             for at, name in enumerate(tbl.names)]\n  elif len(row) == len(tbl.names):\n    pairs = list(enumerate(row))\n  else:\n    keep  = [at for at, n in enumerate(tbl.names) if n[-1] not in \"+-\"]\n    pairs = list(zip(keep, row))\n  for at, v in pairs: q[at] = _cell(v)\n  return q\n\ndef _fit(tbl: ezr.TBL, q: ezr.ROW) -> ezr.ROW:\n  \"Q with any non-number in a number column blanked to '?'.\"\n  out = list(q)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _is_num(out[c.at]): out[c.at] = \"?\"\n  return out\n\ndef _goals(tbl: ezr.TBL) -> list:\n  \"The numeric goal columns of TBL (names ending + or -).\"\n  return [c for c in tbl.y if type(c) is ezr.Num]\n\ndef _complete(goals: list, r: ezr.ROW) -> bool:\n  \"True if every goal cell of R is a number.\"\n  return all(_is_num(r[c.at]) for c in goals)\n\ndef _ydist(goals: list, r: ezr.ROW) -> float:\n  \"How far R's goals are from the best they could be (0 is best).\"\n  if not goals: return 0.0\n  return ezr.dist((abs(ezr.norm(c, r[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _known(train_csv: str) -> ezr.ROWS:\n  \"Training rows, cleaned to match the table's columns.\"\n  if train_csv not in _knowns:\n    tbl = _load(train_csv)\n    _knowns[train_csv] = [_fit(tbl, r) for r in tbl.rows]\n  return _knowns[train_csv]\n\ndef _cut(train_csv: str) -> float:\n  \"The ydist at or below which a training-like row counts as good: best GOOD of training.\"\n  if train_csv not in _cuts:\n    tbl   = _load(train_csv)\n    goals = _goals(tbl)\n    ys    = sorted(_ydist(goals, r) for r in _known(train_csv)\n                   if goals and _complete(goals, r))\n    _cuts[train_csv] = (ys[min(len(ys) - 1, int(GOOD * (len(ys) - 1)))]\n                        if ys else float(\"-inf\"))\n  return _cuts[train_csv]\n\ndef _nearest(tbl: ezr.TBL, known: ezr.ROWS, q: ezr.ROW) -> ezr.ROWS:\n  \"The training rows nearest to Q over the input columns.\"\n  k = min(len(known), max(K_MIN, int(math.sqrt(len(known)))))\n  return sorted(known, key=lambda r: ezr.xdist(tbl, q, r))[:k]\n\ndef _keep(tbl: ezr.TBL, goals: list, known: ezr.ROWS, cut: float,\n          q: ezr.ROW) -> bool:\n  \"Keep Q if the goals of its nearest training rows are, typically, in the best GOOD.\"\n  if not goals or not tbl.x: return False\n  if not any(q[c.at] != \"?\" for c in tbl.x): return False  # no inputs: cannot judge\n  near = _nearest(tbl, known, q)\n  ys   = [_ydist(goals, r) for r in near if _complete(goals, r)]\n  if len(ys) < K_MIN: return False\n  return statistics.median(ys) <= cut\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"\"\"Keep a row (True) if the training rows most like its inputs were good on\n  the goals. Uses only TRAIN_CSV and the inputs of each row; goal cells in the\n  row are never used, since a new sign-up's goals are not yet known.\"\"\"\n  tbl   = _load(train_csv)\n  goals = _goals(tbl)\n  known = _known(train_csv)\n  cut   = _cut(train_csv)\n  out: list[bool] = []\n  for row in rows:\n    q = _fit(tbl, _align(tbl, row))\n    out.append(bool(_keep(tbl, goals, known, cut, q)))\n  return out\n\ndef _baseline(train_csv: str) -> list[float]:\n  \"How novel training rows look to the rest of training: nearest-neighbour xdist.\"\n  if train_csv not in _bases:\n    tbl   = _load(train_csv)\n    known = _known(train_csv)\n    if not tbl.x or len(known) < 2:\n      _bases[train_csv] = []\n    else:\n      k   = min(BASE, len(known))\n      idx = random.Random(ezr.the.Seed).sample(range(len(known)), k)\n      _bases[train_csv] = [\n        min(ezr.xdist(tbl, known[i], s)\n            for j, s in enumerate(known) if j != i)\n        for i in idx]\n  return _bases[train_csv]\n\ndef drift(train_csv, rows) -> int | None:\n  \"\"\"Index (at the end of a block of WIN new rows) where the new rows are\n  more novel than usual, and not the same distribution as training's normal\n  novelty. Uses only TRAIN_CSV and the rows seen so far; goal cells are ignored.\"\"\"\n  tbl  = _load(train_csv)\n  base = _baseline(train_csv)\n  if not base: return None\n  base_mid = statistics.median(base)\n  known    = _known(train_csv)\n  recent: list[float] = []\n  for i, row in enumerate(rows):\n    q = _fit(tbl, _align(tbl, row))\n    recent.append(min((ezr.xdist(tbl, q, s) for s in known), default=0.0))\n    if len(recent) % WIN == 0:\n      block = recent[-WIN:]\n      if (statistics.median(block) > base_mid\n          and not ezr.same(base, block)):\n        return i\n  return None\n```",
+ "ttft_ms": 27341,
+ "type": "result",
+ "duration_ms": 34779,
+ "uuid": "5ac46ea2-2253-4702-af0b-59c7b33516e2",
+ "ttft_stream_ms": 1724,
+ "time_to_request_ms": 99,
+ "queued_turn_count": 0
+}
