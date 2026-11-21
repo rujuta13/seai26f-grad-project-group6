@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 31139,
+ "stop_reason": "end_turn",
+ "session_id": "8b07bf86-52a1-4c18-b54e-27e951e5918f",
+ "total_cost_usd": 0.015176400000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11111,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6468,
+  "output_tokens_details": {
+   "thinking_tokens": 5419
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11111,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6468,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11111,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11111
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9655,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009720000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6468,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11111,
+   "webSearchRequests": 0,
+   "costUSD": 0.0054564,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\n\nimport step1\nimport step2\n\n\ndef _scores(row, goals):\n    \"\"\"Higher is better on every goal; missing values count as worst.\"\"\"\n    s = []\n    for name, sign in goals:\n        v = step1._to_num(row.get(name, \"\"))\n        s.append(sign * v if v is not None else -math.inf)\n    return tuple(s)\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row`, changed in as few values as possible so it becomes good.\n\n    Only configurations present in train_csv are used, so the goals of a\n    fixed row are known rather than guessed. Among training rows that no\n    other training row dominates (the rows step6.why calls good) and that\n    agree with `row` on every frozen column, the one differing from `row` in\n    the fewest input values is chosen. Its values are copied into the\n    returned dict. Ties go to the nearest such row, then the lowest index.\n\n    If no undominated training row agrees with the frozen columns, the row\n    with the fewest dominating rows is used instead, so the result may still\n    be bad. If no training row agrees with the frozen columns, the inputs\n    are returned unchanged.\n\n    Columns named in `frozen` that are not inputs are ignored.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    frozen = set(frozen)\n\n    rows, inputs, goals = step1._load(train_csv)\n    out = {c: row.get(c, \"\") for c in inputs}\n    if not rows or not inputs or not goals:\n        return out\n\n    kinds = step2._prep(rows, inputs)\n    tparsed = [step2._parse(r, inputs, kinds) for r in rows]\n    q = step2._parse(row, inputs, kinds)\n    frozen_idx = [j for j, c in enumerate(inputs) if c in frozen]\n\n    n = len(rows)\n    scores = [_scores(r, goals) for r in rows]\n    dom_count = [\n        sum(1 for j in range(n)\n            if j != i and step1._dominates(scores[j], scores[i]))\n        for i in range(n)\n    ]\n\n    def compatible(i):\n        return all(tparsed[i][j] == q[j] for j in frozen_idx)\n\n    def changes(i):\n        return sum(1 for j in range(len(inputs)) if tparsed[i][j] != q[j])\n\n    def gap(i):\n        return step2._dist(q, tparsed[i], kinds)\n\n    compat = [i for i in range(n) if compatible(i)]\n    if not compat:\n        return out\n\n    good = [i for i in compat if dom_count[i] == 0]\n    if good:\n        pick = min(good, key=lambda i: (changes(i), gap(i), i))\n    else:\n        pick = min(compat, key=lambda i: (dom_count[i], changes(i), gap(i), i))\n\n    for j, c in enumerate(inputs):\n        if tparsed[pick][j] != q[j]:\n            raw = rows[pick].get(c, \"\")\n            if kinds[j][0] == \"num\":\n                out[c] = step1._to_num(raw)\n            else:\n                out[c] = str(raw)\n    return out\n```",
+ "ttft_ms": 27046,
+ "type": "result",
+ "duration_ms": 30325,
+ "uuid": "fbb670ee-51e8-45a8-a702-b62740cd9f54",
+ "ttft_stream_ms": 1526,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
