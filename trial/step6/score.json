@@ -1,0 +1,14 @@
+{
+ "domain": "ssw",
+ "step": 6,
+ "skill": "justify",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "columns_mentioned": 5,
+  "explain_words": 186,
+  "why_words": 31
+ }
+}
