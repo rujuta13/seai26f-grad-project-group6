@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 25080,
+ "stop_reason": "end_turn",
+ "session_id": "493f4563-adc6-4070-882c-400de845b263",
+ "total_cost_usd": 0.028252700000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24635,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5267,
+  "output_tokens_details": {
+   "thinking_tokens": 4168
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24635,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5267,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24635,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24635
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20607,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020692000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5267,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24635,
+   "webSearchRequests": 0,
+   "costUSD": 0.007560700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step14.py: streaming keep decisions and drift warnings for new scouting rows.\n\nstream: a row is kept when no training row or earlier row dominates it, so the\nkept rows form the running Pareto front of the goals (step4's rule). Rows with\nmissing or non-finite goals are never kept. Non-finite values are excluded\nbecause NaN comparisons make dominance checks unreliable.\n\ndrift: each row's goals are checked against the calibrated nearest-neighbour\nrange from step12.guess. Rows with no usable goals are skipped, so they do not\ndilute the signal. The fraction of goals outside the range is averaged over the\nlast WINDOW scored rows. Training-like rows sit near 0.1, because step12's\nranges cover about 90% of leave-one-out errors. A mean above DRIFT_LEVEL\nsignals that new rows no longer look like the training rows.\n\nStandard library only.\n\"\"\"\nimport math\nfrom collections import deque\n\nfrom step1 import _load\nfrom step4 import _add, _goals\nfrom step12 import guess\n\nWINDOW = 8          # number of recent scored rows in the drift window\nDRIFT_LEVEL = 0.3   # mean out-of-range fraction that triggers a warning\n\n\ndef _orient(row, goals):\n    \"\"\"Goal vector of a row, oriented so higher is better; None if any goal\n    is missing, non-numeric or not finite.\"\"\"\n    vec = []\n    for c, sgn in goals:\n        try:\n            x = float(row[c])\n        except (KeyError, TypeError, ValueError):\n            return None\n        if not math.isfinite(x):\n            return None\n        vec.append(sgn * x)\n    return vec\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"For each row in order, True if it is worth keeping (good on the goals).\n\n    A row is kept when no training row and no earlier kept or seen row is at\n    least as good on every goal and better on at least one.\n    \"\"\"\n    cols, train = _load(train_csv)\n    goals = _goals(cols, train)\n    if not goals:\n        return [False] * len(rows)\n\n    front = []\n    for r in train:\n        v = _orient(r, goals)\n        if v is not None:\n            _add(front, v)\n\n    keep = []\n    for row in rows:\n        v = _orient(row, goals)\n        keep.append(v is not None and _add(front, v))\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the stream stops looking like\n    train_csv, or None if it never does.\"\"\"\n    cols, train = _load(train_csv)\n    goals = [c for c, _ in _goals(cols, train)]\n    if not goals:\n        return None\n\n    recent = deque(maxlen=WINDOW)\n    for i, row in enumerate(rows):\n        pred = guess(train_csv, row)\n        counted = out = 0\n        for g in goals:\n            v = row.get(g)\n            if not isinstance(v, float) or not math.isfinite(v):\n                continue\n            counted += 1\n            _, lo, hi = pred[g]\n            if v < lo or v > hi:\n                out += 1\n        if counted == 0:\n            continue\n        recent.append(out / counted)\n        if len(recent) == WINDOW and sum(recent) / WINDOW > DRIFT_LEVEL:\n            return i\n    return None\n```",
+ "ttft_ms": 20544,
+ "type": "result",
+ "duration_ms": 23954,
+ "uuid": "95143d39-8e38-4df2-b268-08ddfbaed870",
+ "ttft_stream_ms": 1310,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
