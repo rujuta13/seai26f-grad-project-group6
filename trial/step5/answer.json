@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 17542,
+ "duration_api_ms": 17530,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef _average_ranks(values):\n    \"\"\"Ranks 1..N with ties replaced by their average rank.\"\"\"\n    values = np.asarray(values, dtype=float)\n    uniq, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)\n    starts = np.cumsum(counts) - counts\n    avg = starts + (counts + 1) / 2.0\n    return avg[inverse]\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    A row's badness is its average normalised rank across all goals, with\n    every goal minimised and missing values counted as worst. Rows in the top\n    quartile of badness are \"bad\", rows in the bottom quartile are \"good\".\n\n    Binary inputs are scored by how much more often they are on among bad rows\n    than among good rows. Other inputs are scored by the Spearman correlation\n    between their rank and the badness rank. Higher score means more blame.\n    Ties keep the original column order.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    inputs, goal_max, goal_min = _split_columns(cols)\n    goals = goal_min + goal_max\n    n = len(rows)\n\n    if not inputs:\n        return []\n    if n == 0 or not goals:\n        return list(inputs)\n\n    # Minimisation matrix: every goal minimised, missing = worst (+inf).\n    G = np.empty((n, len(goals)), dtype=float)\n    for j, c in enumerate(goals):\n        vals = np.array([_to_float(r.get(c)) for r in rows], dtype=float)\n        vals = np.where(np.isnan(vals), np.inf, vals)\n        if c.endswith(\"+\"):\n            vals = -vals\n        G[:, j] = vals\n\n    # Badness: mean normalised rank across goals (0 = best, 1 = worst).\n    badness = np.zeros(n, dtype=float)\n    for j in range(G.shape[1]):\n        r = _average_ranks(G[:, j])\n        badness += (r - 1.0) / max(n - 1, 1)\n    badness /= G.shape[1]\n\n    if np.all(badness == badness[0]):\n        return list(inputs)\n\n    q75 = float(np.quantile(badness, 0.75))\n    q25 = float(np.quantile(badness, 0.25))\n    bad = badness >= q75\n    good = (~bad) & (badness <= q25)\n    if not good.any():\n        good = ~bad\n    if not bad.any() or not good.any():\n        return list(inputs)\n\n    rank_bad = _average_ranks(badness)\n\n    scored = []\n    for idx, c in enumerate(inputs):\n        vals = np.array([_to_float(r.get(c)) for r in rows], dtype=float)\n        vals = np.where(np.isnan(vals), 0.0, vals)\n        uniq = np.unique(vals)\n\n        if len(uniq) <= 1:\n            score = 0.0\n        elif len(uniq) == 2:\n            on = vals == uniq[-1]\n            score = float(on[bad].mean() - on[good].mean())\n        else:\n            rv = _average_ranks(vals)\n            if rv.std() == 0 or rank_bad.std() == 0:\n                score = 0.0\n            else:\n                score = float(np.corrcoef(rv, rank_bad)[0, 1])\n                if not math.isfinite(score):\n                    score = 0.0\n\n        scored.append((-score, idx, c))\n\n    scored.sort()\n    return [c for _, _, c in scored]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "20a48a2f-1d4f-4c44-b914-1bfe121af0cc",
+ "total_cost_usd": 0.00244815,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 6446,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3284,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6446,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3284,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6446,
+   "webSearchRequests": 0,
+   "costUSD": 0.00244815,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "372c2330-a475-44a9-b78a-c6bd090017d3"
+}
