@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 43665,
+ "stop_reason": "end_turn",
+ "session_id": "92d7cb33-0fdc-4d03-a96d-16a45a50cbcb",
+ "total_cost_usd": 0.015516700000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9700,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9941,
+  "output_tokens_details": {
+   "thinking_tokens": 8508
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9700,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9941,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9700,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9700
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8521,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008606,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9941,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9700,
+   "webSearchRequests": 0,
+   "costUSD": 0.0069107,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\n\nimport step1\nimport step2\n\n_SEED = 0  # fixed seed so the same inputs always give the same answer\n\n\ndef _resolve(goals, goal):\n    \"\"\"Map the `goal` argument to the one matching goal column.\"\"\"\n    exact = [(n, s) for n, s in goals if n == goal]\n    if exact:\n        return exact\n    key = goal.rstrip(\"+-\").lower()\n    loose = [(n, s) for n, s in goals if n.rstrip(\"+-\").lower() == key]\n    if len(loose) == 1:\n        return loose\n    names = \", \".join(n for n, _ in goals)\n    raise ValueError(f\"goal {goal!r} does not name one goal column (goals: {names})\")\n\n\ndef _pick(cache, active):\n    \"\"\"Best labelled row: undominated first, then highest rank sum, then lowest index.\"\"\"\n    idxs = sorted(cache)\n    if len(active) == 1:\n        return max(idxs, key=lambda i: (cache[i][0], -i))\n    scores = [cache[i] for i in idxs]\n    m = len(idxs)\n    front = [\n        k for k in range(m)\n        if not any(step1._dominates(scores[j], scores[k])\n                   for j in range(m) if j != k)\n    ]\n    rank = [0] * m\n    for g in range(len(active)):\n        order = sorted(range(m), key=lambda k: (scores[k][g], idxs[k]))\n        for pos, k in enumerate(order):\n            rank[k] += pos\n    best_k = max(front, key=lambda k: (rank[k], -idxs[k]))\n    return idxs[best_k]\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, labelling at most `budget` rows.\n\n    Rows are labelled by alternating exploration (farthest from every row\n    labelled so far, after an initial exploration half of the budget) with\n    exploitation (the unlabelled row nearest to the current best). If `goal`\n    names one goal column, only that goal is optimised. Deterministic via a\n    fixed seed.\n    \"\"\"\n    if not isinstance(budget, int) or budget < 1:\n        raise ValueError(\"budget must be a positive integer\")\n\n    rows, inputs, goals = step1._load(blind_csv)\n    if goal is not None:\n        goals = _resolve(goals, goal)\n    if not goals:\n        raise ValueError(\"file has no goal columns to optimise\")\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"file has no rows\")\n\n    kinds = step2._prep(rows, inputs)\n    parsed = [step2._parse(r, inputs, kinds) for r in rows]\n\n    cache = {}  # row index -> goal tuple, signed so higher is better\n\n    def measure(i):\n        if i in cache:\n            return\n        if len(cache) >= budget:\n            raise RuntimeError(f\"label budget of {budget} exhausted\")\n        got = label(i)\n        vals = []\n        for name, sign in goals:\n            v = step1._to_num(got.get(name))\n            vals.append(sign * v if v is not None else -math.inf)\n        cache[i] = tuple(vals)\n\n    def dist(i, j):\n        return step2._dist(parsed[i], parsed[j], kinds)\n\n    m0 = max(1, budget // 2)  # evaluations spent on initial exploration\n    rng = random.Random(_SEED)\n    mind = [math.inf] * n     # distance from each row to the labelled set\n\n    while len(cache) < min(budget, n):\n        unl = [i for i in range(n) if i not in cache]\n        if not cache:\n            nxt = rng.randrange(n)\n        elif len(cache) < m0 or len(cache) % 2 == 1:\n            # explore: the unlabelled row farthest from everything labelled\n            nxt = max(unl, key=lambda i: (mind[i], -i))\n        else:\n            # exploit: the unlabelled row nearest the current best\n            inc = _pick(cache, goals)\n            nxt = min(unl, key=lambda i: (dist(i, inc), i))\n        measure(nxt)\n        for i in range(n):\n            d = dist(i, nxt)\n            if d < mind[i]:\n                mind[i] = d\n\n    return int(_pick(cache, goals))\n```",
+ "ttft_ms": 38575,
+ "type": "result",
+ "duration_ms": 42816,
+ "uuid": "209fe09d-ad34-4e15-bb35-ff7157b2e506",
+ "ttft_stream_ms": 1278,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
