@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 47681,
+ "stop_reason": "end_turn",
+ "session_id": "eaebb37e-4a2d-46fc-b146-3b5dd95102d0",
+ "total_cost_usd": 0.028753599999999997,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21942,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11730,
+  "output_tokens_details": {
+   "thinking_tokens": 9596
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21942,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11730,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21942,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21942
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18425,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.0185,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11730,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21942,
+   "webSearchRequests": 0,
+   "costUSD": 0.0102536,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step12.py: guess a player's goals from his other numbers, with a range\nthat says how confident the guess is.\n\nguess(train_csv, row): the estimate for each goal is the median goal of the\nnearest training flag sets, as in step2.guess. The range is widened so that it\nis fairly sure to hold the true value. To set its width, the same\nnearest-neighbour rule predicts training rows whose goal is known\n(leave-one-out on a fixed sample), and the CAL_Q quantile of those absolute\nerrors is the half-width. The reported range is the wider of the neighbour\nrange and the estimate plus or minus that half-width, so a wide range means\nlow confidence.\n\nReuses step1 (loading and column roles) and step2 (quantiles and the\nneighbour-count convention). Standard library only.\n\"\"\"\nimport math\nimport os\nimport random\nimport statistics\n\nfrom step1 import _load, _columns\nfrom step2 import _quantile, LOW_Q, HIGH_Q\n\nCAL_SAMPLE = 200   # training rows used for leave-one-out calibration\nCAL_Q = 0.90       # target coverage of the calibrated half-width\nSEED = 1           # fixed seed so results are reproducible\n\n_CACHE = {}        # (path, mtime, size) -> fitted model for the latest file\n\n\ndef _as_float(v):\n    \"\"\"A finite float, or None if the cell is missing or not numeric.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _k_for(n):\n    \"\"\"Neighbour count, as in step2.guess.\"\"\"\n    return min(n, max(3, round(math.sqrt(n))))\n\n\ndef _scale(row, inputs, stats):\n    \"\"\"Flag vector of a row, each input scaled to [0, 1]; missing cells use the median.\"\"\"\n    mins, spans, medians = stats\n    x = []\n    for c in inputs:\n        v = _as_float(row.get(c))\n        if v is None:\n            v = medians[c]\n        span = spans[c]\n        x.append((v - mins[c]) / span if span > 0 else 0.0)\n    return x\n\n\ndef _order(q, X, skip=None):\n    \"\"\"(squared distance, row index) for every row of X, nearest first.\"\"\"\n    d = []\n    for j, x in enumerate(X):\n        if j == skip:\n            continue\n        s = 0.0\n        for a, b in zip(q, x):\n            s += (a - b) ** 2\n        d.append((s, j))\n    d.sort()\n    return d\n\n\ndef _near_values(ordered, yg, k):\n    \"\"\"Sorted goal values of the k nearest rows that have a usable goal.\"\"\"\n    vals = []\n    for _, j in ordered:\n        v = yg[j]\n        if v is not None:\n            vals.append(v)\n            if len(vals) == k:\n                break\n    return sorted(vals)\n\n\ndef _fit(train_csv):\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = maxi + mini\n    n = len(rows)\n\n    mins, spans, medians = {}, {}, {}\n    for c in inputs:\n        vals = [r[c] for r in rows]\n        if vals:\n            mins[c] = min(vals)\n            spans[c] = max(vals) - mins[c]\n            medians[c] = statistics.median(vals)\n        else:\n            mins[c] = spans[c] = medians[c] = 0.0\n    stats = (mins, spans, medians)\n\n    X = [_scale(r, inputs, stats) for r in rows]\n    Y = {g: [_as_float(r.get(g)) for r in rows] for g in goals}\n    cnt = {g: sum(v is not None for v in Y[g]) for g in goals}\n\n    # Leave-one-out calibration: how far the nearest-neighbour median misses.\n    resid = {g: [] for g in goals}\n    if n > 1:\n        rng = random.Random(SEED)\n        for i in rng.sample(range(n), min(n, CAL_SAMPLE)):\n            ordered = _order(X[i], X, skip=i)\n            for g in goals:\n                y = Y[g][i]\n                if y is None:\n                    continue\n                vals = _near_values(ordered, Y[g], _k_for(cnt[g]))\n                if vals:\n                    resid[g].append(abs(y - statistics.median(vals)))\n\n    half = {}\n    for g in goals:\n        r = sorted(resid[g])\n        half[g] = _quantile(r, CAL_Q) if r else math.inf\n\n    return {\"goals\": goals, \"inputs\": inputs, \"stats\": stats, \"X\": X,\n            \"Y\": Y, \"cnt\": cnt, \"half\": half}\n\n\ndef _model(train_csv):\n    key = (os.path.abspath(train_csv),\n           os.path.getmtime(train_csv),\n           os.path.getsize(train_csv))\n    m = _CACHE.get(key)\n    if m is None:\n        m = _fit(train_csv)\n        _CACHE.clear()\n        _CACHE[key] = m\n    return m\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal column of train_csv.\n\n    `row` is a flag set with its goal columns removed. The estimate is the\n    median goal of the nearest training flag sets. low..high is fairly sure to\n    hold the true value: the wider of the neighbours' 10th..90th percentile\n    range and the estimate +/- the calibrated leave-one-out error.\n    \"\"\"\n    m = _model(train_csv)\n    goals = m[\"goals\"]\n    unknown = (0.0, -math.inf, math.inf)\n    if not m[\"X\"]:\n        return {g: unknown for g in goals}\n\n    ordered = _order(_scale(row, m[\"inputs\"], m[\"stats\"]), m[\"X\"])\n    out = {}\n    for g in goals:\n        if m[\"cnt\"][g] == 0:\n            out[g] = unknown\n            continue\n        vals = _near_values(ordered, m[\"Y\"][g], _k_for(m[\"cnt\"][g]))\n        est = _quantile(vals, 0.5)\n        lo = _quantile(vals, LOW_Q)\n        hi = _quantile(vals, HIGH_Q)\n        w = m[\"half\"][g]\n        out[g] = (est, min(lo, est - w), max(hi, est + w))\n    return out\n```",
+ "ttft_ms": 41045,
+ "type": "result",
+ "duration_ms": 46747,
+ "uuid": "2d080d70-e77f-4a95-b678-0e78c5ae7547",
+ "ttft_stream_ms": 1086,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
