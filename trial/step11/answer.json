@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 75693,
+ "stop_reason": "end_turn",
+ "session_id": "2f41450c-f7be-4513-a4f2-08722b563ed0",
+ "total_cost_usd": 0.035385700000000006,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25350,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 17141,
+  "output_tokens_details": {
+   "thinking_tokens": 14145
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25350,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 17141,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25350,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25350
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21665,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.021745,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 17141,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25350,
+   "webSearchRequests": 0,
+   "costUSD": 0.013640700000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 11: sort players into their types, and find the strong, good-from-the-spot players.\n\nfamilies(train_csv) clusters the rows on their input columns. Input columns are\nstandardised if numeric and one-hot encoded if categorical. Identifier-like\ncolumns (integer-valued and almost every value different) and free-text columns\nwith many levels are left out, so the clusters reflect what players are like,\nnot their row number or name. A seeded k-means is fitted on a sample of rows\nand then applied to every row.\n\nbest(train_csv) returns the Pareto-front rows on all goal columns, ordered by\nfront and then by a normalised goal score, at most 5% of the rows. Rows with a\nmissing goal value cannot be judged and are not returned. The front is built\nwith a lexicographic sort, so each layer costs far less than the all-pairs\ncomparison.\n\"\"\"\nimport math\nimport random\n\nfrom step1 import _load\n\n_K = 5                    # number of player types (families)\n_MAX_LEVELS = 30          # categorical columns with more levels are dropped\n_ID_MIN_DISTINCT = 500    # integer columns this unique look like identifiers\n_FIT_SAMPLE = 3000        # rows used to fit the k-means centres\n_MAX_ITER = 30            # Lloyd iterations on the sample\n_SEED = 1\n_TOP_FRACTION = 0.05      # share of rows returned by best()\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _present(v):\n    \"\"\"True if v is a finite number or a non-blank string.\"\"\"\n    if isinstance(v, float):\n        return math.isfinite(v)\n    if isinstance(v, str):\n        return bool(v.strip())\n    return False\n\n\ndef _text(v):\n    \"\"\"Comparable text for a categorical cell, or None if missing.\"\"\"\n    if isinstance(v, float):\n        return f\"{v:g}\" if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s or None\n    return None\n\n\ndef _num(v):\n    \"\"\"v as a finite float, or None.\"\"\"\n    return v if isinstance(v, float) and math.isfinite(v) else None\n\n\ndef _block(cells):\n    \"\"\"Feature columns for one input column; each is a list with one value per row.\n\n    Returns [] if the column is dropped.\n    \"\"\"\n    present = [v for v in cells if _present(v)]\n    if not present:\n        return []\n    if all(isinstance(v, float) for v in present):\n        distinct = len(set(present))\n        if (distinct > _ID_MIN_DISTINCT\n                and distinct >= 0.9 * len(present)\n                and all(v.is_integer() for v in present)):\n            return []  # identifier-like: row numbers and the like\n        mu = sum(present) / len(present)\n        sd = math.sqrt(sum((v - mu) ** 2 for v in present) / len(present))\n        if sd == 0.0:\n            return []\n        return [[(v - mu) / sd if _present(v) else 0.0 for v in cells]]\n    texts = [_text(v) for v in cells]\n    levels = sorted({t for t in texts if t is not None})\n    if not levels or len(levels) > _MAX_LEVELS:\n        return []\n    return [[1.0 if t == lv else 0.0 for t in texts] for lv in levels]\n\n\ndef _matrix(header, rows):\n    \"\"\"Feature matrix: one list of floats per row, over all usable input columns.\"\"\"\n    columns = []\n    for c in header:\n        if _is_input(c):\n            columns.extend(_block([r.get(c) for r in rows]))\n    return [[col[i] for col in columns] for i in range(len(rows))]\n\n\ndef _sq(a, b):\n    return sum((x - y) * (x - y) for x, y in zip(a, b))\n\n\ndef _fit(X, k, rng, max_iter):\n    \"\"\"Lloyd's k-means with k-means++ seeding. Returns the list of centres.\"\"\"\n    n = len(X)\n    d = len(X[0])\n    centers = [list(X[rng.randrange(n)])]\n    while len(centers) < k:\n        dist = [min(_sq(x, c) for c in centers) for x in X]\n        total = sum(dist)\n        if total <= 0.0:\n            centers.append(list(X[rng.randrange(n)]))\n            continue\n        r = rng.random() * total\n        acc = 0.0\n        pick = n - 1\n        for i, di in enumerate(dist):\n            acc += di\n            if acc >= r:\n                pick = i\n                break\n        centers.append(list(X[pick]))\n\n    labels = [-1] * n\n    for _ in range(max_iter):\n        changed = False\n        for i, x in enumerate(X):\n            best_c = min(range(k), key=lambda c: _sq(x, centers[c]))\n            if labels[i] != best_c:\n                labels[i] = best_c\n                changed = True\n        if not changed:\n            break\n        sums = [[0.0] * d for _ in range(k)]\n        counts = [0] * k\n        for x, lab in zip(X, labels):\n            counts[lab] += 1\n            s = sums[lab]\n            for j, v in enumerate(x):\n                s[j] += v\n        for c in range(k):\n            if counts[c]:\n                centers[c] = [v / counts[c] for v in sums[c]]\n    return centers\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (player type) label per data row of train_csv, in file order.\n\n    Clusters are computed on the usable input columns (see the module\n    docstring). Labels are renumbered 0..k-1 in order of first appearance.\n    \"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n\n    X = _matrix(header, rows)\n    if not X or not X[0]:\n        return [0] * n\n\n    k = min(_K, n)\n    rng = random.Random(_SEED)\n    m = min(n, _FIT_SAMPLE)\n    sample = [X[i] for i in sorted(rng.sample(range(n), m))]\n    centers = _fit(sample, k, rng, _MAX_ITER)\n\n    raw = [min(range(k), key=lambda c: _sq(x, centers[c])) for x in X]\n\n    relabel = {}\n    out = []\n    for lab in raw:\n        if lab not in relabel:\n            relabel[lab] = len(relabel)\n        out.append(relabel[lab])\n    return out\n\n\ndef _dominates(a, b):\n    \"\"\"True if a is at least as good as b on every goal and strictly better on one.\"\"\"\n    strict = False\n    for x, y in zip(a, b):\n        if x < y:\n            return False\n        if x > y:\n            strict = True\n    return strict\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together).\n\n    Goals ending in '+' are maximised and goals ending in '-' are minimised.\n    Rows come in Pareto-front order, and within each front by a normalised sum\n    of goal scores. At most 5% of rows are returned.\n    \"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    cap = int(_TOP_FRACTION * n)\n    if n == 0 or cap == 0:\n        return []\n\n    goals = [\n        (c, 1.0 if c.endswith(\"+\") else -1.0)\n        for c in header if _is_goal(c)\n    ]\n    if not goals:\n        return []\n\n    # Oriented goal vectors (higher is better) for rows with every goal finite.\n    V = {}\n    for i, r in enumerate(rows):\n        vec = []\n        for c, sg in goals:\n            f = _num(r.get(c))\n            if f is None:\n                break\n            vec.append(sg * f)\n        else:\n            V[i] = tuple(vec)\n    if not V:\n        return []\n\n    ids = list(V)\n    g = len(goals)\n    lo = [min(V[i][j] for i in ids) for j in range(g)]\n    hi = [max(V[i][j] for i in ids) for j in range(g)]\n    score = {}\n    for i in ids:\n        total = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            total += 1.0 if span == 0 else (V[i][j] - lo[j]) / span\n        score[i] = total\n\n    # Lexicographic descending order: a dominator always comes before what it\n    # dominates, so each front can be built by checking only earlier front members.\n    remaining = sorted(ids, key=lambda i: V[i], reverse=True)\n    order = []\n    while remaining and len(order) < cap:\n        front = []\n        for i in remaining:\n            v = V[i]\n            for j in front:\n                if _dominates(V[j], v):\n                    break\n            else:\n                front.append(i)\n        front.sort(key=lambda i: (-score[i], i))\n        order.extend(front)\n        taken = set(front)\n        remaining = [i for i in remaining if i not in taken]\n\n    return order[:cap]\n```",
+ "ttft_ms": 65394,
+ "type": "result",
+ "duration_ms": 74717,
+ "uuid": "e95d9a8c-c753-4ae8-9b5b-e6508b747641",
+ "ttft_stream_ms": 1680,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
