@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8204,
+ "stop_reason": "end_turn",
+ "session_id": "8b7885a9-276c-4f19-b263-4f802e38346f",
+ "total_cost_usd": 0.0262786,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24847,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1388,
+  "output_tokens_details": {
+   "thinking_tokens": 894
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24847,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1388,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24847,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24847
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20540,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020614999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1388,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24847,
+   "webSearchRequests": 0,
+   "costUSD": 0.0056636,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step14.py: flow. Decide keep/drop for each arriving scouting report, and\nwarn when the new players stop looking like the training players.\n\nBoth questions are answered by the flow code in step4, so this module reuses\nit rather than repeating it. stream() keeps a row when no training row and no\nearlier row of the stream dominates it, which is the online form of the Pareto\ntest in step1.best. drift() warns at the first row where the recent rows are\nmostly unlike the training rows, using the same reference limit as step4.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step4 import drift as _drift\nfrom step4 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each arriving row that is good on the goals, or drop (False).\n\n    rows arrive one at a time, in order. Each decision uses only train_csv and\n    the rows before it. A row is kept unless a training row or an earlier row\n    of the stream is at least as good on every goal and strictly better on one.\n    \"\"\"\n    return [bool(keep) for keep in _stream(train_csv, rows)]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the recent rows have stopped\n    looking like train_csv, or None if they never do.\n\n    A warning is raised once at least MIN_UNLIKE of the last WINDOW rows are\n    unlike the training input rows. The rule is the one in step4.drift.\n    \"\"\"\n    return _drift(train_csv, rows)\n```",
+ "ttft_ms": 5108,
+ "type": "result",
+ "duration_ms": 7062,
+ "uuid": "c123c745-27f2-4871-a412-b21a5ae3b67f",
+ "ttft_stream_ms": 1103,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
