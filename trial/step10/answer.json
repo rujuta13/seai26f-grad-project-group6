@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 61200,
+ "stop_reason": "end_turn",
+ "session_id": "4967f69a-fc8d-4ea0-9be1-c686482d67cc",
+ "total_cost_usd": 0.027349,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19384,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13902,
+  "output_tokens_details": {
+   "thinking_tokens": 11180
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19384,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13902,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19384,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19384
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16411,
+   "outputTokens": 22,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016520999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13902,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19384,
+   "webSearchRequests": 0,
+   "costUSD": 0.010827999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\n\"Step 10: race. Our tuner and guesser against rivals on TEST_CSV, all scores lower-is-better.\"\n# The standard library ships no tuner, and third-party models are not allowed,\n# so the rivals are: random search (tuner), a stdlib hill-climber (tuner stand-in),\n# and ridge regression written with the stdlib (off-the-shelf model stand-in).\n# Tuner scores are the goal distance of the chosen build (0 is ideal).\n# Guesser scores are the mean goal error, in train standard deviations.\n# Compare scores within each group, not across groups.\nimport math\nimport random\nimport ezr\nimport step2\nimport step7\n\nBUDGET = 30          # labels each tuner may spend (same as step7's default)\nRIDGE  = 1.0         # penalty on the linear model's weights\nSEED   = 1234567891  # fixed seed, so results repeat\n\ndef _load(csv_path: str):\n  \"Table of CSV_PATH, with columns and goals from its header.\"\n  return ezr.Tbl(ezr.csv(csv_path))\n\ndef _numgoals(tbl) -> list:\n  \"The numeric goal columns of TBL.\"\n  return [c for c in tbl.y if type(c) is ezr.Num]\n\ndef _sd(c) -> float:\n  \"A column's standard deviation, or 1.0 if it has none.\"\n  return c.sd if c.sd > 0 else 1.0\n\ndef _mean(xs: list) -> float:\n  \"Mean of XS, or infinity if XS is empty.\"\n  return sum(xs) / len(xs) if xs else math.inf\n\ndef _dist(gtr, vals: dict) -> float:\n  \"Distance of goal values VALS (name -> value) from the ideal, scaled by train goals GTR.\"\n  sq, n = 0.0, 0\n  for c in gtr:\n    v = vals.get(c.txt, \"?\")\n    if not isinstance(v, (int, float)): continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else math.inf\n\ndef _solve(A: list, B: list) -> list:\n  \"Solve A X = B by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(A)\n  M = [A[i][:] + B[i][:] for i in range(n)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    p = M[c][c]\n    M[c] = [x / p for x in M[c]]\n    for r in range(n):\n      if r != c and M[r][c] != 0.0:\n        f = M[r][c]\n        M[r] = [a - f * b for a, b in zip(M[r], M[c])]\n  return [row[n:] for row in M]\n\ndef _tuner_rivals(test_csv: str, gtr) -> dict[str, float]:\n  \"Score ours (step7.choose), random search, and a hill-climber on the same blind builds.\"\n  tbl  = _load(test_csv)\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: raise ValueError(\"race: no builds in test_csv\")\n  budget = min(BUDGET, n)\n\n  def label(i: int) -> dict:\n    \"The true goal values of build I: the oracle, billed once per call.\"\n    return {c.txt: rows[i][c.at] for c in tbl.y}\n\n  ours_i = step7.choose(test_csv, label, budget=budget)\n  ours   = _dist(gtr, label(ours_i))\n\n  picks  = random.Random(SEED).sample(range(n), budget)\n  rand   = min(_dist(gtr, label(i)) for i in picks)\n\n  rng    = random.Random(SEED)\n  cur    = rng.randrange(n)\n  seen   = {cur: _dist(gtr, label(cur))}\n  while len(seen) < budget:\n    best = min(seen, key=lambda i: (seen[i], i))\n    free = [z for z in range(n) if z not in seen]\n    nxt  = min(free, key=lambda z: (ezr.xdist(tbl, rows[best], rows[z]), z))\n    seen[nxt] = _dist(gtr, label(nxt))\n  hill   = min(seen.values())\n\n  return {\"ours\": ours, \"random\": rand, \"hillclimb\": hill}\n\ndef _guess_rivals(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Score ours (step2.guess) and ridge regression on the same test builds.\"\n  ttr = _load(train_csv)\n  gtr = _numgoals(ttr)\n  tst = _load(test_csv)\n\n  # ours: step2's neighbour median, from input columns only\n  errs = []\n  for row in tst.rows:\n    inputs = {c.txt: row[c.at] for c in tst.x}\n    est    = step2.guess(train_csv, inputs)\n    for c in gtr:\n      truth = row[c.at]\n      if not isinstance(truth, (int, float)) or c.txt not in est: continue\n      errs.append(abs(est[c.txt][0] - truth) / _sd(c))\n  guess_ours = _mean(errs)\n\n  # linear: ridge regression on standardised numbers and one-hot symbols\n  fit = [r for r in ttr.rows\n         if all(isinstance(r[c.at], (int, float)) for c in gtr)]\n  if not fit: raise ValueError(\"race: no train build has every goal\")\n  levels = {c.at: sorted(c.has, key=str) for c in ttr.x\n            if type(c) is ezr.Sym}\n\n  def feats(row: list) -> list:\n    \"Full-width ROW into a feature vector, with a leading intercept.\"\n    f = [1.0]\n    for c in ttr.x:\n      v = row[c.at]\n      if type(c) is ezr.Num:\n        f.append(0.0 if v == \"?\" else (v - c.mu) / _sd(c))\n      else:\n        f.extend(1.0 if v == s else 0.0 for s in levels[c.at])\n    return f\n\n  X = [feats(r) for r in fit]\n  Y = [[(r[c.at] - c.mu) / _sd(c) for c in gtr] for r in fit]\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  B = [[0.0] * len(gtr) for _ in range(p)]\n  for x, y in zip(X, Y):\n    for i in range(p):\n      for j in range(p): A[i][j] += x[i] * x[j]\n      for k in range(len(gtr)): B[i][k] += x[i] * y[k]\n  for i in range(p): A[i][i] += RIDGE\n  W = _solve(A, B)\n\n  errs = []\n  for row in tst.rows:\n    f = feats(row)\n    for k, c in enumerate(gtr):\n      truth = row[c.at]\n      if not isinstance(truth, (int, float)): continue\n      pred = sum(fi * W[i][k] for i, fi in enumerate(f))\n      errs.append(abs(pred - (truth - c.mu) / _sd(c)))\n  linear = _mean(errs)\n\n  return {\"guess_ours\": guess_ours, \"linear\": linear}\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Race our tuner (step7) and guesser (step2) against rivals on test_csv.\n  Returns {method: score}, including the key \"ours\" (our tuner).\n  Tuner keys: ours, random, hillclimb (goal distance of the chosen build).\n  Guesser keys: guess_ours, linear (mean goal error, in train sd).\n  All scores are lower-is-better.\"\"\"\n  gtr = _numgoals(_load(train_csv))\n  if not gtr: raise ValueError(\"race: no numeric goal to race on\")\n  out = _tuner_rivals(test_csv, gtr)\n  out.update(_guess_rivals(train_csv, test_csv))\n  return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 51905,
+ "type": "result",
+ "duration_ms": 60090,
+ "uuid": "ab7939f9-6f11-4c66-83d0-944e7129a92c",
+ "ttft_stream_ms": 1116,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
