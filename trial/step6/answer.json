@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 55537,
+ "duration_api_ms": 55525,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step6.py: plain-language justification of the recommended flag set and of single-build ratings.\"\"\"\n\nimport numpy as np\n\nfrom step1 import _load, best\nfrom step2 import guess\nfrom step3 import same\nfrom step4 import _goal_matrix\nfrom step5 import blame, _goal_scores\n\n\ndef _num(v):\n    \"\"\"Return v as a finite float, or None if it is not a finite number.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if np.isfinite(f) else None\n\n\ndef _flag(v):\n    \"\"\"Readable form of a setting: 0/1 become off/on, other values are shown as they are.\"\"\"\n    f = _num(v)\n    if f == 1.0:\n        return \"on\"\n    if f == 0.0:\n        return \"off\"\n    return str(v)\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons for what makes builds good, checkable by a skeptic.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not rows or not goals:\n        return (\"There are no measured builds with goal columns, \"\n                \"so no recommendation can be made.\")\n\n    n = len(rows)\n    names = [name for name, _ in goals]\n\n    # Combined score: each goal z-scored so that all goals count equally.\n    score = _goal_scores(rows, goals)\n    top = int(np.argmax(score))\n\n    # Pareto front (possibly the ranked top 5% subset when the front is large).\n    good_idx = sorted(set(best(train_csv)))\n    good_set = set(good_idx)\n    rest_idx = [i for i in range(n) if i not in good_set]\n\n    lines = []\n    lines.append(\n        f\"Recommended build: row {top} of {n} measured builds. It has the highest \"\n        \"combined score, where each goal is z-scored (standardised) so that goals \"\n        \"measured in different units count equally, and minimised goals are negated.\"\n    )\n    if top in good_set:\n        lines.append(\n            \"It is also among the good builds: no measured build is at least as good \"\n            \"on every goal and better on one.\"\n        )\n    else:\n        lines.append(\n            \"It is not among the good builds, so some measured build beats it on every \"\n            \"goal at once. The combined score is a trade-off, not a dominance claim.\"\n        )\n    lines.append(\n        \"Raw goal values: \"\n        + \", \".join(f\"{name}={rows[top][name]}\" for name in names)\n        + \".\"\n    )\n\n    if rest_idx:\n        lines.append(\n            f\"Settings of the recommended build compared with the {len(good_idx)} good \"\n            f\"builds and the {len(rest_idx)} others (permutation test at 5%):\"\n        )\n    else:\n        lines.append(\n            f\"Settings of the recommended build, as used by the {len(good_idx)} good builds:\"\n        )\n\n    # Show the input columns most associated with bad rows first, then compare settings.\n    blamed = blame(train_csv)\n    for c in blamed[:6]:\n        v = str(rows[top][c])\n        g = [1.0 if str(rows[i][c]) == v else 0.0 for i in good_idx]\n        o = [1.0 if str(rows[i][c]) == v else 0.0 for i in rest_idx]\n        share_g = float(np.mean(g)) if g else 0.0\n        share_o = float(np.mean(o)) if o else 0.0\n        verdict = \"difference looks real\" if not same(g, o) else \"difference looks like noise\"\n        lines.append(\n            f\"- {c} = {_flag(v)}: used by {share_g:.0%} of good builds versus \"\n            f\"{share_o:.0%} of the others ({verdict}).\"\n        )\n\n    lines.append(\n        \"Caveats: these are associations in measured data, not proof that a flag \"\n        \"causes the result. Flags interact, so a setting can help in one combination \"\n        \"and hurt in another. The recommended build is a measured row, not a prediction.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this build (goals included) is good or bad.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not goals:\n        return \"No goal columns are defined, so this build cannot be rated good or bad.\"\n    if not rows:\n        return \"There are no training builds to compare against, so no rating is possible.\"\n\n    names = [name for name, _ in goals]\n    ref = _goal_matrix(rows, goals)  # larger is always better\n\n    measured = all(name in row and _num(row[name]) is not None for name in names)\n    if measured:\n        v = _goal_matrix([row], goals)[0]\n        ge = (ref >= v).all(axis=1)\n        gt = (ref > v).any(axis=1)\n        dom = np.flatnonzero(ge & gt)\n        if dom.size == 0:\n            return (\"Good: no training build is at least as good on every goal and better \"\n                    \"on one, so nothing beats it outright and it sits on the Pareto front.\")\n        # Name the dominating build that is best overall, and the goals where it is ahead.\n        j = int(dom[np.argmax(ref[dom].sum(axis=1))])\n        lagging = [\n            f\"{names[k]} ({rows[j][names[k]]} vs {row[names[k]]})\"\n            for k in range(len(names))\n            if ref[j, k] > v[k]\n        ]\n        return (f\"Bad: {dom.size} training build(s) are at least as good on every goal, and \"\n                f\"build {j} beats this one on {', '.join(lagging)}.\")\n\n    # Goals missing: predict them and judge the estimates against the training builds.\n    est = guess(train_csv, row)\n    mu = ref.mean(axis=0)\n    sd = ref.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    e = np.array(\n        [float(est[name][0]) * sign for name, sign in goals],\n        dtype=float,\n    )\n    e = np.nan_to_num(e, nan=0.0, posinf=0.0, neginf=0.0)\n    total = float(((e - mu) / sd).sum())\n    if total > 0:\n        return (\"Predicted good (goals not measured): the model's estimates are, on balance, \"\n                \"better than the average training build across the goals.\")\n    return (\"Predicted bad (goals not measured): the model's estimates are, on balance, \"\n            \"worse than the average training build across the goals.\")\n```",
+ "stop_reason": "end_turn",
+ "session_id": "9c19396a-5a7d-4813-8fd6-13251f7c5690",
+ "total_cost_usd": 0.0039489,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 5612,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6494,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5612,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6494,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5612,
+   "webSearchRequests": 0,
+   "costUSD": 0.0039489,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "7d0c74fc-7da5-4272-bf97-9c290f8f397a"
+}
