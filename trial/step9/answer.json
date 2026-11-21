@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 32169,
+ "duration_api_ms": 32159,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step9.py: spot benchmark results that look like glitches, and flag sets unlike any seen.\n\nTwo kinds of suspicion are combined:\n- Goal-side: a row whose goal values are missing, non-numeric or non-finite is\n  treated as a certain glitch. Otherwise its goals are compared with the\n  training goals, both by single-goal extremeness and by distance to the\n  nearest training row in goal space.\n- Input-side: a flag set whose settings sit far from every training flag set\n  (in standardised encoded input space) is unlike anything seen.\n\nEach distance is divided by the typical leave-one-out nearest-neighbour distance\ninside train_csv, so a score of about 1 means \"as isolated as a normal training\nrow\" and larger values mean more suspicious.\n\"\"\"\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _load, _encode\nfrom step6 import _num\n\n# Score given to rows that cannot be trusted as measurements at all.\n_GLITCH = float(\"inf\")\n\n\ndef _goal_array(rows, goals):\n    \"\"\"Raw goal values as floats, nan where a cell is missing, non-numeric or non-finite.\"\"\"\n    out = np.full((len(rows), len(goals)), np.nan, dtype=float)\n    for i, r in enumerate(rows):\n        for j, (name, _) in enumerate(goals):\n            v = _num(r.get(name))\n            if v is not None:\n                out[i, j] = v\n    return out\n\n\ndef _nn_dist(A, B):\n    \"\"\"Distance from each row of A to its nearest row of B (inf if B is empty).\"\"\"\n    if B.shape[0] == 0:\n        return np.full(A.shape[0], np.inf)\n    d = np.linalg.norm(A[:, None, :] - B[None, :, :], axis=2)\n    return d.min(axis=1)\n\n\ndef _typical(T):\n    \"\"\"Median leave-one-out nearest-neighbour distance within T (1.0 if undefined).\"\"\"\n    n = T.shape[0]\n    if n < 2 or T.shape[1] == 0:\n        return 1.0\n    d = np.linalg.norm(T[:, None, :] - T[None, :, :], axis=2)\n    np.fill_diagonal(d, np.inf)\n    nn = d.min(axis=1)\n    nn = nn[np.isfinite(nn)]\n    if nn.size == 0:\n        return 1.0\n    med = float(np.median(nn))\n    return med if med > 0 else 1.0\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included): higher means more likely\n    a glitch, a typo, or unlike anything in train_csv.\n\n    A row with a missing or non-numeric goal scores infinity. Otherwise the score is\n    the larger of its goal-side and input-side isolation ratios, where a ratio of 1\n    means it is about as isolated as a typical training row. Single goals more than\n    three standard deviations from the training mean also raise the goal-side score.\n    \"\"\"\n    rows = list(rows)\n    if not rows:\n        return []\n\n    train_rows, inputs, goals = _load(train_csv)\n    n_q = len(rows)\n\n    # Goal side.\n    if goals:\n        G_tr = _goal_array(train_rows, goals)\n        G_q = _goal_array(rows, goals)\n        missing = ~np.isfinite(G_q).all(axis=1)\n\n        mu = np.zeros(len(goals))\n        sd = np.ones(len(goals))\n        for j in range(len(goals)):\n            col = G_tr[:, j]\n            finite = col[np.isfinite(col)]\n            if finite.size:\n                mu[j] = finite.mean()\n                s = finite.std()\n                sd[j] = s if s > 0 else 1.0\n\n        Z_tr = np.nan_to_num((G_tr - mu) / sd, nan=0.0, posinf=0.0, neginf=0.0)\n        Z_q = np.nan_to_num((G_q - mu) / sd, nan=0.0, posinf=0.0, neginf=0.0)\n\n        if train_rows:\n            ratio_goal = _nn_dist(Z_q, Z_tr) / _typical(Z_tr)\n        else:\n            ratio_goal = np.zeros(n_q)\n        zmax = np.abs(Z_q).max(axis=1)\n        goal_score = np.maximum(ratio_goal, zmax / 3.0)\n    else:\n        missing = np.zeros(n_q, dtype=bool)\n        goal_score = np.zeros(n_q)\n\n    # Input side: how isolated each flag set is among the training flag sets.\n    if inputs and train_rows:\n        query = [{c: r.get(c, \"\") for c in inputs} for r in rows]\n        X_all = _encode(train_rows + query, inputs)\n        n_tr = len(train_rows)\n        X_tr, X_q = X_all[:n_tr], X_all[n_tr:]\n        scaler = StandardScaler().fit(X_tr)\n        T = scaler.transform(X_tr)\n        Q = scaler.transform(X_q)\n        input_score = _nn_dist(Q, T) / _typical(T)\n    else:\n        input_score = np.zeros(n_q)\n\n    combined = np.maximum(goal_score, input_score)\n    combined = np.where(np.isnan(combined), 0.0, combined)\n    combined[missing] = _GLITCH\n    return [float(x) for x in combined]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "65aae474-831d-44fc-ba55-437ce6828b38",
+ "total_cost_usd": 0.00396815,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 10038,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5426,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10038,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5426,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10038,
+   "webSearchRequests": 0,
+   "costUSD": 0.00396815,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "674dbc16-c3f7-41c5-a117-abde32aaccb2"
+}
