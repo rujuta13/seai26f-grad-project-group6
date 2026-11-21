@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 59119,
+ "stop_reason": "end_turn",
+ "session_id": "a40bc493-3ea0-4bff-a0a3-413a0a8864b9",
+ "total_cost_usd": 0.020963700000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12880,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14645,
+  "output_tokens_details": {
+   "thinking_tokens": 11811
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12880,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14645,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12880,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12880
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11000,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011065,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14645,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12880,
+   "webSearchRequests": 0,
+   "costUSD": 0.0098987,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\n\"\"\"Step 6: justify.  Explain the recommended flag set to a skeptic, and\nsay in a sentence or two why one build was rated good or bad.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport ezr\n\n_GOOD_Q = 0.25   # best quarter of training builds counts as good\n_BAD_Q  = 0.75   # worst quarter counts as bad\n_SHIFT  = 0.10   # an input must shift by at least 10 points to be reported\n_TOP    = 5      # how many inputs to explain\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef _quantile(xs: list[float], p: float) -> float:\n  \"The p-th quantile of XS, linearly interpolated.  XS must be non-empty.\"\n  xs     = sorted(xs)\n  i      = p * (len(xs) - 1)\n  lo, hi = math.floor(i), math.ceil(i)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\n\ndef _full(tbl: ezr.TBL, row) -> ezr.ROW:\n  \"Lay ROW out full-width, with '?' for anything missing; strings are cast.\"\n  q = [\"?\"] * len(tbl.names)\n  if isinstance(row, dict):                    # {column name: value}\n    for c in tbl.cols.values():\n      name = tbl.names[c.at]\n      if name in row: q[c.at] = row[name]\n  elif len(row) == len(tbl.names):             # already full-width\n    q = list(row)\n  else:                                        # positional, x-column order\n    for c, v in zip(tbl.x, row): q[c.at] = v\n  return [ezr.atom(v) if isinstance(v, str) else v for v in q]\n\n\ndef _gaps(tbl: ezr.TBL, q: ezr.ROW) -> list[tuple[ezr.COL, float]]:\n  \"For each goal whose value is known: (goal column, gap from its ideal).\"\n  out = []\n  for c in tbl.y:\n    v = q[c.at]\n    if v != \"?\" and not isinstance(v, str):\n      out.append((c, abs(ezr.norm(c, v) - c.goal)))\n  return out\n\n\ndef _way(c: ezr.COL) -> str:\n  \"Plain words for which direction of a goal is better.\"\n  return \"higher is better\" if c.goal else \"lower is better\"\n\n\ndef _shares(rs: ezr.ROWS, c: ezr.COL) -> dict:\n  \"Share of the known values of column C in RS, per value seen.\"\n  vals = [r[c.at] for r in rs if r[c.at] != \"?\"]\n  return {v: vals.count(v) / len(vals) for v in set(vals)} if vals else {}\n\n\ndef explain(train_csv: str) -> str:\n  \"Plain-words reasons, checkable on the training data, for what makes builds good.\"\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  if not rows or not tbl.y or not tbl.x:\n    return \"There is not enough training data to explain anything.\"\n  ys   = [ezr.ydist(tbl, r) for r in rows]\n  cut  = _quantile(ys, _GOOD_Q)\n  good = [r for r, y in zip(rows, ys) if y <= cut]\n  best = min(range(len(rows)), key=lambda i: ys[i])   # first of any ties\n  top  = rows[best]\n  out  = [\n    f\"Training data: {len(rows)} builds. Good means closest to the ideal \"\n    f\"on all goals together (best quarter): {len(good)} builds, \"\n    f\"distance to the ideal at most {cut:.2f}.\",\n    f\"Recommended build: training row {best}, distance to the ideal {ys[best]:.2f}.\",\n    \"  Inputs: \" + \", \".join(f\"{c.txt}={ezr.say(top[c.at])}\" for c in tbl.x),\n    \"  Goals: \" + \", \".join(f\"{c.txt}={ezr.say(top[c.at])} ({_way(c)})\"\n                            for c in tbl.y),\n  ]\n\n  findings = []                                       # (size, sentence)\n  for c in tbl.x:\n    if isinstance(c, ezr.Num):\n      gv = [ezr.norm(c, r[c.at]) for r in good if r[c.at] != \"?\"]\n      av = [ezr.norm(c, r[c.at]) for r in rows if r[c.at] != \"?\"]\n      if not gv or not av: continue\n      mg, ma = sum(gv) / len(gv), sum(av) / len(av)\n      if abs(mg - ma) >= _SHIFT:\n        way = \"higher\" if mg > ma else \"lower\"\n        findings.append((abs(mg - ma),\n                         f\"{c.txt} is {way} in the best quarter (average \"\n                         f\"position {mg:.2f} vs {ma:.2f} overall, on a 0-to-1 scale).\"))\n    else:\n      sg, sa = _shares(good, c), _shares(rows, c)\n      if not sa: continue\n      v     = max(sorted(set(sa) | set(sg), key=str),\n                  key=lambda k: abs(sg.get(k, 0) - sa.get(k, 0)))\n      shift = sg.get(v, 0) - sa.get(v, 0)\n      if abs(shift) >= _SHIFT:\n        findings.append((abs(shift),\n                         f\"{c.txt}={v} appears in {sg.get(v, 0):.0%} of best-quarter \"\n                         f\"builds but {sa.get(v, 0):.0%} of all builds.\"))\n  findings.sort(key=lambda t: -t[0])                  # stable: ties keep file order\n\n  if findings:\n    out.append(\"Inputs that separate the best quarter from the rest, largest shift first:\")\n    out += [f\"  {i}. {s}\" for i, (_, s) in enumerate(findings[:_TOP], 1)]\n  else:\n    out.append(f\"No input shifts by {_SHIFT:.0%} or more between the best quarter \"\n               \"and the rest, so the recommendation has no clear input reason.\")\n  out.append(\"These are associations in the training data, not proof of cause. \"\n             \"Check them by measuring the recommended build against a near \"\n             \"neighbour that differs in one input.\")\n  return \"\\n\".join(out)\n\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: is this build good or bad, and which goal decides it.\"\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  if not rows or not tbl.y:\n    return \"Cannot rate this build: the training data has no goals.\"\n  if isinstance(row, int) and not isinstance(row, bool):\n    row = rows[row]                                   # a training row, by index\n  q    = _full(tbl, row)\n  gaps = _gaps(tbl, q)\n  if not gaps:\n    return \"Cannot rate this build: its goal values are missing.\"\n  ys   = [ezr.ydist(tbl, r) for r in rows]\n  lo   = _quantile(ys, _GOOD_Q)\n  hi   = _quantile(ys, _BAD_Q)\n  y    = ezr.dist([g for _, g in gaps], len(gaps))\n  if y <= lo:   verdict, tier = \"good\", \"best quarter\"\n  elif y >= hi: verdict, tier = \"bad\", \"worst quarter\"\n  else:         verdict, tier = \"middling\", \"middle half\"\n  worst, _ = max(gaps, key=lambda t: t[1])\n  v    = q[worst.at]\n  vals = [r[worst.at] for r in rows if r[worst.at] != \"?\"] or [v]\n  s1 = (f\"Rated {verdict}: its goals put it in the {tier} of the \"\n        f\"{len(rows)} training builds (distance to the ideal {y:.2f}; \"\n        f\"best-quarter cutoff {lo:.2f}, worst-quarter cutoff {hi:.2f}).\")\n  s2 = (f\"The goal furthest from its ideal is {worst.txt} at {ezr.say(v)} \"\n        f\"({_way(worst)}; training median {ezr.say(_quantile(vals, 0.5))}).\")\n  return s1 + \" \" + s2\n```",
+ "ttft_ms": 50599,
+ "type": "result",
+ "duration_ms": 58131,
+ "uuid": "f29366b2-8e13-44d4-b8eb-e3113b3f49d1",
+ "ttft_stream_ms": 1331,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
