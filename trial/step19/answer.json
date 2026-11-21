@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 25993,
+ "stop_reason": "end_turn",
+ "session_id": "0b90dc10-a6dd-49c7-9524-a88a34acbdc6",
+ "total_cost_usd": 0.0424142,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 37920,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6090,
+  "output_tokens_details": {
+   "thinking_tokens": 4488
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 37920,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6090,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 37920,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 37920
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 31715,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.031785,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6090,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 37920,
+   "webSearchRequests": 0,
+   "costUSD": 0.0106292,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step19.py\n\"Step 19: spot. Flag player records that look like data-entry mistakes, and players so unusual their ratings deserve a second look.\"\nimport math\nimport os\nimport ezr\n\nZCAP   = 5.0    # goal z-scores are capped here, then scaled to 0..1\nTYPO   = 1.0    # penalty per cell that should be a finite number but is not\nUNSEEN = 1.0    # weight of the fraction of repeating input symbols never seen in train\n\n_CACHE: dict = {}  # (path, mtime) -> (table, seen symbols per repeating input column)\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict,\n  a full-width list, or a list with goal columns removed (header order).\n  Any cell not given is '?'. Goal suffixes are optional in dict keys.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row:\n        out[at] = _coerce(row[n])\n      elif n[-1:] in (\"+\", \"-\", \"!\") and n[:-1] in row:\n        out[at] = _coerce(row[n[:-1]])\n  else:\n    row = list(row)\n    if len(row) == len(names):\n      out = [_coerce(v) for v in row]\n    else:\n      keep = [i for i, n in enumerate(names) if n[-1:] not in (\"+\", \"-\", \"!\")]\n      for i, v in zip(keep, row): out[i] = _coerce(v)\n  return out\n\ndef _clean(tbl, q: list) -> tuple[list, int]:\n  \"\"\"Replace non-numeric or non-finite cells in numeric columns (inputs and\n  goals) with '?', and count them. Such cells are typos or glitches.\"\"\"\n  typos = 0\n  for c in tbl.cols.values():\n    if type(c) is not ezr.Num: continue\n    v = q[c.at]\n    if v == \"?\": continue\n    if not _isnum(v):\n      q[c.at] = \"?\"\n      typos  += 1\n  return q, typos\n\ndef _load(train_csv: str):\n  \"\"\"Train table, and the symbol values seen per repeating input column\n  (identifier-like symbols, where every value is distinct, are left out).\n  Cached per file version.\"\"\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl  = ezr.Tbl(ezr.csv(train_csv))\n    seen = {c.at: set(c.has) for c in tbl.x\n            if type(c) is ezr.Sym and len(c.has) < c.n}\n    _CACHE[key] = (tbl, seen)\n  return _CACHE[key]\n\ndef _score(tbl, seen: dict, row) -> float:\n  \"Suspicion of one ROW: far from every train row, odd goals, unseen symbols, or typos.\"\n  q, typos = _clean(tbl, _full(tbl, row))\n  if tbl.x and tbl.rows:\n    nn = min(ezr.xdist(tbl, q, t) for t in tbl.rows)\n  else:\n    nn = 0.0\n  unseen = sum(1 for at, vals in seen.items()\n               if q[at] != \"?\" and q[at] not in vals)\n  unseen = unseen / max(1, len(seen))\n  zs = []\n  for c in tbl.y:\n    v = q[c.at]\n    if type(c) is ezr.Num and _isnum(v) and c.n > 1:\n      z = abs(v - c.mu) / (c.sd + 1e-32)\n      zs.append(min(ZCAP, z) / ZCAP)\n  goal = max(zs, default=0.0)\n  return float(nn + goal + UNSEEN * unseen + TYPO * typos)\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS (goals included), in order. Higher\n  means more likely a glitch, a typo, or unlike anything in TRAIN_CSV.\"\"\"\n  tbl, seen = _load(train_csv)\n  return [_score(tbl, seen, r) for r in rows]\n```",
+ "ttft_ms": 20325,
+ "type": "result",
+ "duration_ms": 24638,
+ "uuid": "82e56a69-6192-4201-902e-9056615bf959",
+ "ttft_stream_ms": 1350,
+ "time_to_request_ms": 130,
+ "queued_turn_count": 0
+}
