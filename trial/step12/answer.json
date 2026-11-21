@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9189,
+ "stop_reason": "end_turn",
+ "session_id": "daf80c91-2cf5-4773-b490-6048a6d7d613",
+ "total_cost_usd": 0.0253522,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 23705,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1764,
+  "output_tokens_details": {
+   "thinking_tokens": 1094
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23705,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1764,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 23705,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 23705
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19644,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019728999999999997,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1764,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23705,
+   "webSearchRequests": 0,
+   "costUSD": 0.0056232,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step12.py: guess. Estimate a player's goal values from his other numbers\nbefore a scout is sent, with a range that says how confident the guess is.\n\nThe estimate and range come from step2.guess: the mean goal value of the\nnearest training players, with a range from the 10th to 90th percentile of\nthose neighbours, widened by a benchmark-noise floor and by how far the\nplayer's numbers lie from the training players. A goal with no usable\ntraining values gets NaN and an unbounded range, meaning no confident guess.\n\nReading, column splitting and the neighbour guess come from steps 1 and 2.\nOnly the wrapper that makes sure every goal is reported is new here.\n\"\"\"\nfrom __future__ import annotations\n\nimport csv\nimport math\n\nfrom step1 import _columns\nfrom step2 import guess as _neighbour_guess\n\n\ndef _header(path) -> list[str]:\n    \"\"\"Column names of a MOOT csv, read from its first line only.\"\"\"\n    with open(str(path), newline=\"\", encoding=\"utf-8\") as f:\n        first = next(csv.reader(f), [])\n    return [h.strip() for h in first]\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a player described by row (goal columns removed).\n\n    Returns {goal: (estimate, low, high)} for every goal column in train_csv.\n    low..high is the range the true value is expected to fall in. A wider\n    range means less confidence. A goal with no usable training values gets\n    (NaN, -inf, inf): no estimate and no confidence.\n    \"\"\"\n    _, gmax, gmin = _columns(_header(train_csv))\n    goals = gmax + gmin\n    unknown = (math.nan, -math.inf, math.inf)\n\n    estimates = _neighbour_guess(train_csv, row)\n    out: dict[str, tuple[float, float, float]] = {}\n    for g in goals:\n        est, low, high = estimates.get(g, unknown)\n        out[g] = (float(est), float(low), float(high))\n    return out\n```",
+ "ttft_ms": 5659,
+ "type": "result",
+ "duration_ms": 8154,
+ "uuid": "85b5e0b4-76f8-4898-8c65-19bbb21be7ef",
+ "ttft_stream_ms": 1127,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
