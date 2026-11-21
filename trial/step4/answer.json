@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 30610,
+ "duration_api_ms": 30598,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\nfrom collections import deque\n\nimport numpy as np\n\n\n_ALPHA = 1e-4          # per-check significance for the drift warning\n_WINDOW = 20           # number of most recent rows examined for drift\n_BASE_Q = 0.95         # baseline quantile of nearest-neighbour distances\n\n\ndef _to_value(cell):\n    try:\n        return float(cell)\n    except (TypeError, ValueError):\n        return cell\n\n\ndef _load(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        rows = [{k: _to_value(v) for k, v in r.items()} for r in reader]\n    return header, rows\n\n\ndef _kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _as_float(v):\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return math.inf\n    return f if math.isfinite(f) else math.inf\n\n\n# ---------------------------------------------------------------- stream\n\ndef _goal_setup(header):\n    goals = [c for c in header if _kind(c) in (\"max\", \"min\")]\n    sign = np.array(\n        [-1.0 if _kind(c) == \"max\" else 1.0 for c in goals], dtype=float\n    )\n    return goals, sign\n\n\ndef _goal_vec(row, goals, sign):\n    vals = np.array([_as_float(row.get(c)) for c in goals], dtype=float)\n    # Negating an infinite value gives -inf for \"max\" goals with inf missing;\n    # map missing/non-finite values to worst-possible instead.\n    vals = np.where(np.isfinite(vals), vals * sign, np.inf)\n    return vals\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a row iff no earlier reference row (train or previously streamed)\n    Pareto-dominates it on the goals. Only uses train_csv and earlier rows.\"\"\"\n    header, train = _load(train_csv)\n    goals, sign = _goal_setup(header)\n    decisions: list[bool] = []\n    if not goals:\n        return [True for _ in rows]\n\n    ref_list = [_goal_vec(r, goals, sign) for r in train]\n    ref = (\n        np.array(ref_list, dtype=float).reshape(len(ref_list), len(goals))\n        if ref_list\n        else np.zeros((0, len(goals)), dtype=float)\n    )\n\n    for r in rows:\n        g = _goal_vec(r, goals, sign)\n        if ref.shape[0] == 0:\n            keep = True\n        else:\n            le = (ref <= g).all(axis=1)   # ref weakly better everywhere\n            lt = (ref < g).any(axis=1)    # ref strictly better somewhere\n            keep = not bool((le & lt).any())\n        decisions.append(bool(keep))\n        # Domination is transitive, so adding every row is equivalent to\n        # tracking only the Pareto front.\n        ref = np.vstack([ref, g[None, :]])\n    return decisions\n\n\n# ----------------------------------------------------------------- drift\n\ndef _input_specs(header, train):\n    \"\"\"Per input column: (name, labels or None, fill value).\"\"\"\n    specs = []\n    for c in header:\n        if _kind(c) != \"input\":\n            continue\n        values = [r.get(c) for r in train]\n        if values and all(isinstance(v, float) for v in values):\n            finite = [v for v in values if math.isfinite(v)]\n            fill = float(np.mean(finite)) if finite else 0.0\n            specs.append((c, None, fill))\n        else:\n            labels = {}\n            for v in values:\n                key = str(v)\n                if key not in labels:\n                    labels[key] = float(len(labels))\n            specs.append((c, labels, 0.0))\n    return specs\n\n\ndef _encode(row, specs):\n    out = np.empty(len(specs), dtype=float)\n    for j, (c, labels, fill) in enumerate(specs):\n        v = row.get(c)\n        if labels is None:\n            f = v if isinstance(v, float) and math.isfinite(v) else fill\n            out[j] = f\n        else:\n            out[j] = labels.get(str(v), float(len(labels)))\n    return out\n\n\ndef _binom_tail(k, n, p):\n    return sum(\n        math.comb(n, j) * p**j * (1.0 - p) ** (n - j) for j in range(k, n + 1)\n    )\n\n\ndef _alarm_count(window, alpha):\n    \"\"\"Smallest k such that P(Binomial(window, 0.05) >= k) < alpha.\"\"\"\n    for k in range(1, window + 1):\n        if _binom_tail(k, window, 1.0 - _BASE_Q) < alpha:\n            return k\n    return window + 1\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Warn at the first row index where the last _WINDOW rows are, as a group,\n    far from the training inputs (nearest-neighbour distance above the\n    training baseline more often than chance allows).\"\"\"\n    header, train = _load(train_csv)\n    specs = _input_specs(header, train)\n    n = len(train)\n    if n < 2 or not specs:\n        return None\n\n    X = np.vstack([_encode(r, specs) for r in train])\n    mu = X.mean(axis=0)\n    sd = X.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    Z = (X - mu) / sd\n\n    # Baseline: leave-one-out nearest-neighbour distance within train.\n    diff = Z[:, None, :] - Z[None, :, :]\n    D = np.sqrt((diff ** 2).sum(axis=-1))\n    np.fill_diagonal(D, np.inf)\n    base = D.min(axis=1)\n    threshold = float(np.quantile(base, _BASE_Q))\n\n    k_alarm = _alarm_count(_WINDOW, _ALPHA)\n    recent: deque[bool] = deque(maxlen=_WINDOW)\n\n    for i, r in enumerate(rows):\n        z = (_encode(r, specs) - mu) / sd\n        d = float(np.sqrt(((Z - z) ** 2).sum(axis=1)).min())\n        recent.append(d > threshold)\n        if len(recent) == _WINDOW and sum(recent) >= k_alarm:\n            return i\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "cfc49b06-eb5c-4501-bbda-c2e1d998099c",
+ "total_cost_usd": 0.003660775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 4091,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6298,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4091,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6298,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4091,
+   "webSearchRequests": 0,
+   "costUSD": 0.003660775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "08ac158a-5572-4737-b3e2-6907d67b7f87"
+}
