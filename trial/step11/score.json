@@ -1,0 +1,13 @@
+{
+ "domain": "players",
+ "step": 11,
+ "skill": "remember",
+ "ok": true,
+ "score": 0.28994326903531287,
+ "baseline": 0.5087327778177119,
+ "better": "lower",
+ "extra": {
+  "families": 2,
+  "within_family_spread": 0.7086721760842507
+ }
+}
