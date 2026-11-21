@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 25681,
+ "stop_reason": "end_turn",
+ "session_id": "051d48b4-acbe-40f3-ab70-648997cdba85",
+ "total_cost_usd": 0.0110393,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 7153,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6161,
+  "output_tokens_details": {
+   "thinking_tokens": 4463
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7153,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6161,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 7153,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 7153
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 6458,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.006528,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6161,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7153,
+   "webSearchRequests": 0,
+   "costUSD": 0.0045113,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 5: which input columns are to blame for bad rows.\n\nblame() ranks every input (flag) column by how differently its values are\ndistributed among bad rows and good rows. Bad rows are the worst quarter by\nthe normalised goal sum, where '+' goals are negated so that higher always\nmeans worse. A column's score is the total variation distance between the\nvalue distributions of the bad and good rows: 0 means the column does not\nseparate them, 1 means the two groups never share a value. Numeric columns\nwith many distinct values are bucketed into quantile bins first.\n\"\"\"\n\nimport bisect\nimport math\n\nfrom step1 import _load, _split_columns\n\nBAD_FRACTION = 0.25\nMAX_BINS = 8\n\n\ndef _as_float(value):\n    if isinstance(value, float):\n        return value if math.isfinite(value) else None\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _badness(rows, maximise, minimise):\n    \"\"\"Per row: normalised sum of minimisation goals (higher = worse), or None.\"\"\"\n    cols = [(c, -1.0) for c in maximise] + [(c, 1.0) for c in minimise]\n    if not cols:\n        return [None] * len(rows)\n\n    raw = []\n    for r in rows:\n        vals = []\n        for c, sign in cols:\n            v = _as_float(r.get(c))\n            if v is None:\n                vals = None\n                break\n            vals.append(sign * v)\n        raw.append(vals)\n\n    usable = [v for v in raw if v is not None]\n    if not usable:\n        return [None] * len(rows)\n\n    m = len(cols)\n    lo = [min(v[j] for v in usable) for j in range(m)]\n    hi = [max(v[j] for v in usable) for j in range(m)]\n\n    out = []\n    for vals in raw:\n        if vals is None:\n            out.append(None)\n            continue\n        total = 0.0\n        for j in range(m):\n            span = hi[j] - lo[j]\n            total += (vals[j] - lo[j]) / span if span > 0 else 0.0\n        out.append(total)\n    return out\n\n\ndef _column_labels(rows, column):\n    \"\"\"One group label per row for a column: its value, or a quantile bin if numeric and wide.\"\"\"\n    vals = [r.get(column) for r in rows]\n    present = [v for v in vals if v is not None]\n    if present and all(isinstance(v, float) for v in present):\n        distinct = sorted(set(present))\n        if len(distinct) > MAX_BINS:\n            edges = [\n                distinct[(i * len(distinct)) // MAX_BINS]\n                for i in range(1, MAX_BINS)\n            ]\n            return [\n                \"?\" if v is None else bisect.bisect_right(edges, v)\n                for v in vals\n            ]\n        return [\"?\" if v is None else v for v in vals]\n    return [\"?\" if v is None else str(v) for v in vals]\n\n\ndef _tvd(labels, bad_idx, good_idx):\n    \"\"\"Total variation distance between label distributions of two index groups.\"\"\"\n    bad_counts = {}\n    for i in bad_idx:\n        bad_counts[labels[i]] = bad_counts.get(labels[i], 0) + 1\n    good_counts = {}\n    for i in good_idx:\n        good_counts[labels[i]] = good_counts.get(labels[i], 0) + 1\n\n    nb = len(bad_idx)\n    ng = len(good_idx)\n    keys = set(bad_counts) | set(good_counts)\n    return 0.5 * sum(\n        abs(bad_counts.get(k, 0) / nb - good_counts.get(k, 0) / ng) for k in keys\n    )\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Return input column names, most to blame for bad rows (bad on the goals) first.\n\n    Bad rows are the worst BAD_FRACTION of rows by normalised goal sum; the\n    remaining rows are treated as good. Each input column is scored by how\n    differently its values are spread across bad and good rows. Ties keep\n    file order.\n    \"\"\"\n    columns, rows = _load(train_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n    if not inputs:\n        return []\n\n    bad_scores = _badness(rows, maximise, minimise)\n    valid = [i for i, b in enumerate(bad_scores) if b is not None]\n    if len(valid) < 2:\n        return list(inputs)\n\n    ranked = sorted(valid, key=lambda i: (-bad_scores[i], i))\n    k = max(1, int(len(valid) * BAD_FRACTION))\n    if k >= len(valid):\n        k = len(valid) - 1\n    bad_idx = ranked[:k]\n    good_idx = ranked[k:]\n\n    scores = []\n    for c in inputs:\n        labels = _column_labels(rows, c)\n        scores.append(_tvd(labels, bad_idx, good_idx))\n\n    order = sorted(range(len(inputs)), key=lambda j: (-scores[j], j))\n    return [inputs[j] for j in order]\n```",
+ "ttft_ms": 20162,
+ "type": "result",
+ "duration_ms": 24836,
+ "uuid": "b2574179-44fe-4437-848c-874dfbc7b20d",
+ "ttft_stream_ms": 1016,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
