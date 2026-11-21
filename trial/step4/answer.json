@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 34381,
+ "stop_reason": "end_turn",
+ "session_id": "5e1d2d5a-71c7-4d86-b1f5-0f215c3d5658",
+ "total_cost_usd": 0.0140172,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 9700,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7266,
+  "output_tokens_details": {
+   "thinking_tokens": 6181
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9700,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7266,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 9700,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 9700
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8364,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008444,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7266,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9700,
+   "webSearchRequests": 0,
+   "costUSD": 0.0055732,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep4.py: flow.  Benchmark rows arrive one at a time.  stream() keeps a row\nif its goals are within the best 5% of the training rows (step1.best).\ndrift() warns at the first row where the last WINDOW goal values stop\nlooking like the training goal values, by both Cliff's delta and KS.\nReuses step1 (best rows), step2 (cached table, probe), and ezr (distance,\ntests).  Rows are never added to the training table, so only train_csv and\nearlier rows ever inform a decision.\n\"\"\"\nfrom functools import lru_cache\nfrom collections.abc import Iterable\nimport ezr\nimport step1, step2\n\nWINDOW = 30   # drift: how many recent rows must look different\n\ndef _row(tbl, r) -> list:\n  \"An arriving row as an ezr row in table order.  A dict is matched by header name.\"\n  if isinstance(r, dict): return step2._probe(tbl, r)\n  return list(r)\n\n@lru_cache(maxsize=None)\ndef _cut(train_csv: str) -> float:\n  \"ydist of the worst of the best 5% training rows: the keep threshold.\"\n  tbl = step2._tbl(train_csv)\n  idx = step1.best(train_csv)\n  return max((ezr.ydist(tbl, tbl.rows[i]) for i in idx), default=0.0)\n\n@lru_cache(maxsize=None)\ndef _goals(train_csv: str) -> dict[str, list]:\n  \"Sorted training values of each goal column, keyed by goal name.\"\n  tbl = step2._tbl(train_csv)\n  return {c.txt: sorted(r[c.at] for r in tbl.rows if r[c.at] != \"?\")\n          for c in tbl.y}\n\ndef stream(train_csv: str, rows: Iterable) -> list[bool]:\n  \"Keep (True) each arriving row whose goals are within the training best 5%.\"\n  tbl = step2._tbl(train_csv)\n  cut = _cut(train_csv)\n  out = []\n  for r in rows:\n    row = _row(tbl, r)\n    ok  = (all(row[c.at] != \"?\" for c in tbl.y)\n           and ezr.ydist(tbl, row) <= cut)\n    out.append(bool(ok))\n  return out\n\ndef drift(train_csv: str, rows: Iterable) -> int | None:\n  \"Index of the first row whose last WINDOW goal values differ from training.\"\n  tbl  = step2._tbl(train_csv)\n  ref  = _goals(train_csv)\n  seen = {c.txt: [] for c in tbl.y}\n  for i, r in enumerate(rows):\n    row = _row(tbl, r)\n    for c in tbl.y: seen[c.txt].append(row[c.at])\n    if i + 1 < WINDOW: continue\n    for c in tbl.y:\n      win = sorted(v for v in seen[c.txt][-WINDOW:] if v != \"?\")\n      if not win: continue\n      # different = both tests reject \"same\", which avoids warning on noise\n      if not ezr.cliffs(win, ref[c.txt]) and not ezr.ks(win, ref[c.txt]):\n        return i\n  return None\n```",
+ "ttft_ms": 29984,
+ "type": "result",
+ "duration_ms": 33569,
+ "uuid": "82aaa117-6518-4e9e-8700-fd8292612089",
+ "ttft_stream_ms": 1346,
+ "time_to_request_ms": 26,
+ "queued_turn_count": 0
+}
