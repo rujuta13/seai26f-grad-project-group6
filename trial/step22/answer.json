@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 26269,
+ "stop_reason": "end_turn",
+ "session_id": "2dc2f971-1780-45f1-b650-8f463089161b",
+ "total_cost_usd": 0.0493378,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 44668,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6214,
+  "output_tokens_details": {
+   "thinking_tokens": 4324
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 44668,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6214,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 44668,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 44668
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 37227,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.037297000000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6214,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 44668,
+   "webSearchRequests": 0,
+   "costUSD": 0.0120408,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step22.py\n\"Step 22: guess. Estimate how much a new customer will buy online versus in store, and whether they will answer the next campaign, with a range we are fairly sure of.\"\nimport math\nimport os\nimport ezr\n\nK    = 20     # nearest training customers consulted\nMINK = 5      # fewer known neighbours than this: widen to all training customers\nLO   = 0.10   # low end of the \"fairly sure\" range\nHI   = 0.90   # high end of the \"fairly sure\" range\n\n_CACHE: dict = {}   # (path, mtime) -> (table, input columns used for distance)\n\nNAN3  = (math.nan, math.nan, math.nan)\nSUFFX = (\"+\", \"-\", \"!\")\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _load(train_csv: str):\n  \"\"\"Train table and its distance columns, cached per file version.\n  Distance uses all numbers, and symbols that repeat: a symbol where every\n  value is distinct is an identifier (a row number or url).\"\"\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl  = ezr.Tbl(ezr.csv(train_csv))\n    cols = [c for c in tbl.x\n            if type(c) is ezr.Num or len(c.has) < c.n]\n    _CACHE[key] = (tbl, cols)\n  return _CACHE[key]\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict\n  (goal suffixes optional), a full-width list, or a list with goal columns\n  removed (header order). Any cell not given is '?'. Non-numeric cells in\n  numeric columns become '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row:\n        out[at] = _coerce(row[n])\n      elif n[-1:] in SUFFX and n[:-1] in row:\n        out[at] = _coerce(row[n[:-1]])\n  else:\n    row = list(row)\n    if len(row) == len(names):\n      out = [_coerce(v) for v in row]\n    else:\n      keep = [i for i, n in enumerate(names) if n[-1:] not in SUFFX]\n      for i, v in zip(keep, row): out[i] = _coerce(v)\n  for c in tbl.cols.values():\n    if type(c) is ezr.Num and not _isnum(out[c.at]):\n      out[c.at] = \"?\"\n  return out\n\ndef _gap(c, a, b) -> float:\n  \"Distance between two cells of column C; unknown or non-numeric is far.\"\n  if type(c) is ezr.Num:\n    if not (_isnum(a) and _isnum(b)): return 1.0\n    return abs(ezr.norm(c, a) - ezr.norm(c, b))\n  if a == \"?\" or b == \"?\": return 1.0\n  return 0.0 if a == b else 1.0\n\ndef _pct(xs: list, p: float) -> float:\n  \"Percentile P (0..1) of sorted XS, by linear interpolation.\"\n  i  = p * (len(xs) - 1)\n  lo = int(i)\n  hi = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal, goal names as in the\n  header (with their suffix). ROW has its goal columns removed. The estimate\n  is the median goal value of the K training customers nearest to ROW over\n  the input columns; low..high is the LO..HI percentile band of those\n  neighbours. A goal no nearby customer has gets a band from all training\n  customers. A goal with no data at all, or a non-numeric goal, gets NaN.\"\"\"\n  tbl, cols = _load(train_csv)\n  q         = _full(tbl, row)\n  rows      = tbl.rows\n\n  d    = [sum(_gap(c, q[c.at], r[c.at]) ** 2 for c in cols) for r in rows]\n  idx  = sorted(range(len(rows)), key=lambda i: (d[i], i))[:K]\n  near = [rows[i] for i in idx]\n\n  out = {}\n  for c in tbl.y:\n    if type(c) is not ezr.Num:             # symbolic goal: no number to give\n      out[c.txt] = NAN3\n      continue\n    xs = sorted(r[c.at] for r in near if _isnum(r[c.at]))\n    if len(xs) < MINK:                      # too few neighbours know this goal\n      xs = sorted(r[c.at] for r in rows if _isnum(r[c.at]))\n    if not xs:\n      out[c.txt] = NAN3\n      continue\n    out[c.txt] = (float(_pct(xs, 0.5)),\n                  float(_pct(xs, LO)),\n                  float(_pct(xs, HI)))\n  return out\n```",
+ "ttft_ms": 19740,
+ "type": "result",
+ "duration_ms": 24928,
+ "uuid": "09c3c935-8e74-45bb-a81f-3e6989c8c4a9",
+ "ttft_stream_ms": 1523,
+ "time_to_request_ms": 100,
+ "queued_turn_count": 0
+}
