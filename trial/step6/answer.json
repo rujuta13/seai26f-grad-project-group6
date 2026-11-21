@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 25826,
+ "duration_api_ms": 25815,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _read, _columns, _to_float_column, best\nfrom step4 import stream\nfrom step5 import blame\n\n_TOP_FLAGS = 5\n_MIN_SIDE = 5\n\n\ndef _direction(sign: float) -> str:\n    return \"maximise\" if sign > 0 else \"minimise\"\n\n\ndef explain(train_csv) -> str:\n    fieldnames, rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    if not rows or not goals:\n        return (\"There are no usable training rows or goal columns, \"\n                \"so no reasons can be given.\")\n\n    lines = []\n    lines.append(\n        \"Goals: \"\n        + \"; \".join(f\"{name} ({_direction(sign)})\" for name, sign in goals)\n        + \".\"\n    )\n\n    front = best(train_csv)\n    lines.append(\n        f\"The recommended set has {len(front)} of {len(rows)} training builds. \"\n        \"These are builds that no other training build beats on every goal \"\n        \"at once, trimmed to at most 5% of rows by a simple sum of \"\n        \"min-max normalised goal values. The trimming uses that sum, \"\n        \"not a fitted model.\"\n    )\n\n    ordering = blame(train_csv)\n    lines.append(\n        \"Binary inputs ranked by how strongly they are associated with worse \"\n        \"goals (association in the observed builds, not proof of cause):\"\n    )\n\n    shown = 0\n    for c in ordering:\n        if shown >= _TOP_FLAGS:\n            break\n        vals = _to_float_column(rows, c)\n        if not set(np.unique(vals).tolist()) <= {0.0, 1.0}:\n            continue\n        on = vals == 1.0\n        off = ~on\n        if on.sum() < _MIN_SIDE or off.sum() < _MIN_SIDE:\n            continue\n        shown += 1\n        parts = []\n        for name, _sign in goals:\n            y = _to_float_column(rows, name)\n            yo = y[on & np.isfinite(y)]\n            yf = y[off & np.isfinite(y)]\n            if len(yo) == 0 or len(yf) == 0:\n                continue\n            parts.append(\n                f\"{name} averages {yf.mean():.4g} when off vs {yo.mean():.4g} when on\"\n            )\n        lines.append(\n            f\"- {c}: on in {int(on.sum())} builds, off in {int(off.sum())}; \"\n            + \", \".join(parts)\n            + \".\"\n        )\n\n    if shown == 0:\n        lines.append(\"- No binary input had enough builds on both sides to compare.\")\n\n    lines.append(\n        \"Non-binary inputs are ranked by the blame order but not described here. \"\n        \"Before trusting any flag, check it with a controlled pair of builds \"\n        \"that differ only in that flag.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    fieldnames, rows = _read(train_csv)\n    _inputs, goals = _columns(fieldnames)\n    if not goals or not rows:\n        return (\"This build cannot be rated: the training data has no usable \"\n                \"goals or rows.\")\n\n    vals = {}\n    missing = []\n    for name, _sign in goals:\n        try:\n            v = float(row.get(name))\n        except (TypeError, ValueError, AttributeError):\n            v = float(\"nan\")\n        if not np.isfinite(v):\n            missing.append(name)\n        else:\n            vals[name] = v\n    if missing:\n        return (\"This build cannot be rated: its goal values are missing or \"\n                \"non-numeric for \" + \", \".join(missing) + \".\")\n\n    not_dominated = bool(stream(train_csv, [row])[0])\n\n    pct = []\n    details = []\n    for name, sign in goals:\n        col = _to_float_column(rows, name)\n        col = col[np.isfinite(col)]\n        if col.size == 0:\n            continue\n        v = vals[name]\n        if sign > 0:\n            beaten = float(np.mean(col < v))\n        else:\n            beaten = float(np.mean(col > v))\n        pct.append(beaten)\n        details.append(\n            f\"{name} = {v:.6g} (training median {float(np.median(col)):.6g})\"\n        )\n\n    if not pct:\n        return \"This build cannot be rated: no training goal values are usable.\"\n\n    mean_pct = float(np.mean(pct))\n    if not_dominated and mean_pct >= 0.5:\n        verdict = \"good\"\n    elif (not not_dominated) and mean_pct < 0.5:\n        verdict = \"bad\"\n    else:\n        verdict = \"mixed\"\n\n    if not_dominated:\n        first = \"no training build beats it on every goal at once\"\n    else:\n        first = \"at least one training build beats it on every goal\"\n    sentence1 = (\n        f\"Rated {verdict}: {first}, and on average it beats \"\n        f\"{100.0 * mean_pct:.0f}% of training builds across the goals.\"\n    )\n    sentence2 = \"Goal values: \" + \"; \".join(details) + \".\"\n    return sentence1 + \" \" + sentence2\n```",
+ "stop_reason": "end_turn",
+ "session_id": "3fea1386-0176-4396-b8cf-384880963183",
+ "total_cost_usd": 0.0037918999999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 6344,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5997,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 6344,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5997,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 6344,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037918999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f2db8c0e-0a55-46c5-bef5-3bd8685c2c9c"
+}
