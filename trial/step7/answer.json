@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 28221,
+ "duration_api_ms": 28208,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.neighbors import NearestNeighbors\n\nfrom step1 import _read, _columns\nfrom step2 import _encode_inputs\n\n_K = 5\n_EXPLORE = 0.5\n\n\ndef _float_or_nan(v):\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return float(\"nan\")\n    return f if np.isfinite(f) else float(\"nan\")\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Pick the best row by labelling at most `budget` rows.\n\n    Rows are described only by their inputs in `blind_csv`. Goals are obtained\n    by calling label(i). A small diverse seed set is labelled first\n    (farthest-point sampling over standardised inputs), then the rest of the\n    budget goes to rows whose predicted quality (k-nearest-neighbour regression\n    on labelled rows) plus a distance-based exploration bonus is highest.\n    Returns the index of the best labelled row. If `goal` is given, only that\n    goal is optimised; otherwise the min-max normalised goal sum is used.\n    \"\"\"\n    if budget < 0:\n        raise ValueError(\"budget must be non-negative\")\n\n    fieldnames, rows = _read(blind_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no rows\")\n    if not goals:\n        raise ValueError(\"blind_csv has no goal columns\")\n\n    names = [g for g, _ in goals]\n    signs = np.array([s for _, s in goals], dtype=float)\n    G = len(names)\n\n    sel = None\n    if goal is not None:\n        if goal not in names:\n            raise ValueError(f\"unknown goal: {goal!r}\")\n        sel = names.index(goal)\n\n    B = min(budget, n)\n    if B == 0:\n        return 0\n\n    # Standardised input features for every row (goal cells are not used).\n    if inputs:\n        X, _ = _encode_inputs(rows, inputs)\n    else:\n        X = np.zeros((n, 1))\n    mu = X.mean(axis=0)\n    sd = X.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    Z = (X - mu) / sd\n\n    labeled: dict[int, np.ndarray] = {}\n    calls = 0\n\n    def probe(i):\n        nonlocal calls\n        if calls >= budget:\n            raise RuntimeError(\"labelling budget exceeded\")\n        calls += 1\n        d = label(i) or {}\n        labeled[i] = np.array(\n            [signs[j] * _float_or_nan(d.get(names[j])) for j in range(G)],\n            dtype=float,\n        )\n\n    # Phase 1: diverse seed set by farthest-point sampling.\n    n0 = min(B, max(2, B // 3))\n    first = 0\n    probe(first)\n    dmin = np.linalg.norm(Z - Z[first], axis=1)\n    while len(labeled) < n0:\n        cand = dmin.copy()\n        for i in labeled:\n            cand[i] = -np.inf\n        nxt = int(np.argmax(cand))\n        probe(nxt)\n        dmin = np.minimum(dmin, np.linalg.norm(Z - Z[nxt], axis=1))\n\n    # Phase 2: exploit predictions with an exploration bonus.\n    while len(labeled) < B:\n        Lidx = np.array(sorted(labeled), dtype=int)\n        unl = np.array([i for i in range(n) if i not in labeled], dtype=int)\n        if unl.size == 0:\n            break\n\n        vals = np.array([labeled[i] for i in Lidx], dtype=float)  # (L, G)\n        P = np.zeros((len(unl), G))\n        lo = np.zeros(G)\n        hi = np.zeros(G)\n        for g in range(G):\n            mask = np.isfinite(vals[:, g])\n            if not np.any(mask):\n                continue\n            li = Lidx[mask]\n            yg = vals[mask, g]\n            lo[g] = float(yg.min())\n            hi[g] = float(yg.max())\n            k = min(_K, len(li))\n            nn = NearestNeighbors(n_neighbors=k).fit(Z[li])\n            _, nb = nn.kneighbors(Z[unl])\n            P[:, g] = yg[nb].mean(axis=1)\n\n        span = np.where(hi - lo > 0, hi - lo, 1.0)\n        if sel is not None:\n            S = P[:, sel]\n        else:\n            S = ((P - lo) / span).sum(axis=1)\n        s_span = S.max() - S.min()\n        s = (S - S.min()) / (s_span if s_span > 0 else 1.0)\n\n        dist, _ = NearestNeighbors(n_neighbors=1).fit(Z[Lidx]).kneighbors(Z[unl])\n        D = dist[:, 0]\n        Dmax = D.max()\n        d_norm = D / Dmax if Dmax > 0 else np.zeros_like(D)\n\n        acq = s + _EXPLORE * d_norm\n        probe(int(unl[int(np.argmax(acq))]))\n\n    # Final choice among labelled rows.\n    idxs = np.array(sorted(labeled), dtype=int)\n    M = np.array([labeled[i] for i in idxs], dtype=float)\n\n    if sel is not None:\n        ok = np.isfinite(M[:, sel])\n        if not np.any(ok):\n            return int(idxs[0])\n        vals_sel = np.where(ok, M[:, sel], -np.inf)\n        return int(idxs[int(np.argmax(vals_sel))])\n\n    ok_rows = np.all(np.isfinite(M), axis=1)\n    if not np.any(ok_rows):\n        return int(idxs[0])\n    M = M[ok_rows]\n    idxs = idxs[ok_rows]\n    lo = M.min(axis=0)\n    hi = M.max(axis=0)\n    span = np.where(hi - lo > 0, hi - lo, 1.0)\n    score = ((M - lo) / span).sum(axis=1)\n    return int(idxs[int(np.argmax(score))])\n```",
+ "stop_reason": "end_turn",
+ "session_id": "bb1adb12-89fe-4f6b-a3df-c84e93a3fd10",
+ "total_cost_usd": 0.0042724,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 8076,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6525,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8076,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6525,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8076,
+   "webSearchRequests": 0,
+   "costUSD": 0.0042724,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "357423a7-81a9-4273-a950-318f76b58b9e"
+}
