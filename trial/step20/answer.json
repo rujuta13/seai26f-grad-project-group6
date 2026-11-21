@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 81034,
+ "stop_reason": "end_turn",
+ "session_id": "1520f1b0-5b04-43b2-adc9-2fc7dcb89613",
+ "total_cost_usd": 0.0448756,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 34002,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 19540,
+  "output_tokens_details": {
+   "thinking_tokens": 16400
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 34002,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 19540,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 34002,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 34002
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 28240,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.028305,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 19540,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 34002,
+   "webSearchRequests": 0,
+   "costUSD": 0.016570599999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py: race. Does our shortlist beat a top-OVR list? Does our penalty guesser beat an off-the-shelf model?\n\"step20.py: race. Does our shortlist beat a top-OVR list? Does our penalty guesser beat an off-the-shelf model?\"\nimport math\nimport random\nimport ezr\nfrom step2 import guess\nfrom step7 import choose\n\nBUDGET     = 30    # labels each randomised method may spend (step7's default)\nREPEATS    = 5     # seeded runs of the randomised methods, averaged\nRIDGE      = 1.0   # ridge penalty for the off-the-shelf regression\nMAX_LEVELS = 12    # symbol columns with more levels than this are left out of the regression\n\ndef _is_num(v) -> bool:\n  \"True if V is a usable finite number (bools do not count).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)\n\ndef _col_at(tbl, word: str) -> int:\n  \"Position of the column whose name is WORD, ignoring case.\"\n  for at, name in enumerate(tbl.names):\n    if str(name).strip().lower() == word: return at\n  raise ValueError(f\"no column named {word.upper()}\")\n\ndef _penalty_col(tbl):\n  \"The penalty goal column, named like Penalties+ (any goal suffix).\"\n  for c in tbl.y:\n    if c.txt.rstrip(\"+-!\").strip().lower() == \"penalties\": return c\n  raise ValueError(f\"no penalty goal column; goals are {[c.txt for c in tbl.y]}\")\n\ndef _labeller(tbl, rows):\n  \"A labeller that reveals a test row's goals, as a dict by goal name.\"\n  def label(i):\n    return {c.txt: rows[i][c.at] for c in tbl.y}\n  return label\n\ndef _penalty_wins(test, pen):\n  \"Score a row 0..100 on the penalty goal alone: 100 at the best known penalty, 0 at the average.\"\n  def gap(r):\n    return abs(ezr.norm(pen, r[pen.at]) - pen.goal)\n  gs  = [gap(r) for r in test.rows if _is_num(r[pen.at])]\n  lo  = min(gs)\n  avg = sum(gs) / len(gs)\n  def score(r):\n    if not _is_num(r[pen.at]): return -100.0\n    return max(-100.0, min(100.0, 100 * (1 - (gap(r) - lo) / (avg - lo + 1e-32))))\n  return score\n\ndef _top_overall(test) -> int:\n  \"Index of the row with the highest OVR: the simple 'top overall rating' list.\"\n  at   = _col_at(test, \"ovr\")\n  vals = [r[at] if _is_num(r[at]) else -math.inf for r in test.rows]\n  return max(range(len(vals)), key=lambda i: vals[i])\n\ndef _guess_penalty(train_csv, train, test, pool) -> int:\n  \"Our penalty guesser: guess each candidate's penalty from its inputs; pick the one guessed closest to ideal.\"\n  pen  = _penalty_col(train)\n  best, best_d = pool[0], math.inf\n  for i in pool:\n    row  = test.rows[i]\n    d    = {c.txt: row[c.at] for c in test.x}   # inputs only: goals stay unseen\n    pred = guess(train_csv, d)[pen.txt][0]        # the median guess for the penalty goal\n    gap  = abs(ezr.norm(pen, pred) - pen.goal)\n    if gap < best_d: best, best_d = i, gap\n  return best\n\ndef _solve(A, b):\n  \"Solve A x = b by Gauss-Jordan elimination with partial pivoting; singular columns give 0.\"\n  n = len(b)\n  M = [A[i][:] + [b[i]] for i in range(n)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    p = M[c][c]\n    if abs(p) < 1e-12: continue\n    M[c] = [v / p for v in M[c]]\n    for r in range(n):\n      if r != c and M[r][c]:\n        f = M[r][c]\n        M[r] = [a - f * v for a, v in zip(M[r], M[c])]\n  return [M[i][n] if abs(M[i][i]) > 1e-12 else 0.0 for i in range(n)]\n\ndef _ridge(X, y, lam):\n  \"Ridge least squares: beta minimising |X beta - y|^2 + lam |beta|^2, intercept (first term) unpenalised.\"\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  b = [0.0] * p\n  for x, t in zip(X, y):\n    for i in range(p):\n      xi = x[i]\n      if xi:\n        b[i] += xi * t\n        ai = A[i]\n        for j in range(p): ai[j] += xi * x[j]\n  for i in range(1, p): A[i][i] += lam\n  return _solve(A, b)\n\ndef _ols_penalty(train, test, pool) -> int:\n  \"Off-the-shelf model: a linear regression of the penalty goal on the inputs; pick the candidate predicted closest to ideal.\"\n  pen  = _penalty_col(train)\n  spec = []                       # numeric inputs standardised; low-cardinality symbols one-hot\n  for c in train.x:\n    if type(c) is ezr.Sym:\n      levels = sorted(c.has, key=str)\n      if 0 < len(levels) <= MAX_LEVELS:\n        spec += [(\"sym\", c.at, lvl) for lvl in levels]\n    else:\n      spec.append((\"num\", c.at, c.mu, c.sd if c.sd > 0 else 1.0))\n\n  def feats(row):\n    out = [1.0]\n    for s in spec:\n      v = row[s[1]]\n      if s[0] == \"num\":\n        out.append(((v if _is_num(v) else s[2]) - s[2]) / s[3])\n      else:\n        out.append(1.0 if v == s[2] else 0.0)\n    return out\n\n  known = [r for r in train.rows if _is_num(r[pen.at])]\n  if not known: raise ValueError(\"no training row has a known penalty\")\n  X    = [feats(r) for r in known]\n  y    = [float(r[pen.at]) for r in known]\n  beta = _ridge(X, y, RIDGE)\n\n  best, best_d = pool[0], math.inf\n  for i in pool:\n    x    = feats(test.rows[i])\n    pred = sum(b * v for b, v in zip(beta, x))\n    gap  = abs(ezr.norm(pen, pred) - pen.goal)\n    if gap < best_d: best, best_d = i, gap\n  return best\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"\"\"Each method's pick on TEST_CSV, scored by wins (100 = the best, 0 = an average row; higher is better).\n  Keys over all goals: \"ours\" (step7 shortlist), \"random\" (random search with the same budget),\n  \"top_overall\" (the row with the highest OVR).\n  Keys on the penalty goal alone: \"penalty_guesser\" (step2 guess) and \"penalty_ols\" (off-the-shelf regression).\n  Penalty picks are drawn from test rows whose penalty is known.\"\"\"\n  train = ezr.Tbl(ezr.csv(train_csv))\n  test  = ezr.Tbl(ezr.csv(test_csv))\n  rows  = test.rows\n  if not rows: raise ValueError(\"no test rows\")\n  if not test.y: raise ValueError(\"no goal columns (names ending in + or -)\")\n  pen  = _penalty_col(test)\n  pool = [i for i, r in enumerate(rows) if _is_num(r[pen.at])]\n  if not pool: raise ValueError(\"no test row has a known penalty\")\n\n  wins_all = ezr.wins(test)\n  budget   = min(BUDGET, len(rows))\n  label    = _labeller(test, rows)\n  seed0    = ezr.the.Seed\n  runs     = {\"ours\": [], \"random\": []}\n  try:\n    for k in range(REPEATS):\n      ezr.the.Seed = seed0 + k\n      rng = random.Random(ezr.the.Seed)\n      runs[\"ours\"].append(wins_all(rows[choose(test_csv, label, budget)]))\n      picks = rng.sample(range(len(rows)), budget)\n      best  = min(picks, key=lambda i: ezr.ydist(test, rows[i]))\n      runs[\"random\"].append(wins_all(rows[best]))\n  finally:\n    ezr.the.Seed = seed0\n\n  out = {name: sum(vs) / len(vs) for name, vs in runs.items()}\n  out[\"top_overall\"] = wins_all(rows[_top_overall(test)])\n  wins_pen = _penalty_wins(test, pen)\n  out[\"penalty_guesser\"] = wins_pen(rows[_guess_penalty(train_csv, train, test, pool)])\n  out[\"penalty_ols\"]     = wins_pen(rows[_ols_penalty(train, test, pool)])\n  return out\n```",
+ "ttft_ms": 70888,
+ "type": "result",
+ "duration_ms": 79682,
+ "uuid": "904b86d0-f666-432e-9a83-3e69c8cc3a3e",
+ "ttft_stream_ms": 1265,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
