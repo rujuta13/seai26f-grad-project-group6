@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 44125,
+ "stop_reason": "end_turn",
+ "session_id": "cdae8e36-cbba-4ef6-bbc0-e61814a7227e",
+ "total_cost_usd": 0.0391654,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 33736,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9886,
+  "output_tokens_details": {
+   "thinking_tokens": 7908
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33736,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9886,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 33736,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 33736
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 27390,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.027475,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9886,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33736,
+   "webSearchRequests": 0,
+   "costUSD": 0.0116904,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step26.py: justify, for the two client questions.\n\nQ1: \"Explain to the sales director why this group should get the next campaign.\"\nQ2: \"Why did you mark this customer as low value? Give me reasons I can act on.\"\n\nexplain() reuses step6.explain, which gives plain-language reasons that make a\nrow good and cites columns and values that can be checked in the training file.\nwhy() reuses step6.why for the verdict and the weakest goal, and adds the input\nvalue most tied to low-value customers, so the reply names something that can\nbe acted on. Only the customer wording and that input lookup are new here.\n\nReading, column splitting, filling, goal vectors, scores, bins, group labels,\nthe shrunken group score and the wording of the step6 explanations come from\nsteps 1, 2, 4, 5 and 6.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nfrom step1 import _columns, _num, _read\nfrom step2 import _fill, _quantile\nfrom step4 import _objectives\nfrom step5 import BAD_QUANTILE, SHRINK, _labels, _scores\nfrom step6 import MIN_GROUP, _describe\nfrom step6 import explain as _explain\nfrom step6 import why as _why\n\n\ndef _tidy(text: str) -> str:\n    \"\"\"Rewrite the step6 wording (builds, benchmarks) as customer wording.\"\"\"\n    swaps = [\n        (\"Confirm a claim by re-benchmarking before acting on it.\",\n         \"Confirm a claim against fresh customer records before acting on it.\"),\n        (\"one benchmark sample\", \"one sample of customers\"),\n        (\"bad builds\", \"low-value customers\"),\n        (\"builds\", \"customers\"),\n        (\"build\", \"customer\"),\n    ]\n    for old, new in swaps:\n        text = text.replace(old, new)\n    return text\n\n\ndef _low_input(rows: list[dict], inputs: list[str], bad: list[bool],\n               p0: float, f: dict):\n    \"\"\"The input value of customer f that is most tied to low value.\n\n    Groups are the same as step5 (values, or quantile bins for numeric columns\n    with many levels). A group is scored by its shrunken excess bad rate over\n    the overall rate, as in step5. Returns (excess, column, group label,\n    bad count, group size, bad rate) for the best group, or None if no group\n    of f's values is more bad than average.\n    \"\"\"\n    n = len(rows)\n    best_found = None\n    for c in inputs:\n        labels = _labels(rows + [f], c)\n        qlab = labels[n]\n        size = 0\n        hits = 0\n        for lab, is_bad in zip(labels[:n], bad):\n            if lab == qlab:\n                size += 1\n                if is_bad:\n                    hits += 1\n        if size < MIN_GROUP:\n            continue\n        rate = hits / size\n        excess = (rate - p0) * size / (size + SHRINK)\n        if excess > 0 and (best_found is None or excess > best_found[0]):\n            best_found = (excess, c, qlab, hits, size, rate)\n    return best_found\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for what makes\n    customers good. Every claim cites a column and value that can be looked up\n    in train_csv, so a group can be judged against the file before a campaign.\"\"\"\n    return _tidy(_explain(train_csv))\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this customer (goals included) is rated good,\n    middling or bad. The second sentence names the weakest goal and the input\n    value of this customer that is most tied to low-value customers.\"\"\"\n    text = _why(train_csv, row)\n    if text.startswith(\"This build cannot\"):\n        return _tidy(text)\n\n    # The verdict sentence is everything before step6's Pareto clause.\n    verdict = text.split(\" Pareto-wise, \", 1)[0]\n\n    header, rows = _read(str(train_csv))\n    inputs, gmax, gmin = _columns(header)\n    goals = gmax + gmin\n    n = len(rows)\n    m = len(goals)\n\n    obj = [_objectives(r, gmax, gmin) for r in rows]\n    score = _scores(obj, m)\n    cut = _quantile(score, BAD_QUANTILE)\n    bad = [s <= cut for s in score]\n    p0 = sum(bad) / n\n\n    # Weakest goal of this customer, normalised as in step6.why.\n    lo, span = [], []\n    for j in range(m):\n        fin = [o[j] for o in obj if math.isfinite(o[j])]\n        a = min(fin) if fin else 0.0\n        b = max(fin) if fin else 0.0\n        lo.append(a)\n        span.append(b - a)\n    vec = _objectives(row, gmax, gmin)\n    nv = []\n    for j, x in enumerate(vec):\n        if not math.isfinite(x):\n            nv.append(0.0)\n        elif span[j] > 0:\n            nv.append(min(1.0, max(0.0, (x - lo[j]) / span[j])))\n        else:\n            nv.append(1.0)\n    j = min(range(m), key=lambda k: nv[k])\n    raw = _num(row.get(goals[j]))\n    raw_text = f\"{raw:g}\" if raw is not None else \"missing\"\n\n    parts = [f\"Its weakest goal is {goals[j]} ({raw_text})\"]\n    f = _fill(row, rows, inputs)\n    found = _low_input(rows, inputs, bad, p0, f)\n    if found is not None:\n        _, c, qlab, hits, size, rate = found\n        parts.append(\n            f\"the input most tied to low-value customers is {_describe(c, qlab)}, \"\n            f\"where {hits} of {size} customers are low value (bottom quarter on \"\n            f\"the goals, {rate:.0%}) against {p0:.0%} overall\"\n        )\n    second = \"; \".join(parts) + \".\"\n\n    return _tidy(verdict + \" \" + second)\n```",
+ "ttft_ms": 36691,
+ "type": "result",
+ "duration_ms": 42843,
+ "uuid": "de654fd6-52f4-4b41-bc11-c9ca22ac16d2",
+ "ttft_stream_ms": 1224,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
