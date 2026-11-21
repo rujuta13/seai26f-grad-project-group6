@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 34757,
+ "duration_api_ms": 34746,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\n\n_KAPPA = 1.0        # exploration weight on tree-disagreement (lower score is better)\n_N_TREES = 200\n_SEED = 0\n\n\ndef _kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _load_blind(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        rows = list(reader)\n    return header, rows\n\n\ndef _encode_inputs(header, rows):\n    \"\"\"Numeric matrix of input columns; non-numeric columns are category-coded.\"\"\"\n    cols = [c for c in header if _kind(c) == \"input\"]\n    n = len(rows)\n    if not cols or n == 0:\n        return np.zeros((n, 1), dtype=float)\n\n    mats = []\n    for c in cols:\n        raw = [r.get(c, \"\") for r in rows]\n        try:\n            vals = np.asarray([float(v) for v in raw], dtype=float)\n            if not np.all(np.isfinite(vals)):\n                raise ValueError\n        except (TypeError, ValueError):\n            labels = {}\n            codes = []\n            for v in raw:\n                key = str(v)\n                if key not in labels:\n                    labels[key] = float(len(labels))\n                codes.append(labels[key])\n            vals = np.asarray(codes, dtype=float)\n        mats.append(vals)\n\n    X = np.column_stack(mats)\n    mu = X.mean(axis=0)\n    sd = X.std(axis=0)\n    sd = np.where(sd > 0, sd, 1.0)\n    return (X - mu) / sd\n\n\ndef _farthest_point_init(X, k, start=0):\n    \"\"\"Pick k rows spread across the input space, deterministically.\"\"\"\n    n = X.shape[0]\n    chosen = [start]\n    mind = np.sqrt(((X - X[start]) ** 2).sum(axis=1))\n    mind[start] = -1.0\n    while len(chosen) < k:\n        nxt = int(np.argmax(mind))\n        chosen.append(nxt)\n        d = np.sqrt(((X - X[nxt]) ** 2).sum(axis=1))\n        mind = np.minimum(mind, d)\n        for c in chosen:\n            mind[c] = -1.0\n    return chosen\n\n\ndef _rank_score(M):\n    \"\"\"Mean normalised rank over goal columns (0 = best). M has shape (k, m).\"\"\"\n    k = M.shape[0]\n    if k <= 1:\n        return np.zeros(k, dtype=float)\n    ranks = M.argsort(axis=0, kind=\"stable\").argsort(axis=0, kind=\"stable\").astype(float)\n    return ranks.mean(axis=1) / (k - 1)\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Return the index of the best row found, labelling at most `budget` rows.\n\n    blind_csv: CSV whose goal cells are all '?'.\n    label(i):  returns a dict {goal column: value} for row i. Called at most\n               `budget` times; a further call raises RuntimeError.\n    goal:      optional name of one goal column to optimise; otherwise all\n               goal columns are optimised together (mean normalised rank).\n    \"\"\"\n    if not isinstance(budget, int) or isinstance(budget, bool) or budget < 1:\n        raise ValueError(\"budget must be a positive integer\")\n\n    header, rows = _load_blind(blind_csv)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no rows\")\n\n    all_goals = [c for c in header if _kind(c) in (\"max\", \"min\")]\n    if goal is None:\n        goal_cols = all_goals\n    else:\n        if goal not in all_goals:\n            raise ValueError(f\"'{goal}' is not a goal column in {blind_csv}\")\n        goal_cols = [goal]\n    if not goal_cols:\n        raise ValueError(\"no goal columns (names ending in '+' or '-') found\")\n\n    signs = np.array(\n        [-1.0 if _kind(c) == \"max\" else 1.0 for c in goal_cols], dtype=float\n    )\n    X = _encode_inputs(header, rows)\n\n    target = min(budget, n)\n    labeled = {}   # row index -> signed goal vector (smaller is better)\n\n    def do_label(i):\n        if len(labeled) >= budget:\n            raise RuntimeError(\"labelling budget exhausted\")\n        result = label(i)\n        vec = np.empty(len(goal_cols), dtype=float)\n        for j, c in enumerate(goal_cols):\n            try:\n                v = float(result.get(c))\n                if not math.isfinite(v):\n                    v = math.inf\n            except (TypeError, ValueError, AttributeError):\n                v = math.inf\n            vec[j] = signs[j] * v\n        labeled[i] = vec\n\n    # Phase 1: spread-out initial sample.\n    n_init = min(target, max(3, target // 4))\n    for i in _farthest_point_init(X, n_init, start=0):\n        do_label(int(i))\n\n    # Phase 2: model-guided sequential labelling.\n    while len(labeled) < target:\n        L = sorted(labeled)\n        U = [i for i in range(n) if i not in labeled]\n        if not U:\n            break\n\n        M = np.vstack([labeled[i] for i in L])\n        scores = _rank_score(M)\n\n        if len(L) < 2:\n            # Too little data to model; continue spreading out.\n            d = np.sqrt(((X[U][:, None, :] - X[L][None, :, :]) ** 2).sum(axis=-1)).min(axis=1)\n            pick = U[int(np.argmax(d))]\n        else:\n            model = RandomForestRegressor(\n                n_estimators=_N_TREES,\n                min_samples_leaf=1,\n                random_state=_SEED,\n                n_jobs=1,\n            ).fit(X[L], scores)\n            tree_preds = np.stack([t.predict(X[U]) for t in model.estimators_])\n            mean = tree_preds.mean(axis=0)\n            spread = tree_preds.std(axis=0)\n            acq = mean - _KAPPA * spread\n            pick = U[int(np.argmin(acq))]\n\n        do_label(int(pick))\n\n    L = sorted(labeled)\n    M = np.vstack([labeled[i] for i in L])\n    final_scores = _rank_score(M)\n    return int(L[int(np.argmin(final_scores))])\n```",
+ "stop_reason": "end_turn",
+ "session_id": "eb4b8dd6-72d9-4f99-ab7d-1c42dd89dbe0",
+ "total_cost_usd": 0.0035878999999999998,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 8408,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5073,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8408,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5073,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8408,
+   "webSearchRequests": 0,
+   "costUSD": 0.0035878999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "5ac3e604-9978-4606-aab2-4a75cf0280d9"
+}
