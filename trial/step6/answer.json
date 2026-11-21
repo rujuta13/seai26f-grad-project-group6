@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 57072,
+ "stop_reason": "end_turn",
+ "session_id": "64e87e30-951e-4074-9e6f-42109b79dec1",
+ "total_cost_usd": 0.02,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12514,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13418,
+  "output_tokens_details": {
+   "thinking_tokens": 11186
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12514,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13418,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12514,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12514
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10703,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010788,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13418,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12514,
+   "webSearchRequests": 0,
+   "costUSD": 0.009212,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\n\"\"\"Justify the recommended flag set, in terms a skeptic can check.\n\nexplain(): the good rows are step1.best (the best 5% on all goals).\nIt finds the input value most over-represented among them, reports how\noften that value occurs in good rows versus all rows, and asks step3.same\nwhether the goals really differ with and without it. Each claim is a\ncount or a test anyone can rerun. These are associations in the training\ndata, not proven causes.\n\nwhy(): one or two sentences on one build. step4's cutoff says good or\nbad. step2.guess's neighbour range shows what the weakest goal was\nexpected to be.\n\"\"\"\nimport ezr\nimport step1\nimport step2\nimport step3\nimport step4\nimport step5\n\nTOP = 3    # reasons to report\nMIN = 5    # a value must appear in at least this many good rows\n\nsay = ezr.say\n\n\ndef _label(col, v, med) -> str:\n  \"Readable name for one value V of COL; numeric columns were split at MED.\"\n  if type(col) is ezr.Sym: return f\"{col.txt} = {say(v)}\"\n  return f\"{col.txt} {'<=' if v else '>'} {say(med)}\"\n\n\ndef _best_split(col, rows, gi):\n  \"\"\"The value of COL most over-represented among the good rows GI\n  (indexes into ROWS), or None if no value is over-represented.\"\"\"\n  med = 0\n  if type(col) is ezr.Num:\n    known = [r[col.at] for r in rows if step2._known(r[col.at])]\n    med   = step2._pct(known, .5) if known else 0\n  vals = step5._values(col, rows, med)\n  seen = [v for v in vals if v != \"?\"]\n  good = [vals[i] for i in gi if vals[i] != \"?\"]\n  if not seen or not good: return None\n  best = None\n  for v in set(seen):\n    k = good.count(v)\n    if k < MIN: continue\n    p_good, p_all = k / len(good), seen.count(v) / len(seen)\n    if p_good > p_all and (best is None or p_good - p_all > best[0]):\n      best = (p_good - p_all, v, p_good, p_all)\n  if best is None: return None\n  gain, v, p_good, p_all = best\n  return gain, _label(col, v, med), v, vals, p_good, p_all\n\n\ndef _goal_check(tbl, rows, vals, v) -> list[str]:\n  \"For each goal: do the rows with value V differ from the rest (step3.same)?\"\n  out = []\n  for g in step4._goals(tbl):\n    xs = [r[g.at] for r, x in zip(rows, vals)\n          if x == v and step2._known(r[g.at])]\n    ys = [r[g.at] for r, x in zip(rows, vals)\n          if x not in (v, \"?\") and step2._known(r[g.at])]\n    if len(xs) < 2 or len(ys) < 2:\n      out.append(f\"{g.txt}: too few rows to test\")\n      continue\n    verdict = (\"no real difference\" if step3.same(xs, ys)\n               else \"real difference\")\n    out.append(f\"{g.txt}: {verdict} (median {say(step2._pct(xs, .5))} \"\n               f\"with it, {say(step2._pct(ys, .5))} without)\")\n  return out\n\n\ndef explain(train_csv: str) -> str:\n  \"Plain reasons, checkable by hand, for what makes rows good.\"\n  tbl  = step2._load(train_csv)\n  rows = tbl.rows\n  gi   = set(step1.best(train_csv))\n  out  = [f\"Good rows are the {len(gi)} closest to ideal on all goals \"\n          f\"together (best 5% of {len(rows)}). Each reason below compares \"\n          f\"them with all rows.\"]\n  for g in step4._goals(tbl):\n    gv   = [rows[i][g.at] for i in gi if step2._known(rows[i][g.at])]\n    allv = [r[g.at] for r in rows if step2._known(r[g.at])]\n    way  = \"lower is better\" if g.goal == 0 else \"higher is better\"\n    out.append(f\"{g.txt} ({way}): median {say(step2._pct(gv, .5))} in good \"\n               f\"rows, {say(step2._pct(allv, .5))} overall.\")\n  found = [h for c in tbl.x if (h := _best_split(c, rows, gi))]\n  found.sort(key=lambda h: -h[0])\n  if not found:\n    out.append(\"No input value is over-represented among good rows, \"\n               \"so no flag explains goodness here.\")\n    return \"\\n\".join(out)\n  for i, (_, text, v, vals, p_good, p_all) in enumerate(found[:TOP], 1):\n    out.append(f\"{i}. {text}: in {p_good:.0%} of good rows, \"\n               f\"{p_all:.0%} of all rows.\")\n    out += [\"   \" + s for s in _goal_check(tbl, rows, vals, v)]\n  out.append(\"These are associations in this data, not proven causes; \"\n             \"check each before acting.\")\n  return \"\\n\".join(out)\n\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: is this build good or bad, and why.\"\n  tbl   = step2._load(train_csv)\n  full  = step2._full(tbl, row)\n  est   = step2.guess(train_csv, row)\n  goals = step4._goals(tbl)\n  filled, notes = list(full), []\n  for g in goals:\n    if not step2._known(full[g.at]):\n      est_v, _, _ = est[g.txt]\n      filled[g.at] = est_v\n      notes.append(f\"{g.txt} is unmeasured, so judged at its neighbours' \"\n                   f\"estimate {say(est_v)}\")\n  ydist   = step4._ydist(tbl, filled)\n  cut     = step4._cutoff(train_csv)\n  verdict = \"good\" if ydist <= cut else \"bad\"\n  worst   = max(goals, key=lambda g: abs(ezr.norm(g, filled[g.at]) - g.goal))\n  _, lo, hi = est[worst.txt]\n  shown   = say(filled[worst.at])\n  if not step2._known(full[worst.at]): shown += \" (estimated)\"\n  s1 = (f\"This build is {verdict}: its goals sit {say(ydist)} from ideal, \"\n        f\"and good means within {say(cut)}, the best-5% cutoff.\")\n  s2 = (f\"Its weakest goal is {worst.txt} at {shown}, where its nearest \"\n        f\"flag sets measured {say(lo)} to {say(hi)}\")\n  if notes: s2 += f\" ({'; '.join(notes)})\"\n  return f\"{s1} {s2}.\"\n```",
+ "ttft_ms": 50252,
+ "type": "result",
+ "duration_ms": 56220,
+ "uuid": "ebbae8b1-6b40-4a79-a64b-e703c243a201",
+ "ttft_stream_ms": 1135,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
