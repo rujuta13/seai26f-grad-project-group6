@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 25641,
+ "duration_api_ms": 25628,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step4.py: streaming keep/drop decisions and drift warnings for nightly results.\"\"\"\n\nimport numpy as np\n\nfrom step1 import _load\nfrom step3 import same\n\n# Number of consecutive new rows tested together for drift.\n_BLOCK = 15\n\n\ndef _goal_matrix(rows, goals):\n    \"\"\"Matrix over the goals where larger is always better (minimised goals negated).\"\"\"\n    return np.array(\n        [[float(r[name]) * sign for name, sign in goals] for r in rows],\n        dtype=float,\n    ).reshape(len(rows), len(goals))\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each incoming row that is not dominated on the goals by any\n    row seen so far (train_csv rows plus earlier incoming rows).\"\"\"\n    train_rows, _, goals = _load(train_csv)\n    if not goals:\n        return [False] * len(rows)\n\n    ref = _goal_matrix(train_rows, goals)\n    keep: list[bool] = []\n    for r in rows:\n        v = _goal_matrix([r], goals)[0]\n        if ref.shape[0] == 0:\n            dominated = False\n        else:\n            ge = (ref >= v).all(axis=1)\n            gt = (ref > v).any(axis=1)\n            dominated = bool((ge & gt).any())\n        keep.append(not dominated)\n        # Every row seen so far becomes part of the reference for later rows.\n        ref = np.vstack([ref, v[None, :]])\n    return keep\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` at which the goal values of new rows first stop looking\n    like those in train_csv, judged block by block with a two-sided permutation\n    test (step3.same). Returns None if no block differs.\"\"\"\n    train_rows, _, goals = _load(train_csv)\n    if not goals or not train_rows or not rows:\n        return None\n\n    names = [name for name, _ in goals]\n    train_vals = {name: [float(r[name]) for r in train_rows] for name in names}\n\n    for start in range(0, len(rows), _BLOCK):\n        block = rows[start:start + _BLOCK]\n        if len(block) < _BLOCK:\n            break\n        end = start + len(block) - 1\n        for name in names:\n            xs = [float(r[name]) for r in block]\n            if not same(xs, train_vals[name]):\n                return end\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1fdb6515-f4c8-4988-b7ad-6d1c8e226f13",
+ "total_cost_usd": 0.002228775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 3943,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3471,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3943,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3471,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3943,
+   "webSearchRequests": 0,
+   "costUSD": 0.002228775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "37a55af1-2ff9-485b-9c75-2408d65d026d"
+}
