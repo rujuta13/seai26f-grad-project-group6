@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28280,
+ "stop_reason": "end_turn",
+ "session_id": "ec5e9f69-cbd9-419b-bfef-7de9f2aff228",
+ "total_cost_usd": 0.0242437,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 20330,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5993,
+  "output_tokens_details": {
+   "thinking_tokens": 5101
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20330,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5993,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 20330,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 20330
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17111,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017181000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5993,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20330,
+   "webSearchRequests": 0,
+   "costUSD": 0.0070627,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step11.py\n\"\"\"Families and good rows, scaled to about 17,000 players.\n\nfamilies(): k-medoids over the x columns, as step1.families does, but\neach family's medoid is picked from a sample of its members. Cost grows\nwith the number of rows, not with its square.\n\nbest(): the unusually good rows, straight from step1.best.\n\"\"\"\nimport random\n\nimport ezr\nimport step1\n\nK      = 5     # families (clusters)\nCANDS  = 40    # candidate medoids tried per family\nREFS   = 100   # family members each candidate is scored against\nPASSES = 3     # assign / re-medoid rounds\n\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  k    = max(1, min(K, n))\n  rng  = random.Random(ezr.the.Seed)\n\n  # farthest-first seeds, deterministic, starting from row 0\n  seeds = [0]\n  d = [ezr.xdist(tbl, r, rows[0]) for r in rows]\n  while len(seeds) < k:\n    i = max(range(n), key=lambda j: d[j])\n    seeds.append(i)\n    d = [min(d[j], ezr.xdist(tbl, rows[j], rows[i])) for j in range(n)]\n\n  def assign(meds: list) -> list[int]:\n    return [min(range(len(meds)),\n                key=lambda c: ezr.xdist(tbl, r, meds[c]))\n            for r in rows]\n\n  def medoid(group: list[int]) -> int:\n    \"The member closest, on average, to a sample of its family.\"\n    cands = group if len(group) <= CANDS else rng.sample(group, CANDS)\n    refs  = group if len(group) <= REFS  else rng.sample(group, REFS)\n    return min(cands,\n               key=lambda a: sum(ezr.xdist(tbl, rows[a], rows[b])\n                                 for b in refs))\n\n  meds   = [rows[i] for i in seeds]\n  labels = assign(meds)\n  for _ in range(PASSES):\n    for c in range(k):\n      group = [i for i in range(n) if labels[i] == c]\n      if group: meds[c] = rows[medoid(group)]\n    new = assign(meds)\n    if new == labels: break\n    labels = new\n  return labels\n\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  return step1.best(train_csv)\n```",
+ "ttft_ms": 24341,
+ "type": "result",
+ "duration_ms": 26710,
+ "uuid": "2c724690-73e0-4b62-8ffd-b79cb77ff365",
+ "ttft_stream_ms": 1265,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
