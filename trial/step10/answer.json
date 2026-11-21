@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 55894,
+ "duration_api_ms": 55878,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step10.py: race the tuner and the guesser against standard rivals on test_csv.\n\nTuner rivals (each may measure at most `budget` test builds, then picks one):\n  ours       step7.choose (phased exploration and exploitation)\n  random     uniform random measurements, same Pareto-then-mean-rank pick rule\n  smbo_rf    sequential model-based search: a random-forest surrogate on the\n             standardised sum of goals proposes the next build to measure\n\nGuesser rivals (predict every goal of each test build from its inputs):\n  ours_guess step2.guess (k-nearest-neighbour median)\n  rf_guess   random forest regressor on standardised goals\n\nScores (lower is better for every method):\n  tuner:    mean-goal-rank position of the chosen build among all test builds,\n            scaled to [0, 1]; 0 means the best test build on average across goals.\n  guesser:  mean absolute error per goal divided by the training goal spread,\n            averaged over goals.\n\"\"\"\nfrom __future__ import annotations\n\nimport csv\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _classify, _goal_matrix, _load\nfrom step2 import guess\nfrom step4 import _encode_row, _encode_train\nfrom step6 import _mean_rank\nfrom step7 import choose\n\n_BUDGET = 30        # measurements allowed to every tuner\n_SEED = 0           # fixed seed so the race is repeatable\n_SMBO_INIT = 5      # random builds measured before the surrogate takes over\n_RF_TREES_TUNE = 100\n_RF_TREES_GUESS = 200\n\n\ndef _write_blind(header, rows, goal_cols, path):\n    \"\"\"Copy the test file with every goal cell set to '?'.\"\"\"\n    with open(path, \"w\", newline=\"\") as f:\n        w = csv.writer(f)\n        w.writerow(header)\n        for r in rows:\n            cells = list(r)\n            for c in goal_cols:\n                cells[c] = \"?\"\n            w.writerow(cells)\n\n\ndef _tuner_score(G, chosen):\n    \"\"\"Position of the chosen build by mean goal rank among all test builds, in [0, 1].\"\"\"\n    n = G.shape[0]\n    if n < 2 or G.shape[1] == 0:\n        return 0.0\n    mr = _mean_rank(G)\n    return float(mr[int(chosen)]) / (n - 1)\n\n\ndef _pick_measured(G, ids):\n    \"\"\"Best measured build: Pareto front of the measured builds, then lowest mean rank.\"\"\"\n    ids = np.asarray(sorted({int(i) for i in ids}), dtype=int)\n    sub = G[ids]\n    le = (sub[None, :, :] <= sub[:, None, :]).all(axis=2)\n    lt = (sub[None, :, :] < sub[:, None, :]).any(axis=2)\n    front = np.flatnonzero(~(le & lt).any(axis=1))\n    score = _mean_rank(sub[front])\n    return int(ids[front[int(np.argmin(score))]])\n\n\ndef _smbo(G, F, budget, seed):\n    \"\"\"Sequential model-based search with a random-forest surrogate; returns measured ids.\"\"\"\n    n = G.shape[0]\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    y = ((G - mu) / sd).sum(axis=1)\n\n    rng = np.random.default_rng(seed)\n    init = min(budget, _SMBO_INIT)\n    measured = [int(i) for i in rng.choice(n, size=init, replace=False)]\n    while len(measured) < budget:\n        model = RandomForestRegressor(n_estimators=_RF_TREES_TUNE, random_state=seed)\n        model.fit(F[measured], y[measured])\n        rest = np.setdiff1d(np.arange(n), measured)\n        pred = model.predict(F[rest])\n        measured.append(int(rest[int(np.argmin(pred))]))\n    return measured\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores of our tuner and guesser against standard rivals on test_csv.\n\n    Keys: \"ours\", \"random\", \"smbo_rf\" (tuners, see module docstring) and\n    \"ours_guess\", \"rf_guess\" (goal predictors). All scores are lower-is-better.\n    \"\"\"\n    header, train_rows = _load(train_csv)\n    test_header, test_rows = _load(test_csv)\n    if test_header != header:\n        raise ValueError(\"train_csv and test_csv must have the same header\")\n    if not train_rows or not test_rows:\n        raise ValueError(\"train_csv and test_csv must both contain data rows\")\n\n    maximise, minimise, inputs = _classify(header)\n    goal_cols = minimise + maximise\n    if not goal_cols:\n        raise ValueError(\"files have no goal columns\")\n    goal_names = [header[c] for c in goal_cols]\n\n    n = len(test_rows)\n    budget = min(_BUDGET, n)\n    G = _goal_matrix(test_rows, maximise, minimise)\n    truth = np.array([[float(r[c]) for c in goal_cols] for r in test_rows], dtype=float)\n\n    # Encoded test inputs, using the category codes learned from the training data.\n    _, specs = _encode_train(train_rows, inputs)\n    test_dicts = [dict(zip(header, r)) for r in test_rows]\n    if inputs:\n        F = np.array([_encode_row(d, header, inputs, specs) for d in test_dicts], dtype=float)\n    else:\n        F = np.zeros((n, 1), dtype=float)\n\n    scores: dict[str, float] = {}\n\n    # Tuner rivals.\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _write_blind(header, test_rows, goal_cols, blind)\n\n        def label(i):\n            return {header[c]: float(test_rows[i][c]) for c in goal_cols}\n\n        scores[\"ours\"] = _tuner_score(G, choose(blind, label, budget=budget))\n\n    rng = np.random.default_rng(_SEED)\n    rand_ids = rng.choice(n, size=budget, replace=False)\n    scores[\"random\"] = _tuner_score(G, _pick_measured(G, rand_ids))\n\n    smbo_ids = _smbo(G, F, budget, _SEED)\n    scores[\"smbo_rf\"] = _tuner_score(G, _pick_measured(G, smbo_ids))\n\n    # Goal predictors.\n    Ytrain = np.array([[float(r[c]) for c in goal_cols] for r in train_rows], dtype=float)\n    mu_t = Ytrain.mean(axis=0)\n    scale = Ytrain.std(axis=0)\n    scale[scale == 0] = 1.0\n\n    def _err(pred):\n        return float(np.mean(np.abs(pred - truth) / scale))\n\n    # Our guesser: step2.guess on the input columns only.\n    ours_pred = np.empty_like(truth)\n    for i, row in enumerate(test_rows):\n        inputs_only = {header[c]: row[c] for c in inputs}\n        est = guess(train_csv, inputs_only)\n        ours_pred[i] = [est[name][0] for name in goal_names]\n    scores[\"ours_guess\"] = _err(ours_pred)\n\n    # Off-the-shelf rival: random forest on the same encoded inputs.\n    if inputs:\n        Xtrain, _ = _encode_train(train_rows, inputs)\n    else:\n        Xtrain = np.zeros((len(train_rows), 1), dtype=float)\n    Ys = (Ytrain - mu_t) / scale\n    forest = RandomForestRegressor(n_estimators=_RF_TREES_GUESS, random_state=_SEED)\n    forest.fit(Xtrain, Ys)\n    rf_pred = forest.predict(F) * scale + mu_t\n    scores[\"rf_guess\"] = _err(rf_pred)\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "963d72ce-6660-4e13-bb21-54752ae1b56d",
+ "total_cost_usd": 0.007061899999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16752,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9935,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16752,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 9935,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16752,
+   "webSearchRequests": 0,
+   "costUSD": 0.007061899999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "cfec2d05-6069-43c1-9a6e-0265bf88e26b"
+}
