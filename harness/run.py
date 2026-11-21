@@ -11,7 +11,8 @@ Per step N:
      (a git worktree under .runs/), score it with harness/score.py, commit, and tag it
      tT-rR-stepN;
   4. append one row to results/results.csv.
-One attempt per step: code that crashes is scored as a failure, never retried. If the call
+One attempt per step: code that crashes or outlasts SCORE_TIMEOUT is scored as a failure,
+never retried, and a saved answer.json that was never recorded is reused, not re-asked. If the call
 itself fails (e.g. the Pro usage limit), the runner stops without recording the step;
 rerun the same command later and it resumes at that step.
 """
@@ -229,15 +230,22 @@ def run(t, r, steps, auth, model, budget, dry, push):
         domain, skill = domain_of(n), c.step_of(domain_of(n), n)
         text = prompt(t, n, earlier_code(trial, n))
         print(f"{tag}: {skill} ... ", end="", flush=True)
-        t0 = time.time()
-        try:
-            reply = call(text, auth, model)
-        except Exception as e:  # no answer at all: stop, so a rerun resumes here
-            print(f"\n  call failed, nothing recorded: {e}")
-            return
-        secs = time.time() - t0
-        code = extract(reply.get("result"))
         here = os.path.join(trial, f"step{n}")
+        saved = os.path.join(here, "answer.json")
+        if os.path.exists(saved):  # answered before but never recorded: one attempt, so reuse it
+            with open(saved) as f:
+                reply = json.load(f)
+            secs = (reply.get("duration_ms") or 0) / 1000
+            print("(reusing saved answer) ", end="", flush=True)
+        else:
+            t0 = time.time()
+            try:
+                reply = call(text, auth, model)
+            except Exception as e:  # no answer at all: stop, so a rerun resumes here
+                print(f"\n  call failed, nothing recorded: {e}")
+                return
+            secs = time.time() - t0
+        code = extract(reply.get("result"))
         os.makedirs(here, exist_ok=True)
         with open(os.path.join(here, "prompt.txt"), "w") as f:
             f.write(text)
@@ -245,11 +253,13 @@ def run(t, r, steps, auth, model, budget, dry, push):
             json.dump(reply, f, indent=1)
         with open(os.path.join(trial, f"step{n}.py"), "w") as f:
             f.write(code + "\n")
-        p = subprocess.run([sys.executable, os.path.join(HERE, "score.py"), "--domain", domain,
-                            "--step", str(n), "--code", trial], capture_output=True, text=True,
-                           cwd=trial, timeout=SCORE_TIMEOUT, check=False)
         try:
+            p = subprocess.run([sys.executable, os.path.join(HERE, "score.py"), "--domain", domain,
+                                "--step", str(n), "--code", trial], capture_output=True,
+                               text=True, cwd=trial, timeout=SCORE_TIMEOUT, check=False)
             s = json.loads(p.stdout.strip().splitlines()[-1])
+        except subprocess.TimeoutExpired:  # too slow is a failure of the code, not of the run
+            s = c.result(False, error=f"timed out after {SCORE_TIMEOUT}s")
         except (IndexError, json.JSONDecodeError):
             s = c.result(False, error=f"scorer gave no result: {p.stderr[-500:]}")
         with open(os.path.join(here, "score.json"), "w") as f:
