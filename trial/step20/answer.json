@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 91471,
+ "stop_reason": "end_turn",
+ "session_id": "9e0323f1-efbe-4ab8-bf76-6ab067af69d9",
+ "total_cost_usd": 0.059107900000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 46746,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 21929,
+  "output_tokens_details": {
+   "thinking_tokens": 17534
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 46746,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 21929,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 46746,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 46746
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 38724,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.038794,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 21929,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 46746,
+   "webSearchRequests": 0,
+   "costUSD": 0.020313900000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py\n\"\"\"Step 20: race.  Does our shortlist beat a simple \"top overall rating\"\nlist, and does our penalty guesser beat an off-the-shelf model?\n\nEvery score is lower-is-better.  Shortlist scores are the mean ydist\n(distance from the ideal over all goals, 0 is best) of the builds each\nmethod puts on its shortlist from TEST_CSV.  Guesser scores are the mean\nnormalised error of the Penalties+ guess over test rows (0 is best).\nThe keys are:\n  \"ours\"          our shortlist: the test rows whose flags look nearest\n                  the best quarter of training rows.\n  \"top_overall\"   the simple list: the highest OVR rows.\n  \"random_search\" a random shortlist, averaged over many draws.\n  \"guess_ours\"    our penalty guesser: median Penalties+ of the nearest\n                  training rows.\n  \"linear_ridge\"  an off-the-shelf linear regression for Penalties+.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport math\nimport random\nimport ezr\n\n_SHORT    = 0.10     # shortlist size, as a share of the test rows\n_DRAWS    = 20       # random shortlists averaged for random_search\n_RIDGE    = 1e-3     # ridge penalty for the linear rival\n_MAX_LVLS = 25       # linear rival: one-hot only symbols with at most this many levels\n_DROP     = {\"num\", \"Rank\", \"Name\", \"Nation\", \"League\", \"Team\", \"url\"}\n_KEYS     = (\"ours\", \"top_overall\", \"random_search\", \"guess_ours\", \"linear_ridge\")\n\n\ndef _num(v) -> bool:\n  \"True if V is a usable number (not text, not missing, not a bool).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\n\ndef _stem(name: str) -> str:\n  \"A column name without its goal sign, lower-cased: 'Penalties+' -> 'penalties'.\"\n  return name.rstrip(\"+-!\").strip().lower()\n\n\ndef _clean(v):\n  \"A cell as ezr reads it: strings are cast, blanks and None become '?'.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return ezr.atom(s) if s else \"?\"\n  return v\n\n\ndef _median(xs: list[float]) -> float:\n  \"Median of XS, interpolated between the middle two when even; XS must be non-empty.\"\n  xs = sorted(xs)\n  m  = len(xs)\n  return xs[m // 2] if m % 2 else (xs[m // 2 - 1] + xs[m // 2]) / 2\n\n\ndef _mean(xs: list[float]) -> float:\n  \"Mean of XS, or infinity if there is nothing to score.\"\n  return sum(xs) / len(xs) if xs else math.inf\n\n\ndef _load(path: str):\n  \"Read PATH: (header names, rows padded to full width, cells cleaned).\"\n  raw = list(ezr.csv(path))\n  if not raw: return [], []\n  names = [str(h).strip() for h in raw[0]]\n  rows  = []\n  for r in raw[1:]:\n    r = [_clean(v) for v in r][:len(names)]\n    rows.append(r + [\"?\"] * (len(names) - len(r)))\n  return names, rows\n\n\ndef _align(names: list, src_names: list, src_rows: list) -> list:\n  \"Rows of SRC laid out in the column order of NAMES; a missing column is '?'.\"\n  pos = {}\n  for at, nm in enumerate(src_names): pos.setdefault(nm, at)\n  idx = [pos.get(nm) for nm in names]\n  return [[r[i] if i is not None and i < len(r) else \"?\" for i in idx]\n          for r in src_rows]\n\n\ndef _is_num(rows: list, at: int) -> bool:\n  \"True if most known cells of column AT are numbers.\"\n  known = [r[at] for r in rows if r[at] != \"?\"]\n  nums  = sum(1 for v in known if _num(v))\n  return nums > 0 and 2 * nums >= len(known)\n\n\ndef _model(names: list, rows: list, at: int) -> ezr.Num:\n  \"An ezr.Num summarising the numeric cells of column AT; its goal sign comes from its name.\"\n  return ezr.adds([r[at] for r in rows if _num(r[at])],\n                  ezr.Num(names[at], at))\n\n\ndef _layout(names: list, rows: list):\n  \"(goals, inputs) of the kept columns: goals are (at, Num); inputs are (at, Num or None if symbolic).\"\n  goals, inputs = [], []\n  for at, nm in enumerate(names):\n    if not nm or nm in _DROP or nm.endswith(\"X\"): continue\n    numeric = _is_num(rows, at)\n    if nm[-1] in \"+-\":\n      if numeric: goals.append((at, _model(names, rows, at)))\n    else:\n      inputs.append((at, _model(names, rows, at) if numeric else None))\n  return goals, inputs\n\n\ndef _ydist(goals: list, row: list) -> float:\n  \"How far ROW's goals are from the ideal, RMS over all goals; a missing goal is worst.\"\n  gaps = [abs(ezr.norm(m, row[at]) - m.goal) if _num(row[at]) else 1.0\n          for at, m in goals]\n  return ezr.dist(gaps, len(gaps)) if gaps else 0.0\n\n\ndef _enc(m, v):\n  \"An input cell for distance: None if unknown, symbols as-is, numbers scaled to 0..1.\"\n  if m is None: return None if v == \"?\" else v\n  return ezr.norm(m, v) if _num(v) else None\n\n\ndef _dist(sym: list[bool], a: list, b: list) -> float:\n  \"Root mean square gap between two encoded input rows, as ezr.xdist.\"\n  if not sym: return 0.0\n  s = 0.0\n  for f, x, y in zip(sym, a, b):\n    if x is None or y is None: g = 1.0\n    elif f:                    g = 0.0 if x == y else 1.0\n    else:                      g = abs(x - y)\n    s += g * g\n  return math.sqrt(s / len(sym))\n\n\ndef _rank_key(v, t: int):\n  \"Sort key: highest numbers first, unknown last, ties by row order.\"\n  return (0, -v, t) if _num(v) else (1, 0, t)\n\n\ndef _design(inp: list, tr_rows: list):\n  \"Feature maker for the linear rival: bias, standardised numbers, one-hot symbols.\"\n  spec = []\n  for at, m in inp:\n    if m is not None:\n      spec.append((\"num\", at, m))\n    else:\n      lv = sorted({r[at] for r in tr_rows if r[at] != \"?\"}, key=str)\n      if 0 < len(lv) <= _MAX_LVLS:\n        spec.append((\"sym\", at, lv))\n\n  def feats(row: list) -> list[float]:\n    \"One row as numbers: a bias, standardised numbers (0 if unknown), one-hot symbols.\"\n    out = [1.0]\n    for kind, at, d in spec:\n      v = row[at]\n      if kind == \"num\":\n        out.append((v - d.mu) / (d.sd or 1.0) if _num(v) else 0.0)\n      else:\n        out += [1.0 if v == s else 0.0 for s in d]\n    return out\n\n  return feats\n\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [A[i][:] + [b[i]] for i in range(n)]\n  for col in range(n):\n    piv = max(range(col, n), key=lambda r: abs(M[r][col]))\n    M[col], M[piv] = M[piv], M[col]\n    if abs(M[col][col]) < 1e-12: continue\n    for r in range(n):\n      if r != col and M[r][col] != 0.0:\n        f = M[r][col] / M[col][col]\n        M[r] = [a - f * c for a, c in zip(M[r], M[col])]\n  return [M[i][n] / M[i][i] if abs(M[i][i]) >= 1e-12 else 0.0\n          for i in range(n)]\n\n\ndef _fit(X: list[list[float]], y: list[float]) -> list[float]:\n  \"Ridge least squares: weights w minimising |Xw - y|^2 + RIDGE |w|^2.\"\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  b = [0.0] * p\n  for x, t in zip(X, y):\n    for i in range(p):\n      xi = x[i]\n      b[i] += xi * t\n      Ai = A[i]\n      for j in range(p):\n        Ai[j] += xi * x[j]\n  for i in range(p): A[i][i] += _RIDGE\n  return _solve(A, b)\n\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"\"\"Score each method on TEST_CSV, lower is better.  The shortlists pick\n  test builds using the flags and the training data, and are scored by the\n  true distance from the ideal of the builds picked.  The penalty guessers\n  are scored on how close their Penalties+ guess lands to the true value.\n  Always includes the key \"ours\".\"\"\"\n  out = {k: math.inf for k in _KEYS}\n  names, tr_raw = _load(train_csv)\n  tnames, te_raw = _load(test_csv)\n  if not tr_raw or not te_raw: return out\n  goals, inp = _layout(names, tr_raw)\n  if not goals: return out\n\n  te   = _align(names, tnames, te_raw)\n  n, m = len(tr_raw), len(te)\n  ty   = [_ydist(goals, r) for r in tr_raw]       # training goal distances\n  ey   = [_ydist(goals, r) for r in te]           # truth on the test rows\n  sym  = [mo is None for _, mo in inp]\n  E    = [[_enc(mo, r[at]) for at, mo in inp] for r in tr_raw]\n  T    = [[_enc(mo, r[at]) for at, mo in inp] for r in te]\n  k    = min(n, max(5, int(math.sqrt(n))))\n\n  near = []                                       # nearest training rows, per test row\n  for t in T:\n    d = [_dist(sym, t, e) for e in E]\n    near.append(sorted(range(n), key=lambda i: (d[i], i))[:k])\n\n  size = max(1, int(_SHORT * m))\n\n  # Ours: shortlist the test builds whose nearest training builds are best.\n  pred  = [_median([ty[i] for i in near[t]]) for t in range(m)]\n  order = sorted(range(m), key=lambda t: (pred[t], t))\n  out[\"ours\"] = _mean([ey[t] for t in order[:size]])\n\n  # The simple rival: the highest overall rating, OVR.\n  ovr = next((at for at, nm in enumerate(names) if _stem(nm) == \"ovr\"), None)\n  if ovr is not None:\n    order = sorted(range(m), key=lambda t: _rank_key(te[t][ovr], t))\n    out[\"top_overall\"] = _mean([ey[t] for t in order[:size]])\n\n  # Random search: the expected quality of a random shortlist.\n  rng = random.Random(ezr.the.Seed)\n  out[\"random_search\"] = _mean([\n      _mean([ey[t] for t in rng.sample(range(m), min(size, m))])\n      for _ in range(_DRAWS)])\n\n  # Penalty guesser versus an off-the-shelf linear model, on Penalties+.\n  pen = next(((at, mo) for at, mo in goals\n              if _stem(names[at]) == \"penalties\"), None)\n  if pen is not None:\n    pat, pm  = pen\n    known_tr = [i for i in range(n) if _num(tr_raw[i][pat])]\n    if known_tr:\n      tv    = {i: tr_raw[i][pat] for i in known_tr}\n      all_v = list(tv.values())\n      feats = _design(inp, tr_raw)\n      X     = [feats(tr_raw[i]) for i in known_tr]\n      y     = [ezr.norm(pm, tv[i]) for i in known_tr]\n      w     = _fit(X, y)\n      errs, lin_errs = [], []\n      for t in range(m):\n        actual = te[t][pat]\n        if not _num(actual): continue\n        truth = ezr.norm(pm, actual)\n        vs    = [tv[i] for i in near[t] if i in tv] or all_v\n        errs.append(abs(ezr.norm(pm, _median(vs)) - truth))\n        lin = sum(a * b for a, b in zip(w, feats(te[t])))\n        lin_errs.append(abs(lin - truth))\n      out[\"guess_ours\"]   = _mean(errs)\n      out[\"linear_ridge\"] = _mean(lin_errs)\n\n  return out\n```",
+ "ttft_ms": 77987,
+ "type": "result",
+ "duration_ms": 90180,
+ "uuid": "006fb801-8e2e-4dec-a75f-d94731f7621d",
+ "ttft_stream_ms": 1145,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
