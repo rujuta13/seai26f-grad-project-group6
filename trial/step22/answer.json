@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 41758,
+ "stop_reason": "end_turn",
+ "session_id": "b60c4e3a-53d6-45b4-9e6b-6a55c69bbe15",
+ "total_cost_usd": 0.0638502,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 57085,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10804,
+  "output_tokens_details": {
+   "thinking_tokens": 6996
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 57085,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10804,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 57085,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 57085
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 46941,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.047030999999999996,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10804,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 57085,
+   "webSearchRequests": 0,
+   "costUSD": 0.0168192,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 22: guess. Customer forecasts for the marketing client.\n\nguess(train_csv, row) estimates every goal for one customer from that customer's\ninput columns, with a range that says how sure the estimate is. The client's two\nquestions read off the goals: online purchases (NUMWEBPURCHASES+) and store\npurchases (NUMSTOREPURCHASES+) for the first, and RESPONSE+ for the campaign.\n\nMethod: ridge regression on the inputs of train_csv, with the same structure as\nstep12 but tuned for customer files.\n  - Numeric input columns are standardised. A missing or unusable cell is filled\n    with the training median. Text input columns with a few levels are one-hot\n    encoded. Identifier-like numeric columns and text columns with many levels\n    are skipped, since a new customer cannot be judged on them.\n  - Estimate: the ridge prediction for the row, clamped to the goal values seen\n    in training. A purchase count therefore never goes below its observed\n    minimum, and RESPONSE stays within 0..1.\n  - Range: the 5th..95th percentile of out-of-fold residuals from 5-fold\n    cross-validation, so the range reflects the misses the model makes on\n    customers it has not seen. It is widened when the customer lacks many inputs\n    and clamped to the goal values seen in training.\n  - A goal with no usable training values gets (0.0, -inf, inf).\n\"\"\"\nimport math\nimport os\nimport random\n\nfrom step1 import _load\n\nSEED = 1            # fixed seed so results are reproducible\nMAX_FIT = 3000      # training rows used for fitting (a seeded sample if there are more)\nFOLDS = 5           # cross-validation folds for the residuals\nRIDGE = 1.0         # ridge penalty on the non-intercept weights\nMAX_LEVELS = 20     # text columns with more levels are identifier-like and are skipped\nID_FRAC = 0.9       # numeric column with more distinct values than this share of rows is an id\nNUMERIC_FRAC = 0.9  # a column is numeric if this share of its cells parse as numbers\nQ_LO = 0.05         # lower residual quantile: the range covers 90% of out-of-fold misses\nQ_HI = 0.95         # upper residual quantile\nMISS_WIDEN = 2.0    # range widening per unit share of inputs the customer lacks\n_CACHE = {}\n\n\ndef _finite(v):\n    \"\"\"The cell as a finite float, or None if it is missing, non-numeric or non-finite.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v.strip()\n    return \"\" if v is None else str(v).strip()\n\n\ndef _quantile(vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty ascending list.\"\"\"\n    pos = q * (len(vals) - 1)\n    lo = int(math.floor(pos))\n    hi = min(lo + 1, len(vals) - 1)\n    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo)\n\n\ndef _spec(rows, inputs):\n    \"\"\"Decide which input columns to use and how to encode them, from training rows.\n    Returns (numeric specs, categorical specs).\"\"\"\n    n = len(rows)\n    nums, cats = [], []\n    for c in inputs:\n        raw = [r.get(c) for r in rows]\n        vals = [_finite(v) for v in raw]\n        present = [x for x in vals if x is not None]\n        if not present:\n            continue\n        if len(present) >= NUMERIC_FRAC * n:\n            if n >= 20 and len(set(present)) > ID_FRAC * n:\n                continue  # identifier-like numeric column\n            srt = sorted(present)\n            median = srt[len(srt) // 2]\n            filled = [x if x is not None else median for x in vals]\n            mean = sum(filled) / n\n            sd = math.sqrt(sum((x - mean) ** 2 for x in filled) / n)\n            if sd > 0:\n                nums.append((c, mean, sd, median))\n        else:\n            levels = sorted({t for t in (_text(v) for v in raw) if t})\n            if 2 <= len(levels) <= MAX_LEVELS:\n                cats.append((c, levels))\n    return nums, cats\n\n\ndef _design(r, nums, cats):\n    \"\"\"Feature vector for one row (intercept first), and the share of inputs it lacks.\"\"\"\n    x = [1.0]\n    miss = 0\n    total = 0\n    for c, mean, sd, median in nums:\n        total += 1\n        v = _finite(r.get(c))\n        if v is None:\n            v = median\n            miss += 1\n        x.append((v - mean) / sd)\n    for c, levels in cats:\n        total += 1\n        s = _text(r.get(c))\n        if s in levels:\n            x.extend(1.0 if s == lv else 0.0 for lv in levels)\n        else:\n            miss += 1\n            x.extend(0.0 for _ in levels)\n    share = miss / total if total else 0.0\n    return x, share\n\n\ndef _solve(A, b):\n    \"\"\"Solve A w = b for a symmetric positive definite A, by Cholesky factorisation.\"\"\"\n    d = len(b)\n    L = [[0.0] * d for _ in range(d)]\n    for i in range(d):\n        for j in range(i + 1):\n            s = A[i][j] - sum(L[i][t] * L[j][t] for t in range(j))\n            if i == j:\n                L[i][i] = math.sqrt(s) if s > 1e-12 else 1e-6\n            else:\n                L[i][j] = s / L[j][j]\n    z = [0.0] * d\n    for i in range(d):\n        z[i] = (b[i] - sum(L[i][t] * z[t] for t in range(i))) / L[i][i]\n    w = [0.0] * d\n    for i in reversed(range(d)):\n        w[i] = (z[i] - sum(L[t][i] * w[t] for t in range(i + 1, d))) / L[i][i]\n    return w\n\n\ndef _ridge_solve(G, B, d):\n    \"\"\"Ridge solve. G is stored upper-triangular (only entries with column >= row\n    are read); the intercept (index 0) is not penalised.\"\"\"\n    A = [[0.0] * d for _ in range(d)]\n    for a in range(d):\n        for c in range(a, d):\n            A[a][c] = G[a][c]\n            A[c][a] = G[a][c]\n        if a > 0:\n            A[a][a] += RIDGE\n    return _solve(A, B)\n\n\ndef _fit(xs, ys, d):\n    \"\"\"Ridge fit on all rows, plus sorted out-of-fold residuals from k-fold CV.\"\"\"\n    m = len(ys)\n    k = max(1, min(FOLDS, m))\n    gram = [[[0.0] * d for _ in range(d)] for _ in range(k)]\n    rhs = [[0.0] * d for _ in range(k)]\n    for j in range(m):\n        f = j % k\n        x, y = xs[j], ys[j]\n        g, b = gram[f], rhs[f]\n        for a in range(d):\n            xa = x[a]\n            b[a] += xa * y\n            if xa:\n                row = g[a]\n                for c in range(a, d):\n                    row[c] += xa * x[c]\n\n    G = [[0.0] * d for _ in range(d)]\n    B = [0.0] * d\n    for f in range(k):\n        for a in range(d):\n            B[a] += rhs[f][a]\n            for c in range(a, d):\n                G[a][c] += gram[f][a][c]\n    w_all = _ridge_solve(G, B, d)\n\n    res = []\n    for f in range(k):\n        Gf = [[(G[a][c] - gram[f][a][c]) if c >= a else 0.0 for c in range(d)]\n              for a in range(d)]\n        Bf = [B[a] - rhs[f][a] for a in range(d)]\n        w = _ridge_solve(Gf, Bf, d)\n        for j in range(f, m, k):\n            pred = sum(a * b for a, b in zip(w, xs[j]))\n            res.append(ys[j] - pred)\n    res.sort()\n    return w_all, res\n\n\ndef _model(train_csv):\n    \"\"\"Cached fitted model for a training file.\"\"\"\n    stamp = (train_csv, os.path.getmtime(train_csv))\n    hit = _CACHE.get(stamp)\n    if hit is not None:\n        return hit\n\n    rows, inputs, goals = _load(train_csv)\n    n = len(rows)\n    names = [c for c, _ in goals]\n    nums, cats = _spec(rows, inputs) if n else ([], [])\n    fits = {name: None for name in names}\n\n    if n and names:\n        pool = list(range(n))\n        if n > MAX_FIT:\n            pool = sorted(random.Random(SEED).sample(pool, MAX_FIT))\n        feats = {i: _design(rows[i], nums, cats)[0] for i in pool}\n        d = 1 + len(nums) + sum(len(lv) for _, lv in cats)\n        for name in names:\n            xs, ys = [], []\n            for i in pool:\n                y = _finite(rows[i].get(name))\n                if y is not None:\n                    xs.append(feats[i])\n                    ys.append(y)\n            if not ys:\n                continue\n            all_y = [y for y in (_finite(r.get(name)) for r in rows) if y is not None]\n            w, res = _fit(xs, ys, d)\n            fits[name] = (w, res, min(all_y), max(all_y))\n\n    model = {\"nums\": nums, \"cats\": cats, \"names\": names, \"fits\": fits}\n    _CACHE.clear()\n    _CACHE[stamp] = model\n    return model\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for one customer's inputs (goal columns already removed).\n\n    Returns {goal: (estimate, low, high)} with low <= estimate <= high, for every goal\n    column of train_csv. The range is the spread of cross-validated misses on training\n    customers, widened when the row lacks many inputs and clamped to the goal values\n    seen in training. A goal with no usable training values gets (0.0, -inf, inf).\n    \"\"\"\n    model = _model(train_csv)\n    names = model[\"names\"]\n    if not names:\n        return {}\n\n    x, share = _design(row, model[\"nums\"], model[\"cats\"])\n    widen = 1.0 + MISS_WIDEN * share\n    out = {}\n    for name in names:\n        fit = model[\"fits\"][name]\n        if fit is None:\n            out[name] = (0.0, -math.inf, math.inf)\n            continue\n        w, res, ylo, yhi = fit\n        est = sum(a * b for a, b in zip(w, x))\n        low = est + _quantile(res, Q_LO) * widen\n        high = est + _quantile(res, Q_HI) * widen\n\n        # Keep everything within the goal values seen in training, and ordered.\n        est = min(max(est, ylo), yhi)\n        low = min(max(low, ylo), yhi)\n        high = min(max(high, ylo), yhi)\n        low = min(low, est)\n        high = max(high, est)\n        out[name] = (float(est), float(low), float(high))\n    return out\n```",
+ "ttft_ms": 29880,
+ "type": "result",
+ "duration_ms": 40381,
+ "uuid": "069a92df-966e-4e94-845e-f87f6961ed11",
+ "ttft_stream_ms": 1812,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
