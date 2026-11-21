@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 47195,
+ "stop_reason": "end_turn",
+ "session_id": "31a958aa-96e0-44a4-b1fa-df8a63aa1f63",
+ "total_cost_usd": 0.0231718,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 17368,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9874,
+  "output_tokens_details": {
+   "thinking_tokens": 8920
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17368,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9874,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 17368,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 17368
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 14686,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.014761,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9874,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17368,
+   "webSearchRequests": 0,
+   "costUSD": 0.0084108,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step9.py\n\"\"\"Odd rows: benchmark results that look like glitches, or flag sets unlike any seen.\n\nodd() gives each row a suspicion score (higher = more suspicious) from three checks against TRAIN_CSV:\n  * distance: how far the row's flags sit from its nearest training row, compared\n    with how far training rows sit from their own nearest neighbour (step4's\n    leave-one-out reference). Far beyond that means unlike anything seen.\n  * goal range: a goal far from the training median, in robust spreads (median and\n    MAD), or a goal cell that is text rather than a number (a likely typo).\n  * goal neighbours: a goal far from what the nearest flag sets measured\n    (step2.guess's neighbour band).\nA score near 1 is the typical edge of the data; several times that is odd.\nMissing cells ('?') are not evidence, so they add nothing.\n\"\"\"\nimport ezr\nimport step2\nimport step4\n\nCAP = 1e3     # scores are capped here, so one bad cell cannot swamp the rest\n\n\ndef odd(train_csv: str, rows: list) -> list[float]:\n  \"One suspicion score per row of ROWS: higher means a likelier glitch, or unlike TRAIN_CSV.\"\n  tbl   = step2._load(train_csv)\n  ref   = step4._reference(train_csv)\n  goals = step4._goals(tbl)\n  nx    = max(1, len(tbl.x))\n  far   = max(step2._pct(ref, .9), nx ** -.5)  # one flipped flag = 1 unit\n  stats = {}                                    # goal -> (median, robust spread)\n  for g in goals:\n    vals = [r[g.at] for r in tbl.rows if step2._known(r[g.at])]\n    if not vals: continue\n    med  = step2._pct(vals, .5)\n    mad  = 1.4826 * step2._pct([abs(x - med) for x in vals], .5)\n    stats[g.txt] = (med, mad or g.sd or 1e-9)\n  out = []\n  for row in rows:\n    full = step2._full(tbl, row)\n    est  = step2.guess(train_csv, row)\n    s    = min(CAP, step4._nearness(tbl, full) / far)\n    for g in goals:\n      v = full[g.at]\n      if v == \"?\": continue\n      if not step2._known(v):                 # text where a number belongs: a typo\n        s = CAP\n        continue\n      if g.txt in stats:\n        med, sc = stats[g.txt]\n        s = max(s, abs(v - med) / sc / 3)     # 3 robust spreads out = score 1\n      if g.txt in est:\n        e, lo, hi = est[g.txt]\n        s = max(s, abs(v - e) / max(hi - lo, 1e-9))\n    out.append(float(min(CAP, s)))\n  return out\n```",
+ "ttft_ms": 43479,
+ "type": "result",
+ "duration_ms": 46234,
+ "uuid": "2f2b86e6-6f4c-48f6-977e-964544905849",
+ "ttft_stream_ms": 1426,
+ "time_to_request_ms": 37,
+ "queued_turn_count": 0
+}
