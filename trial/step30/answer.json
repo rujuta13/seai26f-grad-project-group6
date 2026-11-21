@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 81528,
+ "stop_reason": "end_turn",
+ "session_id": "025c7bdd-97be-470b-a1a2-a49ea494bc5e",
+ "total_cost_usd": 0.061898299999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 51143,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 18909,
+  "output_tokens_details": {
+   "thinking_tokens": 15567
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 51143,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 18909,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 51143,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 51143
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 42155,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.042214999999999996,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 18909,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 51143,
+   "webSearchRequests": 0,
+   "costUSD": 0.0196833,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py: race. Does our targeting beat mailing the highest-income customers?\n# Does our response guesser beat an off-the-shelf model?\n\"step30.py: race. Does our targeting beat mailing the highest-income customers? Does our response guesser beat an off-the-shelf model?\"\n# Each method names one customer. Scores are on RESPONSE alone:\n# 100 = the best known responder, 0 = an average customer.\nimport math\nimport os\nimport random\nimport tempfile\nimport ezr\nfrom step22 import guess\nfrom step27 import choose\n\nBUDGET     = 30    # labels each randomised method may spend (step27's default)\nREPEATS    = 5     # seeded runs of the randomised methods, averaged\nRIDGE      = 1.0   # ridge penalty for the off-the-shelf regression\nMAX_LEVELS = 12    # symbol columns with more levels than this are left out of the regression\n\ndef _is_num(v) -> bool:\n  \"True if V is a usable finite number (bools do not count).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)\n\ndef _num_or_low(v) -> float:\n  \"V if it is a usable number, else minus infinity (so unknowns never win a max).\"\n  return v if _is_num(v) else -math.inf\n\ndef _col_at(tbl, word: str) -> int:\n  \"Position of the column whose name is WORD, ignoring case.\"\n  for at, name in enumerate(tbl.names):\n    if str(name).strip().lower() == word: return at\n  raise ValueError(f\"no column named {word.upper()}\")\n\ndef _response_col(tbl):\n  \"The response goal column, named like RESPONSE+ (any goal suffix).\"\n  for c in tbl.y:\n    if c.txt.rstrip(\"+-!\").strip().lower() == \"response\": return c\n  raise ValueError(f\"no response goal column; goals are {[c.txt for c in tbl.y]}\")\n\ndef _response_wins(E, resp):\n  \"Score a row 0..100 on the response goal alone: 100 at the best known responder, 0 at the average.\"\n  def gap(r):\n    return abs(ezr.norm(resp, r[resp.at]) - resp.goal)\n  gs  = [gap(r) for r in E]\n  lo  = min(gs)\n  avg = sum(gs) / len(gs)\n  def score(r):\n    if not _is_num(r[resp.at]): return -100.0\n    return max(-100.0, min(100.0, 100 * (1 - (gap(r) - lo) / (avg - lo + 1e-32))))\n  return score\n\ndef _write_blind(names, rows, goal_ats, path) -> None:\n  \"Write ROWS to PATH with every goal cell set to '?', so the tuner sees inputs only.\"\n  with open(path, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(str(n) for n in names) + \"\\n\")\n    for row in rows:\n      cells = [\"?\" if at in goal_ats else str(v) for at, v in enumerate(row)]\n      f.write(\",\".join(cells) + \"\\n\")\n\ndef _top_income(E, at) -> int:\n  \"Index of the customer with the highest income: the 'mail the richest' rule.\"\n  return max(range(len(E)), key=lambda i: _num_or_low(E[i][at]))\n\ndef _guess_pick(train_csv, test, E, resp) -> int:\n  \"Our response guesser: guess each customer's response from inputs alone; pick the highest median (ties by 90th pct).\"\n  best, best_key = 0, None\n  for i, row in enumerate(E):\n    d    = {c.txt: row[c.at] for c in test.x}   # inputs only: the response stays unseen\n    est  = guess(train_csv, d)[resp.txt]         # (median, 10th pct, 90th pct)\n    key  = (est[0], est[2])\n    if best_key is None or key > best_key: best, best_key = i, key\n  return best\n\ndef _solve(A, b):\n  \"Solve A x = b by Gauss-Jordan elimination with partial pivoting; singular columns give 0.\"\n  n = len(b)\n  M = [A[i][:] + [b[i]] for i in range(n)]\n  for c in range(n):\n    piv = max(range(c, n), key=lambda r: abs(M[r][c]))\n    M[c], M[piv] = M[piv], M[c]\n    p = M[c][c]\n    if abs(p) < 1e-12: continue\n    M[c] = [v / p for v in M[c]]\n    for r in range(n):\n      if r != c and M[r][c]:\n        f = M[r][c]\n        M[r] = [a - f * v for a, v in zip(M[r], M[c])]\n  return [M[i][n] if abs(M[i][i]) > 1e-12 else 0.0 for i in range(n)]\n\ndef _ridge(X, y, lam):\n  \"Ridge least squares: beta minimising |X beta - y|^2 + lam |beta|^2, intercept (first term) nearly unpenalised.\"\n  p = len(X[0])\n  A = [[0.0] * p for _ in range(p)]\n  b = [0.0] * p\n  for x, t in zip(X, y):\n    for i in range(p):\n      xi = x[i]\n      if xi:\n        b[i] += xi * t\n        ai = A[i]\n        for j in range(p): ai[j] += xi * x[j]\n  for i in range(p): A[i][i] += (1e-9 if i == 0 else lam)\n  return _solve(A, b)\n\ndef _features(train):\n  \"A feature maker from TRAIN: an intercept, standardised numeric inputs, one-hot low-cardinality symbols.\"\n  spec = []\n  for c in train.x:\n    if type(c) is ezr.Sym:\n      levels = sorted(c.has, key=str)\n      if 0 < len(levels) <= MAX_LEVELS:\n        spec += [(\"sym\", c.at, lvl, None) for lvl in levels]\n    else:\n      spec.append((\"num\", c.at, c.mu, c.sd if c.sd > 0 else 1.0))\n\n  def feats(row):\n    out = [1.0]\n    for kind, at, a, b in spec:\n      v = row[at]\n      if kind == \"num\":\n        out.append(((v if _is_num(v) else a) - a) / b)\n      else:\n        out.append(1.0 if v == a else 0.0)\n    return out\n  return feats\n\ndef _ols_pick(train_csv, test, E, resp) -> int:\n  \"Off-the-shelf model: a linear regression of the response on the inputs; pick the customer predicted most likely to respond.\"\n  train    = ezr.Tbl(ezr.csv(train_csv))\n  tr_resp  = _response_col(train)\n  known    = [r for r in train.rows if _is_num(r[tr_resp.at])]\n  if not known: raise ValueError(\"no training row has a known response\")\n  feats    = _features(train)\n  X        = [feats(r) for r in known]\n  y        = [float(r[tr_resp.at]) for r in known]\n  beta     = _ridge(X, y, RIDGE)\n  best, best_p = 0, None\n  for i, row in enumerate(E):\n    p = sum(b * v for b, v in zip(beta, feats(row)))\n    if best_p is None or p > best_p: best, best_p = i, p\n  return best\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"\"\"Each method's pick on TEST_CSV, scored by wins on the response goal alone\n  (100 = the best known responder, 0 = an average customer; higher is better).\n  Keys: \"ours\" (step27 targeting), \"random\" (random search with the same budget),\n  \"highest_income\" (mail the richest customer), \"guesser\" (step22 response guess),\n  \"ols\" (off-the-shelf linear regression). Picks are drawn from test rows whose response is known.\"\"\"\n  train = ezr.Tbl(ezr.csv(train_csv))\n  test  = ezr.Tbl(ezr.csv(test_csv))\n  if not test.rows: raise ValueError(\"no test rows\")\n  if not test.y: raise ValueError(\"no goal columns (names ending in + or -)\")\n  resp = _response_col(test)\n  E    = [r for r in test.rows if _is_num(r[resp.at])]\n  if not E: raise ValueError(\"no test row has a known response\")\n\n  budget   = min(BUDGET, len(E))\n  score    = _response_wins(E, resp)\n  income   = _col_at(test, \"income\")\n  goal_ats = {c.at for c in test.y}\n\n  def label(i):\n    \"Reveal the goals of test row I, as a dict by goal name.\"\n    return {c.txt: E[i][c.at] for c in test.y}\n\n  runs  = {\"ours\": [], \"random\": []}\n  seed0 = ezr.the.Seed\n  with tempfile.TemporaryDirectory() as tmp:\n    blind = os.path.join(tmp, \"blind.csv\")\n    _write_blind(test.names, E, goal_ats, blind)\n    try:\n      for k in range(REPEATS):\n        ezr.the.Seed = seed0 + k\n        rng = random.Random(ezr.the.Seed)\n        runs[\"ours\"].append(score(E[choose(blind, label, budget, goal=resp.txt)]))\n        picks = rng.sample(range(len(E)), budget)\n        best  = max(picks, key=lambda i: _num_or_low(E[i][resp.at]))\n        runs[\"random\"].append(score(E[best]))\n    finally:\n      ezr.the.Seed = seed0\n\n  out = {name: sum(vs) / len(vs) for name, vs in runs.items()}\n  out[\"highest_income\"] = score(E[_top_income(E, income)])\n  out[\"guesser\"]        = score(E[_guess_pick(train_csv, test, E, resp)])\n  out[\"ols\"]            = score(E[_ols_pick(train_csv, test, E, resp)])\n  return out\n```",
+ "ttft_ms": 70986,
+ "type": "result",
+ "duration_ms": 80326,
+ "uuid": "8dbf8550-38d2-4b78-ae23-125275d8ae04",
+ "ttft_stream_ms": 1137,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
