@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11780,
+ "stop_reason": "end_turn",
+ "session_id": "5686e1d7-7bfb-466f-be59-9885381f9a92",
+ "total_cost_usd": 0.023836499999999997,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21764,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2135,
+  "output_tokens_details": {
+   "thinking_tokens": 1760
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21764,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2135,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21764,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21764
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18341,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018416,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2135,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21764,
+   "webSearchRequests": 0,
+   "costUSD": 0.0054205,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step26.py\nimport step2\nimport step6\nimport step25\n\ndef explain(train_csv: str) -> str:\n  \"Reasons a sales director can check for what makes customers good, plus the inputs that set responders apart.\"\n  out = [step6.explain(train_csv)]\n  tbl = step2._table(train_csv)\n  try:\n    resp_at = step25._at(tbl, \"RESPONSE\")\n    comp_at = step25._at(tbl, \"COMPLAIN\")\n  except ValueError:                       # no campaign columns: nothing more to add\n    return out[0]\n  good, bad = step25._groups(tbl, resp_at, comp_at)\n  if good and bad:\n    names = step25.blame(train_csv)[:3]\n    out.append(\"Campaign view: the inputs that most separate customers who responded \"\n               \"without complaining from those who did not respond or complained are \"\n               + \", \".join(names) + \".\")\n  return \"\\n\".join(out)\n\ndef why(train_csv: str, row) -> str:\n  \"One or two sentences: is ROW (goals included) good or bad, and why.\"\n  return step6.why(train_csv, row)\n```",
+ "ttft_ms": 9654,
+ "type": "result",
+ "duration_ms": 10746,
+ "uuid": "c512fe82-f7f8-479e-91db-b0de561a7691",
+ "ttft_stream_ms": 1987,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
