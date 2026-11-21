@@ -1,0 +1,258 @@
+Use only the Python 3.13 standard library. No third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+"""step1.py - client questions 1 and 2.
+
+1. families(train_csv): cluster the flag combinations (input columns) into a
+   small number of families. The number of families is chosen from 2..6 by
+   silhouette score.
+2. best(train_csv): rows that are not dominated on all goals together
+   (Pareto-optimal, with goals taken as maximise for "+" and minimise for "-"),
+   capped at 5% of rows.
+
+The earlier steps' modules were not available in this message, so the small
+helpers needed here (MOOT csv loading, k-means, silhouette, non-dominated
+sorting) are implemented below with the standard library only.
+"""
+import csv
+import math
+import random
+
+SEED = 0
+MIN_FAMILIES = 2
+MAX_FAMILIES = 6
+BEST_FRACTION = 0.05
+
+
+# --------------------------------------------------------------------------
+# MOOT csv loading
+# --------------------------------------------------------------------------
+def _load(csv_path):
+    """Return (input_cols, goal_cols, X, Y).
+
+    X[i] is the list of input values of row i.
+    Y[i] is the list of goal values of row i, with every goal turned into a
+    maximisation goal (minimised goals are negated).
+    """
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = reader.fieldnames or []
+        input_cols = []
+        goal_cols = []  # (name, sign): sign +1 maximise, -1 minimise
+        for c in cols:
+            if c.endswith("X"):
+                continue
+            if c.endswith("+"):
+                goal_cols.append((c, +1))
+            elif c.endswith("-"):
+                goal_cols.append((c, -1))
+            else:
+                input_cols.append(c)
+        X, Y = [], []
+        for row in reader:
+            X.append([float(row[c]) for c in input_cols])
+            Y.append([sign * float(row[c]) for c, sign in goal_cols])
+    return input_cols, goal_cols, X, Y
+
+
+# --------------------------------------------------------------------------
+# distances, k-means, silhouette
+# --------------------------------------------------------------------------
+def _sqdist(a, b):
+    return sum((x - y) * (x - y) for x, y in zip(a, b))
+
+
+def _kmeans(X, k, rng, iters=100):
+    n, d = len(X), len(X[0])
+
+    # k-means++ seeding
+    centers = [list(X[rng.randrange(n)])]
+    dist2 = [_sqdist(x, centers[0]) for x in X]
+    while len(centers) < k:
+        total = sum(dist2)
+        if total <= 0:
+            c = X[rng.randrange(n)]
+        else:
+            r = rng.uniform(0, total)
+            acc = 0.0
+            idx = n - 1
+            for i, w in enumerate(dist2):
+                acc += w
+                if acc >= r:
+                    idx = i
+                    break
+            c = X[idx]
+        centers.append(list(c))
+        dist2 = [min(dist2[i], _sqdist(X[i], c)) for i in range(n)]
+
+    # Lloyd iterations
+    labels = None
+    for _ in range(iters):
+        new = [min(range(k), key=lambda j: _sqdist(x, centers[j])) for x in X]
+        if new == labels:
+            break
+        labels = new
+        for j in range(k):
+            members = [X[i] for i in range(n) if labels[i] == j]
+            if members:
+                centers[j] = [sum(m[t] for m in members) / len(members)
+                              for t in range(d)]
+            else:
+                # reseed an empty cluster at the point farthest from its centre
+                far = max(range(n),
+                          key=lambda i: _sqdist(X[i], centers[labels[i]]))
+                centers[j] = list(X[far])
+
+    inertia = sum(_sqdist(X[i], centers[labels[i]]) for i in range(n))
+    return labels, inertia
+
+
+def _best_kmeans(X, k, rng, restarts=4):
+    best = None
+    for _ in range(restarts):
+        labels, inertia = _kmeans(X, k, rng)
+        if best is None or inertia < best[1]:
+            best = (labels, inertia)
+    return best[0]
+
+
+def _silhouette(D, labels):
+    n = len(labels)
+    clusters = sorted(set(labels))
+    if len(clusters) < 2:
+        return -1.0
+    members = {c: [i for i in range(n) if labels[i] == c] for c in clusters}
+    total = 0.0
+    for i in range(n):
+        own = members[labels[i]]
+        if len(own) == 1:
+            continue  # silhouette of a singleton is 0
+        a = sum(D[i][j] for j in own if j != i) / (len(own) - 1)
+        b = min(sum(D[i][j] for j in members[c]) / len(members[c])
+                for c in clusters if c != labels[i])
+        m = max(a, b)
+        if m > 0:
+            total += (b - a) / m
+    return total / n
+
+
+# --------------------------------------------------------------------------
+# dominance, fronts, crowding
+# --------------------------------------------------------------------------
+def _dominates(a, b):
+    """True if a is at least as good as b on every goal (all maximised)
+    and strictly better on at least one."""
+    better = False
+    for x, y in zip(a, b):
+        if x < y:
+            return False
+        if x > y:
+            better = True
+    return better
+
+
+def _crowding(Y, front):
+    dist = {i: 0.0 for i in front}
+    if len(front) <= 2:
+        return {i: math.inf for i in front}
+    for t in range(len(Y[0])):
+        order = sorted(front, key=lambda i: Y[i][t])
+        lo, hi = Y[order[0]][t], Y[order[-1]][t]
+        dist[order[0]] = math.inf
+        dist[order[-1]] = math.inf
+        span = hi - lo
+        if span == 0:
+            continue
+        for p in range(1, len(order) - 1):
+            dist[order[p]] += (Y[order[p + 1]][t] - Y[order[p - 1]][t]) / span
+    return dist
+
+
+# --------------------------------------------------------------------------
+# step 1 public functions
+# --------------------------------------------------------------------------
+def families(train_csv):
+    """One family (cluster) label per data row of train_csv, in file order."""
+    _, _, X, _ = _load(train_csv)
+    n = len(X)
+    if n < 3:
+        return [0] * n
+
+    D = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            D[i][j] = D[j][i] = math.sqrt(_sqdist(X[i], X[j]))
+
+    rng = random.Random(SEED)
+    best_labels, best_score = None, -math.inf
+    for k in range(MIN_FAMILIES, min(MAX_FAMILIES, n - 1) + 1):
+        labels = _best_kmeans(X, k, rng)
+        score = _silhouette(D, labels)
+        if score > best_score:
+            best_labels, best_score = labels, score
+
+    if best_labels is None:
+        best_labels = [0] * n
+    return [int(l) for l in best_labels]
+
+
+def best(train_csv):
+    """Row indices of the unusually good rows (not dominated on all goals
+    together), at most BEST_FRACTION of the rows. Returned in ascending order."""
+    _, _, _, Y = _load(train_csv)
+    n = len(Y)
+    cap = int(BEST_FRACTION * n)
+    if n == 0 or cap == 0:
+        return []
+
+    chosen = []
+    remaining = list(range(n))
+    while remaining and len(chosen) < cap:
+        # current non-dominated front among the remaining rows
+        front = [i for i in remaining
+                 if not any(_dominates(Y[j], Y[i]) for j in remaining if j != i)]
+        if not front:
+            front = list(remaining)
+        fs = set(front)
+        remaining = [i for i in remaining if i not in fs]
+
+        room = cap - len(chosen)
+        if len(front) > room:
+            # keep the most spread-out members of the partial front
+            dist = _crowding(Y, front)
+            front = sorted(front, key=lambda i: (-dist[i], i))[:room]
+        chosen.extend(front)
+
+    return sorted(chosen)
+```
+
+Step 2: guess.
+The client asks:
+  - "Before I benchmark a flag set, guess how fast it will be."
+  - "Guess the CPU cost too, and tell me how sure you are."
+
+Write step2.py defining exactly these functions:
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]
+    `row` has its goal columns removed. Return {goal: (estimate, low, high)} for every goal,
+    where low..high is the range you are fairly sure the true value falls in.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step2.py in one ```python block.
