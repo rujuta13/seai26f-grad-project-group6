@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 144111,
+ "duration_api_ms": 144100,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step7.py: choose a good flag set while measuring at most `budget` builds.\n\nThe blind file has every goal cell set to '?', so only the input columns can be\ncompared before measuring. choose() spends the budget in two phases. The first\nhalf spreads measurements across the input space (farthest-point sampling from\nthe centre). The second half alternates between the nearest unmeasured build to\nthe current best and the build farthest from everything measured so far. The\nanswer is the best measured build: the Pareto front of the measured builds, then\nthe lowest mean goal rank on that front.\n\nLoading, column classification, input encoding and goal matrices come from step1.\nThe mean-rank helper comes from step6.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _goal_matrix, _input_matrix, _load\nfrom step6 import _mean_rank\n\n_EXPLORE_SHARE = 0.5   # share of the budget spent on spread-out sampling before exploiting\n\n\ndef _farthest(D, chosen, pool):\n    \"\"\"Member of `pool` whose distance to its nearest member of `chosen` is largest.\"\"\"\n    pool = np.asarray(pool, dtype=int)\n    chosen = np.asarray(chosen, dtype=int)\n    dmin = D[np.ix_(pool, chosen)].min(axis=1)\n    return int(pool[int(np.argmax(dmin))])\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, after calling label(i) at most `budget` times.\n\n    blind_csv: MOOT csv whose goal cells are all '?'.\n    label(i): returns the goals of row i as a dict {goal column name: value}.\n    goal: optional name of one goal column; if given, only that goal is optimised.\n    \"\"\"\n    if isinstance(budget, bool) or not float(budget).is_integer() or budget < 1:\n        raise ValueError(\"budget must be a positive integer\")\n    budget = int(budget)\n\n    header, rows = _load(blind_csv)\n    if not rows:\n        raise ValueError(\"blind_csv contains no data rows\")\n    n = len(rows)\n\n    maximise, minimise, inputs = _classify(header)\n    if goal is not None:\n        if goal not in header:\n            raise ValueError(f\"unknown goal column: {goal!r}\")\n        col = header.index(goal)\n        if goal.endswith(\"+\"):\n            maximise, minimise = [col], []\n        elif goal.endswith(\"-\"):\n            maximise, minimise = [], [col]\n        else:\n            raise ValueError(\"goal must name a column ending in '+' or '-'\")\n    goal_cols = minimise + maximise\n    if not goal_cols:\n        raise ValueError(\"blind_csv has no goal columns\")\n\n    # Standardised input space, used only to decide where to measure next.\n    X = _input_matrix(rows, inputs)\n    if X.shape[1] > 0:\n        Z = StandardScaler().fit_transform(X)\n    else:\n        Z = np.zeros((n, 0), dtype=float)\n    D = np.sqrt(((Z[:, None, :] - Z[None, :, :]) ** 2).sum(axis=2))\n\n    limit = min(budget, n)\n    measured: dict[int, dict[int, float]] = {}\n\n    def measure(i):\n        if len(measured) >= budget:\n            raise RuntimeError(\"measurement budget exceeded\")\n        vals = label(i)\n        measured[i] = {c: float(vals[header[c]]) for c in goal_cols}\n\n    def pick():\n        \"\"\"Best measured row: Pareto front first, then lowest mean rank on that front.\"\"\"\n        ids = sorted(measured)\n        raw = []\n        for i in ids:\n            cells = list(rows[i])\n            for c in goal_cols:\n                cells[c] = repr(measured[i][c])\n            raw.append(cells)\n        G = _goal_matrix(raw, maximise, minimise)\n        le = (G[None, :, :] <= G[:, None, :]).all(axis=2)   # row j no worse than row i everywhere\n        lt = (G[None, :, :] < G[:, None, :]).any(axis=2)    # and strictly better somewhere\n        front = np.flatnonzero(~(le & lt).any(axis=1))\n        score = _mean_rank(G[front])\n        return ids[int(front[int(np.argmin(score))])]\n\n    # Phase 1: start from the build closest to the centre, then spread out.\n    centre = Z.mean(axis=0) if Z.shape[1] > 0 else np.zeros(0, dtype=float)\n    first = int(np.argmin(((Z - centre) ** 2).sum(axis=1)))\n    measure(first)\n    explore_target = min(limit, max(1, math.ceil(limit * _EXPLORE_SHARE)))\n    while len(measured) < explore_target:\n        unmeasured = [i for i in range(n) if i not in measured]\n        measure(_farthest(D, list(measured), unmeasured))\n\n    # Phase 2: alternate between refining near the best and exploring the gaps.\n    step = 0\n    while len(measured) < limit:\n        unmeasured = [i for i in range(n) if i not in measured]\n        if not unmeasured:\n            break\n        if step % 2 == 0:\n            anchor = pick()\n            cand = min(unmeasured, key=lambda j: (float(D[anchor, j]), j))\n        else:\n            cand = _farthest(D, list(measured), unmeasured)\n        measure(cand)\n        step += 1\n\n    return pick()\n```",
+ "stop_reason": "end_turn",
+ "session_id": "dd316106-7b45-439d-a86f-69ad83d4a05b",
+ "total_cost_usd": 0.0050114,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 10124,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7491,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10124,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7491,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10124,
+   "webSearchRequests": 0,
+   "costUSD": 0.0050114,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ae52c49b-5ad1-4353-9623-489917cf6056"
+}
