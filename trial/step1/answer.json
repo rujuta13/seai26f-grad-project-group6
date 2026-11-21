@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 19582,
+ "duration_api_ms": 19569,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step1.py: flag-combination families (clusters) and unusually good rows.\n\nNo earlier step modules were provided with this request, so the CSV loading and\nencoding helpers needed here are defined in this file instead of being imported.\n\"\"\"\n\nimport csv\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\nfrom sklearn.metrics import silhouette_score\nfrom sklearn.preprocessing import StandardScaler\n\n\ndef _load(path):\n    \"\"\"Return (rows, input_cols, goals) where goals is a list of (name, sign).\"\"\"\n    with open(path, newline=\"\") as fh:\n        reader = csv.DictReader(fh)\n        names = reader.fieldnames or []\n        rows = list(reader)\n    inputs, goals = [], []\n    for name in names:\n        if name.endswith(\"+\"):\n            goals.append((name, 1.0))\n        elif name.endswith(\"-\"):\n            goals.append((name, -1.0))\n        elif name.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(name)\n    return rows, inputs, goals\n\n\ndef _encode(rows, cols):\n    \"\"\"Numeric matrix for input columns; non-numeric columns get ordinal codes.\"\"\"\n    out = np.zeros((len(rows), len(cols)), dtype=float)\n    for j, c in enumerate(cols):\n        vals = [r[c] for r in rows]\n        try:\n            out[:, j] = [float(v) for v in vals]\n        except (TypeError, ValueError):\n            codes = {v: i for i, v in enumerate(sorted(set(map(str, vals))))}\n            out[:, j] = [codes[str(v)] for v in vals]\n    return out\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    rows, inputs, _ = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    if not inputs:\n        return [0] * n\n\n    X = StandardScaler().fit_transform(_encode(rows, inputs))\n\n    best_labels = np.zeros(n, dtype=int)\n    best_score = -np.inf\n    for k in range(2, min(8, n - 1) + 1):\n        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)\n        labels = km.labels_\n        if len(set(labels.tolist())) < 2:\n            continue\n        score = silhouette_score(X, labels)\n        if score > best_score:\n            best_score = score\n            best_labels = labels\n\n    return [int(x) for x in best_labels]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows. Uses the Pareto front over all goals, ranked when the\n    front is larger than the cap.\"\"\"\n    rows, _, goals = _load(train_csv)\n    n = len(rows)\n    if n == 0 or not goals:\n        return []\n\n    # Build a matrix where larger is always better.\n    M = np.array(\n        [[float(r[name]) * sign for name, sign in goals] for r in rows],\n        dtype=float,\n    )\n\n    # Non-dominated (Pareto) front. ge[i, j]: row j >= row i on all goals.\n    # gt[i, j]: row j > row i on at least one goal. Row i is dominated if some j does both.\n    M_j = M[None, :, :]\n    M_i = M[:, None, :]\n    ge = (M_j >= M_i).all(axis=2)\n    gt = (M_j > M_i).any(axis=2)\n    dominated = (ge & gt).any(axis=1)\n    front_idx = np.flatnonzero(~dominated)\n\n    cap = max(1, int(0.05 * n))\n    if len(front_idx) <= cap:\n        return sorted(int(i) for i in front_idx)\n\n    # Too many non-dominated rows: keep the ones with the best normalised total.\n    F = M[front_idx]\n    mins = F.min(axis=0)\n    maxs = F.max(axis=0)\n    span = np.where(maxs > mins, maxs - mins, 1.0)\n    score = ((F - mins) / span).sum(axis=1)\n    order = np.argsort(-score, kind=\"stable\")\n    chosen = front_idx[order[:cap]]\n    return sorted(int(i) for i in chosen)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "98a7020e-33b9-4606-a4b1-cbae5f2b3958",
+ "total_cost_usd": 0.0020334,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 864,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3850,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 864,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3850,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 864,
+   "webSearchRequests": 0,
+   "costUSD": 0.0020334,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "1544b291-9584-4a52-a8f7-e8913faa3bae"
+}
