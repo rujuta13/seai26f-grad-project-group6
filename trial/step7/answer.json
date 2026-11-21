@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 56979,
+ "stop_reason": "end_turn",
+ "session_id": "ade1ccc6-d01f-4428-8437-4de928ebbd83",
+ "total_cost_usd": 0.0193248,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11628,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13616,
+  "output_tokens_details": {
+   "thinking_tokens": 11302
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11628,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13616,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11628,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11628
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10116,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010191,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13616,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11628,
+   "webSearchRequests": 0,
+   "costUSD": 0.0091338,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 7: find a good flag set while measuring only a few builds.\n\nchoose() sees the flag settings of every build in blind_csv but none of their\ngoal values. It may measure at most `budget` builds by calling label(i). It\nfirst measures builds spread across the flag space (farthest-point sampling),\nthen repeatedly measures the unmeasured build with the best predicted goal\nscore. The prediction is a distance-weighted average over the nearest measured\nbuilds, minus a bonus for builds far from anything measured so far.\n\nA goal score is the mean of the measured goals, each normalised over the\nmeasured builds, with '+' goals negated so that lower is better. With\ngoal=..., only that goal counts, so the best choice for speed alone or CPU\nalone can differ from the best overall choice. The measured build with the\nbest goal score is returned.\n\"\"\"\n\nimport math\n\nfrom step1 import _load, _split_columns\n\nSEED_MIN = 3\nNEIGHBOURS = 3\nKAPPA = 0.5\nEPS = 1e-6\n\n\ndef _as_finite(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _spec(rows, inputs):\n    \"\"\"Per input column: ('num', span) if every value is a float, else ('cat', 0.0).\"\"\"\n    spec = {}\n    for c in inputs:\n        vals = [r.get(c) for r in rows]\n        if vals and all(isinstance(v, float) for v in vals):\n            finite = [v for v in vals if math.isfinite(v)]\n            if finite:\n                spec[c] = (\"num\", max(finite) - min(finite))\n                continue\n        spec[c] = (\"cat\", 0.0)\n    return spec\n\n\ndef _make_distance(rows, inputs):\n    \"\"\"Return distance(a, b) between row indices: mean per-column difference in [0, 1].\"\"\"\n    spec = _spec(rows, inputs)\n    width = max(1, len(inputs))\n\n    def distance(a, b):\n        ra, rb = rows[a], rows[b]\n        d = 0.0\n        for c in inputs:\n            kind, span = spec[c]\n            x, y = ra.get(c), rb.get(c)\n            if kind == \"num\":\n                if (\n                    isinstance(x, float)\n                    and isinstance(y, float)\n                    and math.isfinite(x)\n                    and math.isfinite(y)\n                ):\n                    d += abs(x - y) / span if span > 0 else 0.0\n                else:\n                    d += 1.0\n            else:\n                d += 0.0 if str(x) == str(y) else 1.0\n        return d / width\n\n    return distance\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Return the index of the best row found while calling label() at most budget times.\n\n    blind_csv has every goal cell set to '?'. label(i) returns the goals of\n    row i as a dict. If goal names one goal, only that goal is optimised.\n    \"\"\"\n    columns, rows = _load(blind_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n\n    if goal is not None:\n        maximise = [g for g in maximise if g == goal]\n        minimise = [g for g in minimise if g == goal]\n        if not (maximise or minimise):\n            raise ValueError(f\"goal {goal!r} is not a goal column of {blind_csv}\")\n\n    names = maximise + minimise\n    sign = [-1.0] * len(maximise) + [1.0] * len(minimise)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(f\"{blind_csv} has no rows\")\n    if not names:\n        raise ValueError(\"no goal columns to optimise\")\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n    budget = min(int(budget), n)\n    m = len(names)\n\n    distance = _make_distance(rows, inputs)\n\n    vecs = {}                          # measured index -> minimisation vector or None\n    labelled = []                      # measured indices, in measurement order\n    dist_to = [[] for _ in range(n)]   # dist_to[i][k] = distance from i to labelled[k]\n\n    def to_vector(values):\n        vec = []\n        for g, s in zip(names, sign):\n            v = _as_finite(values.get(g))\n            if v is None:\n                return None\n            vec.append(s * v)\n        return vec\n\n    def measure(i):\n        if len(labelled) >= budget:\n            raise RuntimeError(\"choose(): label budget exhausted\")\n        vecs[i] = to_vector(label(i))\n        labelled.append(i)\n        for r in range(n):\n            if r not in vecs:\n                dist_to[r].append(distance(r, i))\n\n    def farthest():\n        cand = [i for i in range(n) if i not in vecs]\n        return max(cand, key=lambda i: (min(dist_to[i]), -i))\n\n    def scores():\n        \"\"\"Mean normalised goal value (lower is better) for each usable measured row.\"\"\"\n        usable = [j for j in labelled if vecs[j] is not None]\n        if not usable:\n            return {}\n        lo = [min(vecs[j][k] for j in usable) for k in range(m)]\n        hi = [max(vecs[j][k] for j in usable) for k in range(m)]\n        out = {}\n        for j in usable:\n            total = 0.0\n            for k in range(m):\n                if hi[k] > lo[k]:\n                    total += (vecs[j][k] - lo[k]) / (hi[k] - lo[k])\n            out[j] = total / m\n        return out\n\n    # Phase 1: spread the first measurements across the flag space.\n    measure(0)\n    seeds = min(budget, max(SEED_MIN, budget // 3))\n    while len(labelled) < seeds:\n        measure(farthest())\n\n    # Phase 2: measure the unmeasured build that looks best under the prediction.\n    while len(labelled) < budget:\n        cand = [i for i in range(n) if i not in vecs]\n        if not cand:\n            break\n        s = scores()\n        if not s:\n            pick = farthest()\n        else:\n            pos = {j: k for k, j in enumerate(labelled)}\n            known = [(pos[j], s[j]) for j in s]\n            best_acq, pick = None, None\n            for i in cand:\n                ds = dist_to[i]\n                near = sorted((ds[k], sc) for k, sc in known)[:NEIGHBOURS]\n                wsum = sum(1.0 / (d + EPS) for d, _ in near)\n                pred = sum(sc / (d + EPS) for d, sc in near) / wsum\n                acq = pred - KAPPA * min(ds)\n                if best_acq is None or acq < best_acq:\n                    best_acq, pick = acq, i\n        measure(pick)\n\n    # Return the measured build with the best goal score.\n    final = scores()\n    if not final:\n        return labelled[0]\n    return min(final, key=lambda j: (final[j], j))\n```",
+ "ttft_ms": 49551,
+ "type": "result",
+ "duration_ms": 56106,
+ "uuid": "7573bd3d-fbc0-48ab-9ca9-1f4695fdc97c",
+ "ttft_stream_ms": 1128,
+ "time_to_request_ms": 31,
+ "queued_turn_count": 0
+}
