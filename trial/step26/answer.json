@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 58249,
+ "stop_reason": "end_turn",
+ "session_id": "fcd53cc4-72ae-4797-8569-c5ae1683db7c",
+ "total_cost_usd": 0.0605793,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 50738,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15759,
+  "output_tokens_details": {
+   "thinking_tokens": 11203
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 50738,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15759,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 50738,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 50738
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 42482,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.042552,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15759,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 50738,
+   "webSearchRequests": 0,
+   "costUSD": 0.0180273,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 26: justify the campaign group and the low-value rating in plain words.\n\nexplain(train_csv) describes the group that should get the next campaign: the\ntop customers from step21.best (or the highest mean goal score if that returns\nnothing). It states how that group compares with all customers on each goal\nand lists the input settings that are much more common in the group than\namong all customers.\n\nwhy(train_csv, row) rates one customer against the training customers and says\nwhy. It names the goal the customer is weakest on and, when the customer is\nrated low value, the input settings the customer shares with the lowest-value\ntraining customers, so each reason can be acted on.\n\nEvery figure is a count, a share or an average computed from the training CSV,\nso it can be checked by hand. These are associations in the data, not proof\nthat a setting causes a result.\n\"\"\"\nimport math\n\nfrom step1 import _load\nfrom step21 import best\n\n_TOP_FRACTION = 0.05   # share of customers treated as the top group, as in step21.best\n_LOW_FRACTION = 0.05   # share of customers treated as the lowest-value reference group\n_MAX_LEVELS = 8        # numeric inputs with more distinct values are skipped\n_MIN_GAP = 0.20        # report a setting if it is this much more common in the reference group\n_MIN_COUNT = 2         # a setting must appear in at least this many reference customers\n_MAX_REASONS = 6\n_MATCH_REASONS = 3\n_FEW = 10              # warn when the group has fewer customers than this\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _is_input(c):\n    return not _is_goal(c) and not c.endswith(\"X\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _level(v):\n    \"\"\"Comparable key for an input cell: finite float, non-blank string, or None.\"\"\"\n    if isinstance(v, float):\n        return v if math.isfinite(v) else None\n    if isinstance(v, str):\n        s = v.strip()\n        return s if s else None\n    return None\n\n\ndef _fmt(v):\n    return f\"{v:g}\" if isinstance(v, float) else str(v)\n\n\ndef _goal_spec(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal values with signs applied so higher is better, or None if any is missing.\"\"\"\n    vec = []\n    for c, sg in goals:\n        f = _finite(row.get(c))\n        if f is None:\n            return None\n        vec.append(sg * f)\n    return vec\n\n\ndef _ranges(vecs):\n    g = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(g)]\n    hi = [max(v[j] for v in vecs) for j in range(g)]\n    return lo, hi\n\n\ndef _norm(vec, lo, hi):\n    \"\"\"Scale each goal to 0..1 over the training range (0 worst, 1 best), clamped.\"\"\"\n    out = []\n    for j, x in enumerate(vec):\n        span = hi[j] - lo[j]\n        t = 1.0 if span == 0 else (x - lo[j]) / span\n        out.append(min(1.0, max(0.0, t)))\n    return out\n\n\ndef _scores(rows, goals):\n    \"\"\"Return (vecs, score, lo, hi) over the rows with every goal finite.\n\n    vecs and score are dicts keyed by row index; score is the mean normalised\n    goal value (0 worst, 1 best). lo and hi are None if no row is complete.\n    \"\"\"\n    vecs = {}\n    for i, r in enumerate(rows):\n        v = _oriented(r, goals)\n        if v is not None:\n            vecs[i] = v\n    if not vecs:\n        return vecs, {}, None, None\n    lo, hi = _ranges(list(vecs.values()))\n    g = len(goals)\n    score = {i: sum(_norm(v, lo, hi)) / g for i, v in vecs.items()}\n    return vecs, score, lo, hi\n\n\ndef _goal_label(c, sg):\n    direction = \"higher is better\" if sg > 0 else \"lower is better\"\n    return f\"{c[:-1]} ({direction})\"\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for targeting the group.\n\n    Names the campaign group (the top-ranked customers from step21.best, or the\n    highest mean goal score if that returns nothing), compares its average on\n    each goal with all customers, and lists the input settings that are at\n    least _MIN_GAP more common in the group than among all customers, with the\n    counts needed to recheck each one.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"There are no training customers, so no campaign group can be named.\"\n    goals = _goal_spec(header)\n    if not goals:\n        return (\"The file has no goal columns ('+' or '-'), \"\n                \"so customers cannot be judged valuable or not.\")\n\n    vecs, score, _, _ = _scores(rows, goals)\n    if not vecs:\n        return \"No customer has numeric values for every goal, so no group can be named.\"\n\n    ids = sorted(vecs)\n    n = len(ids)\n    top = [i for i in best(train_csv) if i in vecs]\n    if not top:\n        k = max(1, int(_TOP_FRACTION * n))\n        top = sorted(ids, key=lambda i: (-score[i], i))[:k]\n    grp = len(top)\n\n    lines = [\n        f\"The campaign group is the {grp} top-ranked customers out of {n} with \"\n        \"complete goal values: those that do best on all goals together.\"\n    ]\n\n    lines.append(\"Average goal results, group against all customers (raw values):\")\n    for c, sg in goals:\n        gv = [_finite(rows[i].get(c)) for i in top]\n        gv = [v for v in gv if v is not None]\n        av = [_finite(rows[i].get(c)) for i in ids]\n        av = [v for v in av if v is not None]\n        if not gv or not av:\n            continue\n        lines.append(\n            f\"- {_goal_label(c, sg)}: group {sum(gv) / len(gv):.2f}, \"\n            f\"all customers {sum(av) / len(av):.2f}.\"\n        )\n\n    findings = []\n    for pos, c in enumerate(header):\n        if not _is_input(c):\n            continue\n        cell = {i: _level(rows[i].get(c)) for i in ids}\n        present = [i for i in ids if cell[i] is not None]\n        grp_present = [i for i in top if cell[i] is not None]\n        if not present or not grp_present:\n            continue\n        levels = {cell[i] for i in present}\n        if all(isinstance(v, float) for v in levels) and len(levels) > _MAX_LEVELS:\n            continue\n        for v in levels:\n            n_grp = sum(1 for i in grp_present if cell[i] == v)\n            if n_grp < _MIN_COUNT:\n                continue\n            n_all = sum(1 for i in present if cell[i] == v)\n            p_grp = n_grp / len(grp_present)\n            p_all = n_all / len(present)\n            if p_grp - p_all >= _MIN_GAP:\n                findings.append({\n                    \"gap\": p_grp - p_all,\n                    \"pos\": pos,\n                    \"col\": c,\n                    \"val\": v,\n                    \"n_grp\": n_grp,\n                    \"n_grp_total\": len(grp_present),\n                    \"p_grp\": p_grp,\n                    \"n_all\": n_all,\n                    \"n_present\": len(present),\n                    \"p_all\": p_all,\n                })\n    findings.sort(key=lambda f: (-f[\"gap\"], f[\"pos\"], _fmt(f[\"val\"])))\n\n    if findings:\n        lines.append(\"Settings much more common in the group than among all customers:\")\n        for f in findings[:_MAX_REASONS]:\n            lines.append(\n                f\"- {f['col']} = {_fmt(f['val'])}: {f['n_grp']} of {f['n_grp_total']} \"\n                f\"group customers ({f['p_grp']:.0%}) vs {f['n_all']} of {f['n_present']} \"\n                f\"customers ({f['p_all']:.0%}).\"\n            )\n    else:\n        lines.append(\n            \"No single setting is much more common in the group than among all customers.\"\n        )\n\n    if grp < _FEW:\n        lines.append(\n            f\"Only {grp} customer(s) are in the group, so these shares are rough.\"\n        )\n    lines.append(\n        \"These are associations in the training data, not proof that a setting \"\n        \"causes a better campaign response. Each figure can be recounted from \"\n        \"the training file.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this customer is rated low value or not.\n\n    The customer's mean normalised goal score is compared with the training\n    customers' scores. The customer is rated low value if fewer than half of\n    the training customers score no higher. The reasons name the goal the\n    customer is weakest on and, for a low-value rating, the input settings the\n    customer shares with the lowest-value training customers.\n    \"\"\"\n    header, rows = _load(train_csv)\n    goals = _goal_spec(header)\n    if not goals:\n        return \"This file has no goal columns, so the customer cannot be rated.\"\n\n    vecs, score, lo, hi = _scores(rows, goals)\n    if not vecs:\n        return (\"No training customer has numeric values for every goal, \"\n                \"so this customer cannot be rated.\")\n\n    rv = _oriented(row, goals)\n    if rv is None:\n        missing = [c for c, _ in goals if _finite(row.get(c)) is None]\n        return (\"This customer cannot be rated because goal values are missing for: \"\n                + \", \".join(missing) + \".\")\n\n    norm = _norm(rv, lo, hi)\n    s = sum(norm) / len(goals)\n    train_scores = list(score.values())\n    at_most = sum(1 for t in train_scores if t <= s) / len(train_scores)\n    is_low = at_most < 0.5\n    verdict = \"low value\" if is_low else \"not low value\"\n\n    j_weak = min(range(len(goals)), key=lambda j: norm[j])\n    c_weak, _ = goals[j_weak]\n    beats_weak = sum(1 for v in vecs.values() if v[j_weak] < rv[j_weak]) / len(vecs)\n    weak_text = (\n        f\"{c_weak[:-1]} ({_fmt(_finite(row.get(c_weak)))}, \"\n        f\"better than {beats_weak:.0%} of training customers)\"\n    )\n\n    sentence1 = (\n        f\"This customer is rated {verdict}: on all goals combined they score \"\n        f\"{s:.2f} (1 is best on every goal, 0 is worst), at least as good as \"\n        f\"{at_most:.0%} of the {len(train_scores)} training customers.\"\n    )\n\n    if not is_low:\n        return sentence1 + f\" Its weakest goal is {weak_text}.\"\n\n    ranked = sorted(score, key=lambda i: (score[i], i))\n    k = max(1, int(_LOW_FRACTION * len(ranked)))\n    low_ids = ranked[:k]\n\n    reasons = []\n    for pos, c in enumerate(header):\n        if not _is_input(c):\n            continue\n        val = _level(row.get(c))\n        if val is None:\n            continue\n        cell = {i: _level(rows[i].get(c)) for i in vecs}\n        present = [i for i in vecs if cell[i] is not None]\n        low_present = [i for i in low_ids if cell[i] is not None]\n        if not present or not low_present:\n            continue\n        levels = {cell[i] for i in present}\n        if all(isinstance(v, float) for v in levels) and len(levels) > _MAX_LEVELS:\n            continue\n        if val not in levels:\n            continue\n        n_low = sum(1 for i in low_present if cell[i] == val)\n        if n_low < _MIN_COUNT:\n            continue\n        n_all = sum(1 for i in present if cell[i] == val)\n        p_low = n_low / len(low_present)\n        p_all = n_all / len(present)\n        gap = p_low - p_all\n        if gap >= _MIN_GAP:\n            reasons.append((\n                -gap, pos, _fmt(val), c, n_low, len(low_present), p_low, p_all,\n            ))\n    reasons.sort(key=lambda t: (t[0], t[1]))\n\n    if reasons:\n        parts = [\n            f\"{c} = {txt} ({n_low} of {n_tot} lowest-value customers, {p_low:.0%}, \"\n            f\"vs {p_all:.0%} of all customers)\"\n            for _, _, txt, c, n_low, n_tot, p_low, p_all in reasons[:_MATCH_REASONS]\n        ]\n        match_text = (\n            \"it shares settings that are much more common among the lowest-value \"\n            \"customers: \" + \"; \".join(parts)\n        )\n    else:\n        match_text = (\n            \"it has no setting that is much more common among the lowest-value \"\n            \"customers, so its low value comes from its goal results\"\n        )\n\n    sentence2 = f\"Its weakest goal is {weak_text}, and {match_text}.\"\n    return sentence1 + \" \" + sentence2\n```",
+ "ttft_ms": 44526,
+ "type": "result",
+ "duration_ms": 56870,
+ "uuid": "1b222334-324d-42ff-85de-459b13ddb84b",
+ "ttft_stream_ms": 1281,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
