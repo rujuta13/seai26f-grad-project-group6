@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 17706,
+ "stop_reason": "end_turn",
+ "session_id": "707221f9-9235-451c-af60-5c138307ab3f",
+ "total_cost_usd": 0.0420245,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 39259,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3653,
+  "output_tokens_details": {
+   "thinking_tokens": 2683
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39259,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3653,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 39259,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 39259
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 32266,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.032346,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3653,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39259,
+   "webSearchRequests": 0,
+   "costUSD": 0.009678500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 22: guess. Customer purchase channels and campaign response.\n\nServes the client's requests:\n  - \"Guess how much a new customer will buy online versus in store.\"\n  - \"Guess whether this customer will answer our next campaign.\"\n\nBuilds on step12.guess: the estimate is the median of the nearest training\ncustomers, and low..high is their 5th..95th percentile range, blended toward\nwhole-training statistics for customers unlike anything in training.\n\nCampaign response is a 0/1 goal. A median of 0/1 neighbours is too coarse to\nsay how likely a customer is to respond, so for 0/1 goals the estimate is the\nneighbour mean, read as a probability, and the range is widened to contain\nit. Blending toward the training mean for unfamiliar customers follows the\nsame rule as step2. Count goals (purchases per channel) keep step12's median.\n\"\"\"\n\nimport math\n\nimport step2\nimport step12\n\n\ndef _is_binary(values):\n    \"\"\"True if the non-empty list holds only 0.0 and 1.0.\"\"\"\n    return bool(values) and set(values) <= {0.0, 1.0}\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a new customer `row` (goal columns already removed).\n\n    Returns {goal: (estimate, low, high)}, where low..high is the range the true\n    value is fairly sure to fall in. For 0/1 goals (such as campaign response)\n    the estimate is the likelihood of a 1, in [0, 1].\n    \"\"\"\n    result = dict(step12.guess(train_csv, row))\n\n    cols, rows, goal_values, goal_names = step2._load(train_csv)\n    if not rows:\n        return result\n\n    ranked = sorted((step2._distance(cols, tr, row), i) for i, tr in enumerate(rows))\n    near = ranked[:step2._K]\n    mean_d = sum(d for d, _ in near) / len(near)\n    far = min(1.0, mean_d / step2._FAR)\n\n    for g in goal_names:\n        vals = goal_values.get(g, {})\n        if not vals or not _is_binary(list(vals.values())):\n            continue\n\n        local = []\n        for _, i in ranked:\n            v = vals.get(i)\n            if v is not None:\n                local.append(v)\n                if len(local) >= step2._K:\n                    break\n        if not local:\n            continue\n\n        local_mean = sum(local) / len(local)\n        global_mean = sum(vals.values()) / len(vals)\n        w = far if len(local) >= step2._MIN_LOCAL else 1.0\n        est = (1 - w) * local_mean + w * global_mean\n        est = min(1.0, max(0.0, float(est)))\n\n        _, low, high = result.get(g, (est, -math.inf, math.inf))\n        low = min(float(low), est)\n        high = max(float(high), est)\n        result[g] = (est, low, high)\n\n    return result\n```",
+ "ttft_ms": 13404,
+ "type": "result",
+ "duration_ms": 16441,
+ "uuid": "cfe8e38e-e0b4-472c-aa09-c3dad128e220",
+ "ttft_stream_ms": 1526,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
