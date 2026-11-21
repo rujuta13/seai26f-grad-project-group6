@@ -1,0 +1,14 @@
+{
+ "domain": "players",
+ "step": 16,
+ "skill": "justify",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "columns_mentioned": 10,
+  "explain_words": 112,
+  "why_words": 52
+ }
+}
