@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9557,
+ "stop_reason": "end_turn",
+ "session_id": "fc51be82-5419-4898-8f79-cb99afe09892",
+ "total_cost_usd": 0.0382242,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 36520,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1400,
+  "output_tokens_details": {
+   "thinking_tokens": 876
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 36520,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1400,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 36520,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 36520
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 30140,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.03022,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1400,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 36520,
+   "webSearchRequests": 0,
+   "costUSD": 0.0080042,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step22.py: guess a new customer's online and store purchases, and whether\nthey will answer the next campaign.\n\nStandard library only (Python 3.13). Reuses step12.guess, which already gives\nevery goal a kNN median estimate and a calibrated 80% band. For this file the\ngoals are NUMWEBPURCHASES+, NUMCATALOGPURCHASES+, NUMSTOREPURCHASES+,\nNUMDEALSPURCHASES+, NUMWEBVISITSMONTH+, RESPONSE+ and CUSTOMER_DAYS+. The two\nclient questions read from that dict: NUMWEBPURCHASES+ and NUMSTOREPURCHASES+\nfor purchases, and RESPONSE+ for the campaign.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step12 import guess as _step12_guess\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of a new customer, with a range that should hold\n    the true value about 80% of the time.\n\n    `row` is a dict {input column name: value} with the goal columns removed.\n    Returns {goal: (estimate, low, high)} for every goal column. For example,\n    the online-versus-store question reads NUMWEBPURCHASES+ and\n    NUMSTOREPURCHASES+, and the campaign question reads RESPONSE+ (0 or 1).\n    A goal with no usable neighbour values gets (nan, nan, nan).\n    \"\"\"\n    return _step12_guess(train_csv, row)\n```",
+ "ttft_ms": 5982,
+ "type": "result",
+ "duration_ms": 7720,
+ "uuid": "ef6677f8-2b57-49cd-9f65-11bc6a75a146",
+ "ttft_stream_ms": 1501,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
