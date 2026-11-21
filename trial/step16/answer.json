@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63308,
+ "stop_reason": "end_turn",
+ "session_id": "d7d437a4-2d3e-4e52-96f4-594317d12f98",
+ "total_cost_usd": 0.0350144,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26601,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14938,
+  "output_tokens_details": {
+   "thinking_tokens": 11848
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26601,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14938,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26601,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26601
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22150,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022224999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14938,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26601,
+   "webSearchRequests": 0,
+   "costUSD": 0.0127894,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step16.py: justify the recommended player and rate single players.\n\nexplain(train_csv): reasons, in plain words a skeptical expert can check on\nvideo, for what makes players good. The recommended player is the best player\non the Pareto front (no training player is at least as good on every goal and\nbetter on one), ranked by normalised goal sum as in step1.best. Attribute\nsettings are compared by their share among front players and among all players.\nA setting is reported as shifting a goal only when step3.same finds that goal\ndifference real.\n\nwhy(train_csv, row): one or two sentences rating a single player. A player is\ngood when no training player beats them (the step6.why test). Each goal is then\ncompared with the calibrated 10th-90th percentile range from step12.guess, so a\nwide range means low confidence.\n\nFor about 17,000 players this uses step11's fast front (step1.best is O(n^2)),\nskips rows with non-finite goals, and caps the samples given to step3.same,\nwhose Cliff's delta costs O(n*m). Standard library only.\n\"\"\"\nimport math\nimport random\nimport statistics\nfrom collections import Counter\n\nfrom step1 import _load, _columns, _dominates, BEST_FRACTION\nfrom step3 import same\nfrom step5 import CATEGORY_LIMIT\nfrom step6 import MIN_SHARE_GAP, MAX_REASONS, _normalised_score, _predicted\nfrom step11 import _pareto_front, _top_by_score\nfrom step12 import guess\nfrom step14 import _orient\n\nSAMPLE_CAP = 400   # largest group passed to step3.same (keeps its O(n*m) cost small)\nSAMPLE_SEED = 1    # fixed seed so results are reproducible\n\n\ndef _fmt(v):\n    \"\"\"Format a number compactly; other cells are shown as they are.\"\"\"\n    return f\"{v:g}\" if isinstance(v, float) else str(v)\n\n\ndef _sample(values, seed):\n    \"\"\"At most SAMPLE_CAP values, drawn with a fixed seed.\"\"\"\n    if len(values) <= SAMPLE_CAP:\n        return values\n    return random.Random(seed).sample(values, SAMPLE_CAP)\n\n\ndef explain(train_csv) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    n = len(rows)\n    if n == 0 or not goals:\n        return (\"There is no recommended player: the training file has no rows \"\n                \"or no goal columns.\")\n\n    V = [_orient(r, goals) for r in rows]\n    usable = [i for i in range(n) if V[i] is not None]\n    if not usable:\n        return (\"There is no recommended player: no training player has usable \"\n                \"values for every goal.\")\n\n    # Pareto front and its cap, as in step1.best, computed on the usable rows.\n    cap = int(BEST_FRACTION * n)\n    UV = [V[i] for i in usable]\n    front_pos = _pareto_front(UV)\n    if len(front_pos) > cap:\n        front_pos = _top_by_score(UV, front_pos, cap)\n    front = sorted(usable[p] for p in front_pos)\n    if not front:\n        return (\"There is no recommended player: too few usable training players \"\n                \"to form a Pareto front.\")\n\n    score = _normalised_score(UV)\n    rec = max(front, key=lambda i: (score(V[i]), -i))\n    nf = len(front)\n    nu = len(usable)\n\n    lines = [\n        f\"Recommended player: training row {rec} (counting from 0). It is one of \"\n        f\"{nf} players on the Pareto front: no training player is at least as good \"\n        \"on every goal and better on at least one.\",\n        \"Attributes: \" + \", \".join(f\"{c}={_fmt(rows[rec][c])}\" for c in inputs) + \".\",\n        \"Goals, recommended player against all players (medians):\",\n    ]\n    for c, sgn in goals:\n        raw_all = [float(rows[i][c]) for i in usable]\n        raw_front = [float(rows[i][c]) for i in front]\n        direction = \"higher\" if sgn > 0 else \"lower\"\n        lines.append(\n            f\"- {c}: recommended {float(rows[rec][c]):g}; front median \"\n            f\"{statistics.median(raw_front):g}; all-player median \"\n            f\"{statistics.median(raw_all):g}; {direction} is better.\"\n        )\n\n    # For each input with few distinct values, find the setting whose share\n    # among front players differs most from its share among all players.\n    cands = []\n    for c in inputs:\n        count_all = Counter(rows[i][c] for i in usable)\n        if not count_all or len(count_all) > CATEGORY_LIMIT:\n            continue  # continuous input: no shares to compare\n        count_front = Counter(rows[i][c] for i in front)\n        gap, v, sf, sa = max(\n            ((abs(count_front.get(v, 0) / nf - cnt / nu),\n              v, count_front.get(v, 0) / nf, cnt / nu)\n             for v, cnt in count_all.items()),\n            key=lambda t: t[0],\n        )\n        cands.append((gap, c, v, sf, sa))\n    cands.sort(key=lambda t: -t[0])\n\n    lines.append(\"Attribute settings that set the front apart \"\n                 \"(share among front players vs among all players):\")\n    shown = 0\n    for gap, c, v, sf, sa in cands:\n        if gap < MIN_SHARE_GAP or shown == MAX_REASONS:\n            break\n        shown += 1\n        inside = [i for i in usable if rows[i][c] == v]\n        outside = [i for i in usable if rows[i][c] != v]\n        checks = []\n        for g, _ in goals:\n            xs = _sample([float(rows[i][g]) for i in inside], SAMPLE_SEED)\n            ys = _sample([float(rows[i][g]) for i in outside], SAMPLE_SEED)\n            real = bool(xs and ys) and not same(xs, ys)\n            checks.append(f\"{g} {'differs' if real else 'shows no real difference'}\")\n        check_text = \"; \".join(checks)\n        lines.append(\n            f\"- {c}={_fmt(v)}: {sf:.0%} of front players vs {sa:.0%} of all players. \"\n            f\"Players with it vs without it: {check_text}.\"\n        )\n    if shown == 0:\n        lines.append(f\"- No single setting differs by {MIN_SHARE_GAP:.0%} or more \"\n                     \"between front players and all players.\")\n\n    lines.append(\n        \"These are associations in the training data: they show where good players \"\n        \"sit, not that an attribute causes the difference. Check the reasons on \"\n        \"video and against more matches before relying on them.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals:\n        return \"This training file has no goal columns, so the player cannot be rated.\"\n\n    pred = guess(train_csv, row)\n    V = _orient(row, goals)\n    if V is None:\n        missing = [c for c, _ in goals\n                   if not isinstance(row.get(c), float) or not math.isfinite(row[c])]\n        predicted = \"; \".join(_predicted(c, pred[c]) for c, _ in goals)\n        return (\"This player cannot be rated: no usable value for \"\n                f\"{', '.join(missing)}. The nearest training players predict \"\n                f\"{predicted}.\")\n\n    train_vecs = [v for v in (_orient(r, goals) for r in rows) if v is not None]\n    if not train_vecs:\n        return (\"This player cannot be rated: the training file has no usable \"\n                \"players to compare with.\")\n    n = len(train_vecs)\n    dominators = sum(1 for t in train_vecs if _dominates(t, V))\n    if dominators == 0:\n        verdict = (f\"This player is good: none of the {n} training players is at \"\n                   \"least as good on every goal and better on at least one, so this \"\n                   \"player is on the Pareto front\")\n    else:\n        verdict = (f\"This player is bad: {dominators} of the {n} training players are \"\n                   \"at least as good on every goal and better on at least one, so \"\n                   \"this player is beaten\")\n\n    parts = []\n    for c, sgn in goals:\n        est, lo, hi = pred[c]\n        value = float(row[c])\n        o = sgn * value\n        olo, ohi = sorted((sgn * lo, sgn * hi))\n        if o > ohi:\n            rel = \"is better than\"\n        elif o < olo:\n            rel = \"is worse than\"\n        else:\n            rel = \"is within\"\n        direction = \"lower\" if sgn < 0 else \"higher\"\n        parts.append(\n            f\"{c} = {value:g} {rel} the calibrated range {lo:g} to {hi:g} \"\n            f\"(median {est:g}; {direction} is better)\"\n        )\n    return (f\"{verdict}. Against the nearest training players, \"\n            + \"; \".join(parts) + \".\")\n```",
+ "ttft_ms": 52994,
+ "type": "result",
+ "duration_ms": 61545,
+ "uuid": "8004d144-1b14-43d0-8fc5-3a87142acf87",
+ "ttft_stream_ms": 1193,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
