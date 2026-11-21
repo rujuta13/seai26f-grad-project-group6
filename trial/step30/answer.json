@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46231,
+ "stop_reason": "end_turn",
+ "session_id": "b8ff4d6a-1905-4a72-bd68-7cd62d1867e7",
+ "total_cost_usd": 0.0502525,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 43819,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11015,
+  "output_tokens_details": {
+   "thinking_tokens": 8200
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 43819,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11015,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 43819,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 43819
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 35906,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.035981,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11015,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 43819,
+   "webSearchRequests": 0,
+   "costUSD": 0.0142715,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step30.py: race our targeting and response guesser against simple rivals.\n\nStandard library only (Python 3.13). Reuses step1 (csv and MOOT helpers,\ngoal scoring, input encoding and scaling), step4 (training context), step10\n(ridge fit and helpers), step12 (calibrated response estimate) and step20\n(predicted-score targeting, top-k helpers and goal lookup).\n\nTargeting race (higher is better). Each method mails a list of k test\ncustomers, where k is the client's mailing budget of 50, capped at the file\nsize. Each list is scored by the mean normalised goal score of the mailed\ncustomers (step1 scaling over the test file, 1 is best).\n  - ours: step20 predicted scores from inputs alone; mail the k customers\n    with the best predictions.\n  - highest_income: mail the k customers with the highest INCOME.\n  - random: mail k random customers (seeded).\n  - oracle: the k customers with the best true score, the ceiling.\n\nResponse guesser race (higher is better): negative Brier score of the\npredicted probability that a customer answers the campaign (the RESPONSE+\ngoal, 0 or 1) on the test rows. 0 is perfect; predictions are clamped to\n[0, 1]. Rows with no usable response value are skipped.\n  - guess_ours: step12.guess median for RESPONSE+ (training rate if no\n    usable neighbour value).\n  - guess_ridge: ridge regression on the input flags, the off-the-shelf\n    model rival.\n  - guess_mean: the training response rate for every customer.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nimport os\nimport random\n\nfrom step1 import (\n    _classify,\n    _encode_inputs,\n    _goal_scores,\n    _minmax,\n    _read,\n    _to_float,\n)\nfrom step4 import _context\nfrom step10 import _RIDGE, _at, _dot, _ridge_fit\nfrom step12 import guess as _calibrated_guess\nfrom step20 import (\n    _goal_index,\n    _mean_over,\n    _predicted_scores,\n    _test_inputs,\n    _top_k,\n)\n\n_MAIL_BUDGET = 50     # customers the campaign can mail\n_SEED = 1\n_INCOME = \"INCOME\"\n_RESPONSE = \"RESPONSE\"\n\n\ndef _clamp01(v: float) -> float:\n    return min(1.0, max(0.0, v))\n\n\ndef _neg_mean(vals: list[float]) -> float:\n    return -sum(vals) / len(vals) if vals else -math.inf\n\n\ndef _income_values(header: list[str], rows: list[list[str]]) -> list[float] | None:\n    \"\"\"INCOME per test row, with missing values ranked last. None if absent.\"\"\"\n    if _INCOME not in header:\n        return None\n    j = header.index(_INCOME)\n    out: list[float] = []\n    for r in rows:\n        v = _to_float(_at(r, j))\n        out.append(-math.inf if v is None or math.isnan(v) else v)\n    return out\n\n\ndef _targeting_race(tr_path: str, header: list[str], rows: list[list[str]],\n                    truth: list[float], names: list[str],\n                    te_cols: list[int | None], ctx: dict,\n                    k: int) -> dict[str, float]:\n    \"\"\"Mean true score of the k mailed customers for each targeting method.\"\"\"\n    results: dict[str, float] = {\n        \"oracle\": _mean_over(truth, _top_k(truth, k)),\n    }\n\n    pred = _predicted_scores(tr_path, names, te_cols, rows, ctx)\n    results[\"ours\"] = _mean_over(truth, _top_k(pred, k))\n\n    income = _income_values(header, rows)\n    if income is not None:\n        results[\"highest_income\"] = _mean_over(truth, _top_k(income, k))\n\n    picks = random.Random(_SEED).sample(range(len(rows)), k)\n    results[\"random\"] = _mean_over(truth, picks)\n    return results\n\n\ndef _response_race(tr_path: str, train_header: list[str],\n                   train_rows: list[list[str]], rows: list[list[str]],\n                   names: list[str], te_cols: list[int | None],\n                   tr_resp: int, te_resp: int) -> dict[str, float]:\n    \"\"\"Negative Brier score of the response guessers on the test rows.\"\"\"\n    tr_inputs, _ = _classify(train_header)\n    tr_proj = [[_at(r, j) for j in tr_inputs] for r in train_rows]\n    te_proj = [\n        [_at(r, j) if j is not None else \"\" for j in te_cols]\n        for r in rows\n    ]\n    enc = _minmax(_encode_inputs(tr_proj + te_proj, list(range(len(names)))))\n    m = len(tr_proj)\n    Xtr, Xte = enc[:m], enc[m:]\n\n    fit_x: list[list[float]] = []\n    fit_y: list[float] = []\n    for x, r in zip(Xtr, train_rows):\n        v = _to_float(_at(r, tr_resp))\n        if v is not None and math.isfinite(v):\n            fit_x.append([1.0] + x)\n            fit_y.append(v)\n    if not fit_x:\n        return {}\n    beta = _ridge_fit(fit_x, fit_y, _RIDGE)\n    base_rate = sum(fit_y) / len(fit_y)\n    resp_name = train_header[tr_resp]\n\n    sq_ours: list[float] = []\n    sq_ridge: list[float] = []\n    sq_mean: list[float] = []\n    for x, r in zip(Xte, rows):\n        y = _to_float(_at(r, te_resp))\n        if y is None or not math.isfinite(y):\n            continue\n\n        ridge_p = _clamp01(_dot(beta, [1.0] + x))\n\n        est = _calibrated_guess(\n            tr_path, _test_inputs(r, names, te_cols)\n        ).get(resp_name, (math.nan, math.nan, math.nan))[0]\n        ours_p = _clamp01(est) if math.isfinite(est) else base_rate\n\n        sq_ours.append((ours_p - y) ** 2)\n        sq_ridge.append((ridge_p - y) ** 2)\n        sq_mean.append((base_rate - y) ** 2)\n\n    return {\n        \"guess_ours\": _neg_mean(sq_ours),\n        \"guess_ridge\": _neg_mean(sq_ridge),\n        \"guess_mean\": _neg_mean(sq_mean),\n    }\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores of ours and the rivals on test_csv (higher is better).\n\n    Targeting keys: \"ours\", \"highest_income\", \"random\", and \"oracle\" (the\n    best possible mailing list of the same size). Response keys, when both\n    files have a RESPONSE+ goal: \"guess_ours\", \"guess_ridge\", \"guess_mean\".\n    \"\"\"\n    tr_path = os.fspath(train_csv)\n    te_path = os.fspath(test_csv)\n    train_header, train_rows = _read(tr_path)\n    header, rows = _read(te_path)\n    tr_inputs, tr_goals = _classify(train_header)\n    _, goals = _classify(header)\n    if not rows or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n    if not train_rows or not tr_goals:\n        raise ValueError(\"train_csv needs rows and goal columns\")\n\n    n = len(rows)\n    k = min(_MAIL_BUDGET, n)\n    truth = [sum(s) / len(s) for s in _goal_scores(rows, goals)]\n\n    ctx = _context(tr_path)\n    names = [train_header[j] for j in tr_inputs]\n    te_index = {nm: j for j, nm in enumerate(header)}\n    te_cols: list[int | None] = [te_index.get(nm) for nm in names]\n\n    results = _targeting_race(tr_path, header, rows, truth, names,\n                              te_cols, ctx, k)\n\n    tr_resp = _goal_index(train_header, tr_goals, _RESPONSE)\n    if tr_resp is not None:\n        te_resp = te_index.get(train_header[tr_resp])\n        if te_resp is not None:\n            results.update(_response_race(\n                tr_path, train_header, train_rows, rows, names, te_cols,\n                tr_resp, te_resp))\n\n    return results\n```",
+ "ttft_ms": 37071,
+ "type": "result",
+ "duration_ms": 44928,
+ "uuid": "7230beca-cdda-4cb7-b9e5-c5373b1d0cf5",
+ "ttft_stream_ms": 1466,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
