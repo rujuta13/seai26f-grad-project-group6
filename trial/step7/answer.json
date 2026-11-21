@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 42551,
+ "duration_api_ms": 42537,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step7.py: choose the best flag set while benchmarking at most `budget` builds.\n\nActive search: a space-filling initial design, then repeated random-forest\nupper-confidence-bound picks over the unmeasured builds. Only the goals being\noptimised are used, so `goal` switches the search to a single goal.\n\"\"\"\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _load, _encode\nfrom step5 import _goal_scores\n\n_UCB_KAPPA = 1.0\n_N_TREES = 200\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, calling label(i) at most `budget` times.\n\n    blind_csv has every goal cell set to '?'. label(i) returns the goals of\n    row i as a dict. If `goal` names one goal, only that goal is optimised.\n    \"\"\"\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n\n    rows, inputs, goals = _load(blind_csv)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no rows\")\n    if not goals:\n        raise ValueError(\"blind_csv has no goal columns\")\n\n    if goal is None:\n        use = list(goals)\n    else:\n        use = [(g, s) for g, s in goals if g == goal]\n        if not use:\n            raise ValueError(f\"unknown goal {goal!r}\")\n    names = [g for g, _ in use]\n\n    # Feature matrix over the inputs (goal cells are blind, so only inputs are used).\n    if inputs:\n        X = StandardScaler().fit_transform(_encode(rows, inputs))\n    else:\n        X = np.zeros((n, 1), dtype=float)\n\n    cap = min(budget, n)\n    measured: dict[int, dict[str, float]] = {}\n\n    def measure(i):\n        d = label(i)\n        measured[i] = {name: float(d[name]) for name in names}\n\n    def scores(idx):\n        # Combined z-scored goal score over the measured rows, larger is better.\n        return _goal_scores([measured[i] for i in idx], use)\n\n    # Initial space-filling design: farthest-point sampling on the inputs.\n    n_init = min(cap, max(3, cap // 3))\n    chosen = [0]\n    dist = np.linalg.norm(X - X[0], axis=1)\n    while len(chosen) < n_init:\n        masked = dist.copy()\n        masked[chosen] = -np.inf\n        nxt = int(np.argmax(masked))\n        chosen.append(nxt)\n        dist = np.minimum(dist, np.linalg.norm(X - X[nxt], axis=1))\n    for i in chosen:\n        measure(i)\n\n    # Sequential search: model the scores, measure the most promising unmeasured build.\n    while len(measured) < cap:\n        lab = sorted(measured)\n        unl = np.array([i for i in range(n) if i not in measured], dtype=int)\n        if len(lab) < 5:\n            # Too few points to model: measure the build farthest from all measured ones.\n            d = np.min(\n                np.linalg.norm(X[unl][:, None, :] - X[lab][None, :, :], axis=2),\n                axis=1,\n            )\n            pick = int(unl[np.argmax(d)])\n        else:\n            y = scores(lab)\n            model = RandomForestRegressor(\n                n_estimators=_N_TREES,\n                random_state=0,\n                n_jobs=1,\n            )\n            model.fit(X[lab], y)\n            preds = np.stack([t.predict(X[unl]) for t in model.estimators_])\n            acq = preds.mean(axis=0) + _UCB_KAPPA * preds.std(axis=0)\n            pick = int(unl[np.argmax(acq)])\n        measure(pick)\n\n    # Best measured build on the goals being optimised.\n    lab = sorted(measured)\n    y = scores(lab)\n    return int(lab[int(np.argmax(y))])\n```",
+ "stop_reason": "end_turn",
+ "session_id": "6b0d00a3-cecb-4092-b906-0e3df86396a7",
+ "total_cost_usd": 0.00383915,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 7774,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5734,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 7774,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5734,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 7774,
+   "webSearchRequests": 0,
+   "costUSD": 0.00383915,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "9ce8f2d8-4609-4bca-8a46-5525e17bee84"
+}
