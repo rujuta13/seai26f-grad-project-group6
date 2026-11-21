@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6415,
+ "stop_reason": "end_turn",
+ "session_id": "c0e3a8ef-1baf-4ce0-b8c0-296360196abb",
+ "total_cost_usd": 0.0247168,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 23348,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 884,
+  "output_tokens_details": {
+   "thinking_tokens": 534
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23348,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 884,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 23348,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 23348
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19535,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019605,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 884,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23348,
+   "webSearchRequests": 0,
+   "costUSD": 0.0051118000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step19.py\n\"\"\"Spot: flag player records that look like data-entry mistakes, or are so\nunusual that their ratings deserve a second look.\n\nodd() is step9.odd. Each row gets a suspicion score against TRAIN_CSV:\na text cell where a number belongs, a goal far from the training median\nor from its nearest flag sets, or flags unlike any seen. A score near 1\nis typical; several times that is worth checking. Rows may include their\ngoal cells (dict or full-width list), and missing cells add nothing.\n\"\"\"\nimport step9\n\n\ndef odd(train_csv, rows) -> list[float]:\n  \"One suspicion score per row in ROWS (goals included): higher means a likelier glitch, typo, or unlike anything in TRAIN_CSV.\"\n  rows   = list(rows)\n  scores = [float(s) for s in step9.odd(train_csv, rows)]\n  if len(scores) != len(rows):\n    raise ValueError(f\"odd: expected {len(rows)} scores, got {len(scores)}\")\n  return scores\n```",
+ "ttft_ms": 3898,
+ "type": "result",
+ "duration_ms": 5095,
+ "uuid": "b60a2366-5465-4ac6-8723-b2f5fb8fe1d3",
+ "ttft_stream_ms": 1628,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
