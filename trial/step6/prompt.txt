@@ -1,0 +1,599 @@
+Use the Python 3.13 standard library plus scikit-learn 1.7 and numpy 1.26. No other third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+import csv
+import math
+
+import numpy as np
+from sklearn.cluster import KMeans
+
+
+def _load(train_csv):
+    with open(train_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = list(reader.fieldnames or [])
+        rows = list(reader)
+    return cols, rows
+
+
+def _to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def _split_columns(cols):
+    goal_max = [c for c in cols if c.endswith("+")]
+    goal_min = [c for c in cols if c.endswith("-")]
+    inputs = [c for c in cols if not c.endswith(("+", "-", "X"))]
+    return inputs, goal_max, goal_min
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    cols, rows = _load(train_csv)
+    n = len(rows)
+    if n == 0:
+        return []
+
+    inputs, _, _ = _split_columns(cols)
+    if not inputs:
+        return [0] * n
+
+    X = np.array(
+        [[_to_float(r[c]) for c in inputs] for r in rows], dtype=float
+    )
+    X = np.where(np.isnan(X), 0.0, X)
+
+    n_unique = len(np.unique(X, axis=0))
+    k = min(5, n_unique)
+    if k <= 1:
+        return [0] * n
+
+    model = KMeans(n_clusters=k, n_init=10, random_state=0)
+    labels = model.fit_predict(X)
+    return [int(x) for x in labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together),
+    at most 5% of rows."""
+    cols, rows = _load(train_csv)
+    n = len(rows)
+    cap = int(math.floor(0.05 * n))
+    if n == 0 or cap == 0:
+        return []
+
+    _, goal_max, goal_min = _split_columns(cols)
+    goals = goal_min + goal_max
+    if not goals:
+        return []
+
+    # Build a matrix where every goal is minimised.
+    G = np.empty((n, len(goals)), dtype=float)
+    for j, c in enumerate(goals):
+        vals = np.array([_to_float(r[c]) for r in rows], dtype=float)
+        vals = np.where(np.isnan(vals), np.inf, vals)  # missing = worst
+        if c.endswith("+"):
+            vals = -vals
+        G[:, j] = vals
+
+    # Pareto front (non-dominated rows), all goals minimised.
+    dominated = np.zeros(n, dtype=bool)
+    for i in range(n):
+        weakly = np.all(G <= G[i], axis=1)
+        strictly = np.any(G < G[i], axis=1)
+        dominated[i] = np.any(weakly & strictly)
+    front = np.flatnonzero(~dominated)
+
+    if len(front) > cap:
+        # Too many non-dominated rows: keep those with the best average rank
+        # across goals.
+        sub = G[front]
+        rank_sum = np.zeros(len(front), dtype=float)
+        for j in range(sub.shape[1]):
+            order = np.argsort(sub[:, j], kind="stable")
+            ranks = np.empty(len(front), dtype=float)
+            ranks[order] = np.arange(len(front), dtype=float)
+            rank_sum += ranks
+        keep = np.argsort(rank_sum, kind="stable")[:cap]
+        front = front[keep]
+
+    return sorted(int(i) for i in front)
+```
+
+### step2.py
+```python
+import csv
+import math
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+
+def _to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def _load(train_csv):
+    with open(train_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = list(reader.fieldnames or [])
+        rows = list(reader)
+    return cols, rows
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate every goal for a flag set `row` (goal columns removed).
+
+    Returns {goal: (estimate, low, high)} where low..high is an approximate
+    90% interval built from out-of-bag residuals of a random forest.
+    """
+    cols, rows = _load(train_csv)
+    goals = [c for c in cols if c.endswith(("+", "-"))]
+    inputs = [c for c in cols if not c.endswith(("+", "-", "X"))]
+
+    result: dict[str, tuple[float, float, float]] = {}
+
+    if not rows or not goals:
+        for g in goals:
+            result[g] = (0.0, -math.inf, math.inf)
+        return result
+
+    # Feature matrix for training rows; missing cells become 0.0 (as in step1).
+    X = np.array(
+        [[_to_float(r.get(c, math.nan)) for c in inputs] for r in rows],
+        dtype=float,
+    ).reshape(len(rows), len(inputs))
+    X = np.where(np.isnan(X), 0.0, X)
+
+    # Feature vector for the query row.
+    x = np.array(
+        [[_to_float(row.get(c, math.nan)) for c in inputs]], dtype=float
+    ).reshape(1, len(inputs))
+    x = np.where(np.isnan(x), 0.0, x)
+
+    for g in goals:
+        y = np.array([_to_float(r.get(g, math.nan)) for r in rows], dtype=float)
+        finite = np.isfinite(y)
+        Xg, yg = X[finite], y[finite]
+
+        if len(yg) == 0:
+            result[g] = (0.0, -math.inf, math.inf)
+            continue
+
+        if len(yg) < 10 or not inputs:
+            # Too little data for a model: use the empirical distribution.
+            est = float(np.median(yg))
+            lo = float(np.quantile(yg, 0.05))
+            hi = float(np.quantile(yg, 0.95))
+            result[g] = (est, min(lo, est), max(hi, est))
+            continue
+
+        model = RandomForestRegressor(
+            n_estimators=300,
+            min_samples_leaf=2,
+            bootstrap=True,
+            oob_score=True,
+            random_state=0,
+        )
+        model.fit(Xg, yg)
+
+        est = float(model.predict(x)[0])
+
+        oob = np.asarray(model.oob_prediction_, dtype=float)
+        ok = np.isfinite(oob)
+        if ok.sum() >= 10:
+            resid = yg[ok] - oob[ok]
+            q_lo, q_hi = np.quantile(resid, [0.05, 0.95])
+        else:
+            q_lo, q_hi = np.quantile(yg, [0.05, 0.95]) - np.median(yg)
+
+        low = est + float(q_lo)
+        high = est + float(q_hi)
+        low = min(low, est)
+        high = max(high, est)
+        result[g] = (est, low, high)
+
+    return result
+```
+
+### step3.py
+```python
+import math
+
+import numpy as np
+
+
+def _clean(values):
+    """Convert to a 1-D float array, dropping missing and non-finite entries."""
+    out = []
+    for v in values:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(f):
+            out.append(f)
+    return np.asarray(out, dtype=float)
+
+
+def _average_ranks(values):
+    """Ranks 1..N with ties replaced by their average rank."""
+    uniq, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)
+    # Rank range for each unique value is [start+1, start+count]; average is midpoint.
+    starts = np.cumsum(counts) - counts
+    avg = starts + (counts + 1) / 2.0
+    return avg[inverse]
+
+
+def same(xs, ys) -> bool:
+    """True if xs and ys are NOT really different (the gap is noise), False otherwise.
+
+    Uses a two-sided permutation test on the difference in mean rank (a
+    Mann-Whitney-style test). It makes no distributional assumption, so it is
+    robust to skewed run times and outliers. The test is deterministic (fixed
+    seed). The significance level is 0.05.
+    """
+    a = _clean(xs)
+    b = _clean(ys)
+    n, m = len(a), len(b)
+    if n == 0 or m == 0:
+        # No evidence of any difference.
+        return True
+
+    pooled = np.concatenate([a, b])
+    if np.all(pooled == pooled[0]):
+        # Identical values everywhere: no difference.
+        return True
+
+    ranks = _average_ranks(pooled)
+    N = n + m
+    observed = abs(ranks[:n].mean() - ranks[n:].mean())
+
+    rng = np.random.default_rng(0)
+    total = 10000
+    chunk = 1000
+    extreme = 0
+    done = 0
+    tol = 1e-12
+    while done < total:
+        size = min(chunk, total - done)
+        perm = np.argsort(rng.random((size, N)), axis=1)
+        R = ranks[perm]
+        diffs = np.abs(R[:, :n].mean(axis=1) - R[:, n:].mean(axis=1))
+        extreme += int(np.sum(diffs >= observed - tol))
+        done += size
+
+    p_value = (extreme + 1) / (total + 1)
+    return bool(p_value >= 0.05)
+```
+
+### step4.py
+```python
+import csv
+import math
+
+import numpy as np
+
+
+def _load(train_csv):
+    with open(train_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = list(reader.fieldnames or [])
+        rows = list(reader)
+    return cols, rows
+
+
+def _to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def _split_columns(cols):
+    goal_max = [c for c in cols if c.endswith("+")]
+    goal_min = [c for c in cols if c.endswith("-")]
+    inputs = [c for c in cols if not c.endswith(("+", "-", "X"))]
+    return inputs, goal_max, goal_min
+
+
+def _goal_vector(row, goal_min, goal_max):
+    """All goals as minimisation values; missing or non-finite = worst (+inf)."""
+    vals = []
+    for c in goal_min:
+        v = _to_float(row.get(c))
+        vals.append(v if math.isfinite(v) else math.inf)
+    for c in goal_max:
+        v = _to_float(row.get(c))
+        vals.append(-v if math.isfinite(v) else math.inf)
+    return vals
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Keep (True) a row if no earlier reference row (training rows plus the
+    rows before it in `rows`) strictly dominates it on all goals, i.e. it is
+    on the running Pareto front. Only train_csv and prior rows are used."""
+    cols, train_rows = _load(train_csv)
+    inputs, goal_max, goal_min = _split_columns(cols)
+    n_goals = len(goal_min) + len(goal_max)
+
+    if n_goals == 0:
+        return [False] * len(rows)
+
+    pool_list = [_goal_vector(r, goal_min, goal_max) for r in train_rows]
+    pool = np.array(pool_list, dtype=float).reshape(len(pool_list), n_goals)
+
+    out: list[bool] = []
+    for r in rows:
+        v = np.array(_goal_vector(r, goal_min, goal_max), dtype=float)
+        if pool.shape[0] > 0:
+            weakly = np.all(pool <= v, axis=1)
+            strictly = np.any(pool < v, axis=1)
+            dominated = bool(np.any(weakly & strictly))
+        else:
+            dominated = False
+        out.append(not dominated)
+        pool = np.vstack([pool, v[None, :]])
+    return out
+
+
+def _binom_tail(n, k, p):
+    """P(X >= k) for X ~ Binomial(n, p)."""
+    if k <= 0:
+        return 1.0
+    total = 0.0
+    for j in range(k, n + 1):
+        total += math.comb(n, j) * (p ** j) * ((1.0 - p) ** (n - j))
+    return total
+
+
+def drift(train_csv, rows) -> int | None:
+    """Index of the first row at which the last WINDOW rows contain too many
+    'unusual' rows, relative to train_csv, or None if this never happens.
+
+    Two signals, each tested with a one-sided binomial test:
+      * input novelty: nearest-training-row distance above the 95th percentile
+        of leave-one-out training distances;
+      * goal outlier: some goal outside the train 2.5%-97.5% range.
+    """
+    cols, train_rows = _load(train_csv)
+    inputs, goal_max, goal_min = _split_columns(cols)
+    goals = goal_min + goal_max
+
+    if not train_rows or not rows:
+        return None
+
+    WINDOW = 30
+    ALPHA = 5e-4
+    P_IN = 0.05
+
+    n_tr = len(train_rows)
+    n_new = len(rows)
+
+    # ---- input novelty flags ----
+    flags_in = np.zeros(n_new, dtype=bool)
+    d = len(inputs)
+    if d > 0 and n_tr >= 2:
+        X = np.array(
+            [[_to_float(r.get(c)) for c in inputs] for r in train_rows],
+            dtype=float,
+        ).reshape(n_tr, d)
+        X = np.where(np.isnan(X), 0.0, X)
+        sd = X.std(axis=0)
+        sd[sd == 0] = 1.0
+        Z = X / sd
+
+        sq = (Z ** 2).sum(axis=1)
+        D = sq[:, None] + sq[None, :] - 2.0 * (Z @ Z.T)
+        D = np.maximum(D, 0.0)
+        np.fill_diagonal(D, np.inf)
+        loo = np.sqrt(D.min(axis=1))
+        thr_in = float(np.quantile(loo, 0.95))
+
+        Xn = np.array(
+            [[_to_float(r.get(c)) for c in inputs] for r in rows],
+            dtype=float,
+        ).reshape(n_new, d)
+        Xn = np.where(np.isnan(Xn), 0.0, Xn)
+        Zn = Xn / sd
+        for i in range(n_new):
+            diff = Z - Zn[i]
+            dist = math.sqrt(float((diff ** 2).sum(axis=1).min()))
+            flags_in[i] = dist > thr_in
+
+    # ---- goal outlier flags ----
+    def _goal_flags(data_rows, lo_hi):
+        flags = np.zeros(len(data_rows), dtype=bool)
+        for i, r in enumerate(data_rows):
+            for g, (lo, hi) in lo_hi.items():
+                v = _to_float(r.get(g))
+                if math.isfinite(v) and (v < lo or v > hi):
+                    flags[i] = True
+                    break
+        return flags
+
+    lo_hi = {}
+    for g in goals:
+        vals = np.array([_to_float(r.get(g)) for r in train_rows], dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if len(vals) > 0:
+            lo_hi[g] = (float(np.quantile(vals, 0.025)),
+                        float(np.quantile(vals, 0.975)))
+
+    if lo_hi:
+        train_out_flags = _goal_flags(train_rows, lo_hi)
+        p_out = float(train_out_flags.mean())
+        p_out = min(max(p_out, 1e-3), 0.5)
+        flags_out = _goal_flags(rows, lo_hi)
+    else:
+        p_out = 0.5
+        flags_out = np.zeros(n_new, dtype=bool)
+
+    # ---- sequential decision over sliding windows ----
+    if n_new < WINDOW:
+        return None
+
+    for i in range(WINDOW - 1, n_new):
+        lo_idx = i - WINDOW + 1
+        k_in = int(flags_in[lo_idx:i + 1].sum())
+        k_out = int(flags_out[lo_idx:i + 1].sum())
+        if _binom_tail(WINDOW, k_in, P_IN) < ALPHA:
+            return i
+        if _binom_tail(WINDOW, k_out, p_out) < ALPHA:
+            return i
+
+    return None
+```
+
+### step5.py
+```python
+import csv
+import math
+
+import numpy as np
+
+
+def _load(train_csv):
+    with open(train_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = list(reader.fieldnames or [])
+        rows = list(reader)
+    return cols, rows
+
+
+def _to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def _split_columns(cols):
+    goal_max = [c for c in cols if c.endswith("+")]
+    goal_min = [c for c in cols if c.endswith("-")]
+    inputs = [c for c in cols if not c.endswith(("+", "-", "X"))]
+    return inputs, goal_max, goal_min
+
+
+def _average_ranks(values):
+    """Ranks 1..N with ties replaced by their average rank."""
+    values = np.asarray(values, dtype=float)
+    uniq, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)
+    starts = np.cumsum(counts) - counts
+    avg = starts + (counts + 1) / 2.0
+    return avg[inverse]
+
+
+def blame(train_csv) -> list[str]:
+    """Input column names, most to blame for bad rows (bad on the goals) first.
+
+    A row's badness is its average normalised rank across all goals, with
+    every goal minimised and missing values counted as worst. Rows in the top
+    quartile of badness are "bad", rows in the bottom quartile are "good".
+
+    Binary inputs are scored by how much more often they are on among bad rows
+    than among good rows. Other inputs are scored by the Spearman correlation
+    between their rank and the badness rank. Higher score means more blame.
+    Ties keep the original column order.
+    """
+    cols, rows = _load(train_csv)
+    inputs, goal_max, goal_min = _split_columns(cols)
+    goals = goal_min + goal_max
+    n = len(rows)
+
+    if not inputs:
+        return []
+    if n == 0 or not goals:
+        return list(inputs)
+
+    # Minimisation matrix: every goal minimised, missing = worst (+inf).
+    G = np.empty((n, len(goals)), dtype=float)
+    for j, c in enumerate(goals):
+        vals = np.array([_to_float(r.get(c)) for r in rows], dtype=float)
+        vals = np.where(np.isnan(vals), np.inf, vals)
+        if c.endswith("+"):
+            vals = -vals
+        G[:, j] = vals
+
+    # Badness: mean normalised rank across goals (0 = best, 1 = worst).
+    badness = np.zeros(n, dtype=float)
+    for j in range(G.shape[1]):
+        r = _average_ranks(G[:, j])
+        badness += (r - 1.0) / max(n - 1, 1)
+    badness /= G.shape[1]
+
+    if np.all(badness == badness[0]):
+        return list(inputs)
+
+    q75 = float(np.quantile(badness, 0.75))
+    q25 = float(np.quantile(badness, 0.25))
+    bad = badness >= q75
+    good = (~bad) & (badness <= q25)
+    if not good.any():
+        good = ~bad
+    if not bad.any() or not good.any():
+        return list(inputs)
+
+    rank_bad = _average_ranks(badness)
+
+    scored = []
+    for idx, c in enumerate(inputs):
+        vals = np.array([_to_float(r.get(c)) for r in rows], dtype=float)
+        vals = np.where(np.isnan(vals), 0.0, vals)
+        uniq = np.unique(vals)
+
+        if len(uniq) <= 1:
+            score = 0.0
+        elif len(uniq) == 2:
+            on = vals == uniq[-1]
+            score = float(on[bad].mean() - on[good].mean())
+        else:
+            rv = _average_ranks(vals)
+            if rv.std() == 0 or rank_bad.std() == 0:
+                score = 0.0
+            else:
+                score = float(np.corrcoef(rv, rank_bad)[0, 1])
+                if not math.isfinite(score):
+                    score = 0.0
+
+        scored.append((-score, idx, c))
+
+    scored.sort()
+    return [c for _, _, c in scored]
+```
+
+Step 6: justify.
+The client asks:
+  - "Explain your recommended flag set to a senior engineer who distrusts magic."
+  - "For any single build, tell me in one sentence why you rated it good or bad."
+
+Write step6.py defining exactly these functions:
+def explain(train_csv) -> str
+    Reasons, in plain words a skeptical expert can check, for what makes rows good.
+def why(train_csv, row) -> str
+    One or two sentences on why this row (goals included) is good or bad.
+
+Reply with the complete step6.py in one ```python block.
