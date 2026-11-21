@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 15093,
+ "duration_api_ms": 15082,
+ "num_turns": 1,
+ "result": "```python\nimport csv\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\n\n\nN_FAMILIES = 5\nBEST_FRACTION = 0.05\n\n\ndef _to_value(cell):\n    try:\n        return float(cell)\n    except (TypeError, ValueError):\n        return cell\n\n\ndef _load(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = [h for h in (reader.fieldnames or [])]\n        rows = [{k: _to_value(v) for k, v in r.items()} for r in reader]\n    return header, rows\n\n\ndef _column_kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _numeric_column(values):\n    \"\"\"Return a float array; non-numeric columns are category-coded.\"\"\"\n    if all(isinstance(v, float) for v in values):\n        return np.asarray(values, dtype=float)\n    labels = {}\n    codes = []\n    for v in values:\n        key = str(v)\n        if key not in labels:\n            labels[key] = float(len(labels))\n        codes.append(labels[key])\n    return np.asarray(codes, dtype=float)\n\n\ndef _input_matrix(header, rows):\n    cols = [c for c in header if _column_kind(c) == \"input\"]\n    if not rows or not cols:\n        return np.zeros((len(rows), 0))\n    mats = [_numeric_column([r.get(c, 0.0) for r in rows]) for c in cols]\n    return np.column_stack(mats)\n\n\ndef _goal_matrix(header, rows):\n    \"\"\"Return an (n, m) matrix where smaller is always better.\"\"\"\n    cols = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    if not rows or not cols:\n        return np.zeros((len(rows), 0))\n    mats = []\n    for c in cols:\n        vals = np.asarray([float(r[c]) for r in rows], dtype=float)\n        if _column_kind(c) == \"max\":\n            vals = -vals\n        mats.append(vals)\n    return np.column_stack(mats)\n\n\ndef families(train_csv) -> list[int]:\n    header, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    X = _input_matrix(header, rows)\n    if X.shape[1] == 0:\n        return [0] * n\n    k = min(N_FAMILIES, n)\n    labels = KMeans(n_clusters=k, n_init=10, random_state=0).fit_predict(X)\n    return [int(x) for x in labels]\n\n\ndef best(train_csv) -> list[int]:\n    header, rows = _load(train_csv)\n    n = len(rows)\n    cap = int(BEST_FRACTION * n)\n    if n == 0 or cap == 0:\n        return []\n    G = _goal_matrix(header, rows)\n    if G.shape[1] == 0:\n        return []\n\n    # Pareto front (non-dominated rows, minimisation on all goals).\n    le = (G[:, None, :] <= G[None, :, :]).all(axis=-1)  # le[j, i]: G[j] <= G[i]\n    lt = (G[:, None, :] < G[None, :, :]).any(axis=-1)   # lt[j, i]: G[j] <  G[i] somewhere\n    dominated = (le & lt).any(axis=0)\n    front = np.where(~dominated)[0]\n\n    if len(front) > cap:\n        # Rank each goal, sum ranks, keep the best overall within the cap.\n        ranks = G.argsort(axis=0).argsort(axis=0)\n        score = ranks.sum(axis=1)\n        order = sorted(front.tolist(), key=lambda i: (score[i], i))\n        front = np.asarray(order[:cap], dtype=int)\n\n    return sorted(int(i) for i in front)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "e8968172-493d-4c73-a4b1-7e91e623d8f9",
+ "total_cost_usd": 0.00156012,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 822,
+  "output_tokens": 3103,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3103,
+   "cacheReadInputTokens": 822,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00156012,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ea26bfcc-7907-43d5-80a7-2f881ef48762"
+}
