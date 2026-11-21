@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9571,
+ "stop_reason": "end_turn",
+ "session_id": "6c4e7d1d-9349-481b-8823-fd24202c30ef",
+ "total_cost_usd": 0.0288604,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 27156,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1546,
+  "output_tokens_details": {
+   "thinking_tokens": 1213
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27156,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1546,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 27156,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 27156
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 22581,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022656,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1546,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27156,
+   "webSearchRequests": 0,
+   "costUSD": 0.0062044000000000005,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step22.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep22.py: guess.  Guess a new customer's goals from his or her input\nnumbers, with a range for each goal.  The client's two questions are\nanswered by the goals NUMWEBPURCHASES+ (online) and NUMSTOREPURCHASES+\n(in store), and by RESPONSE+ (whether the customer answers the campaign).\nThe work is step12.guess, which wraps step2.guess: the nearest training\ncustomers vote, the estimate is their median, and low..high is their\n10th..90th percentile band.  Nothing here is new code; this file fixes\nthe client-facing signature.\n\"\"\"\nimport step12\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal, where low..high is\n  the range the true value should fall in.  ROW has its goal columns removed.\"\"\"\n  return step12.guess(train_csv, row)\n```",
+ "ttft_ms": 6930,
+ "type": "result",
+ "duration_ms": 8056,
+ "uuid": "f59911d6-f240-4509-9320-106332df75a5",
+ "ttft_stream_ms": 1767,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
