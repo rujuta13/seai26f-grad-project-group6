@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 44685,
+ "stop_reason": "end_turn",
+ "session_id": "48df499f-f858-45b9-9e40-fc863faa8fec",
+ "total_cost_usd": 0.0199213,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13918,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10087,
+  "output_tokens_details": {
+   "thinking_tokens": 8411
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13918,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10087,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13918,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13918
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11994,
+   "outputTokens": 20,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.012093999999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10087,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13918,
+   "webSearchRequests": 0,
+   "costUSD": 0.0078273,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 8: fix a slow build by changing as few flags as possible.\n\nfix() takes a bad build (flag settings only, goals removed) and searches for the\nsmallest number of flag changes that the training data predicts will make it good.\nCandidate builds are scored with step2's guess(). \"Good\" follows step6's why():\nthe normalised goal sum is no worse than the 75th percentile of the training\nbuilds. Columns named in `frozen` are never changed. The search tries 1 change,\nthen 2, and so on. Among the candidates with the fewest changes it returns the\none with the best predicted goal sum. Every value a column takes is one already\nseen in the training data. If no good build is found within the search budget,\nthe predicted-best build found is returned.\n\"\"\"\n\nimport itertools\nimport math\n\nfrom step1 import _load, _split_columns\nfrom step2 import _quantile, guess\n\nMAX_EVALS = 2000\nGOOD_QUANTILE = 0.75\n\n\ndef _as_finite(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _vector(values, maximise, minimise):\n    \"\"\"Minimisation vector for goal values ('+' negated), or None if any is missing.\"\"\"\n    vec = []\n    for c in maximise:\n        v = _as_finite(values.get(c))\n        if v is None:\n            return None\n        vec.append(-v)\n    for c in minimise:\n        v = _as_finite(values.get(c))\n        if v is None:\n            return None\n        vec.append(v)\n    return vec\n\n\ndef _domains(rows, columns):\n    \"\"\"Per column: the distinct training values, in first-seen order.\"\"\"\n    domain = {}\n    for c in columns:\n        seen = {}\n        for r in rows:\n            v = r.get(c)\n            if v is None:\n                continue\n            seen.setdefault(str(v), v)\n        domain[c] = list(seen.values())\n    return domain\n\n\ndef _changes(changeable, base, domain, k):\n    \"\"\"Yield every build that differs from base in exactly k changeable columns.\"\"\"\n    for cols in itertools.combinations(changeable, k):\n        alts = [\n            [v for v in domain[c] if str(v) != str(base[c])] for c in cols\n        ]\n        for combo in itertools.product(*alts):\n            cand = dict(base)\n            cand.update(zip(cols, combo))\n            yield cand\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs with as few values changed as possible so it is predicted good.\n\n    `row` maps input column names to values; goal columns are absent or ignored.\n    Columns named in `frozen` keep their original values. If the row is already\n    predicted good, it is returned unchanged.\n    \"\"\"\n    columns, rows = _load(train_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n    goals = maximise + minimise\n\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    frozen = set(frozen)\n\n    input_set = set(inputs)\n    base = {k: v for k, v in row.items() if k in input_set}\n    if not goals or not rows:\n        return dict(base)\n\n    vecs = [v for v in (_vector(r, maximise, minimise) for r in rows) if v is not None]\n    if not vecs:\n        return dict(base)\n    m = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(m)]\n    hi = [max(v[j] for v in vecs) for j in range(m)]\n\n    def nsum(vec):\n        total = 0.0\n        for j in range(m):\n            if hi[j] > lo[j]:\n                total += (vec[j] - lo[j]) / (hi[j] - lo[j])\n        return total\n\n    threshold = _quantile(sorted(nsum(v) for v in vecs), GOOD_QUANTILE)\n\n    def score(cand):\n        est = guess(train_csv, cand)\n        vec = _vector({g: est[g][0] for g in goals}, maximise, minimise)\n        return math.inf if vec is None else nsum(vec)\n\n    base_score = score(base)\n    if base_score <= threshold:\n        return dict(base)\n\n    changeable = [c for c in inputs if c in base and c not in frozen]\n    if not changeable:\n        return dict(base)\n\n    domain = _domains(rows, changeable)\n    best_cand, best_overall = dict(base), base_score\n    evals = 0\n\n    for k in range(1, len(changeable) + 1):\n        best_k = None\n        for cand in _changes(changeable, base, domain, k):\n            if evals >= MAX_EVALS:\n                break\n            evals += 1\n            s = score(cand)\n            if best_k is None or s < best_k[0]:\n                best_k = (s, cand)\n            if s < best_overall:\n                best_overall, best_cand = s, cand\n        if best_k is not None and best_k[0] <= threshold:\n            return dict(best_k[1])\n        if evals >= MAX_EVALS:\n            break\n\n    return dict(best_cand)\n```",
+ "ttft_ms": 39130,
+ "type": "result",
+ "duration_ms": 43823,
+ "uuid": "4990a3ea-da66-4916-a59a-4cf2e6b8218b",
+ "ttft_stream_ms": 2391,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
