@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 20741,
+ "stop_reason": "end_turn",
+ "session_id": "78c95596-064a-4bfb-911c-444581942f9b",
+ "total_cost_usd": 0.032469899999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28976,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5019,
+  "output_tokens_details": {
+   "thinking_tokens": 3426
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28976,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 5019,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28976,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28976
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24095,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024165,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 5019,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28976,
+   "webSearchRequests": 0,
+   "costUSD": 0.0083049,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 30: race our targeting and response guesser against simple rivals.\n\nrace() runs step10's tuner and guesser comparison on test_csv and adds two\nclient-specific rivals:\n\n* \"top_income\": the regret of mailing the single highest-INCOME customer\n  (ties go to the earlier row), scored the same way as step10's regret.\n* Response-only guesser comparison: \"guesser_ours_response_nmae\" (step2's\n  guess() for RESPONSE+) against \"guesser_ridge_response_nmae\" (a stdlib ridge\n  regression for RESPONSE+), each as mean absolute error divided by the\n  RESPONSE+ range over test_csv.\n\nEvery score is lower-is-better, and \"ours\" is always present.\n\"\"\"\n\nfrom step1 import _load, _split_columns\nfrom step2 import guess\nfrom step10 import _features, _finite, _fit_all, _normalised_scores\nfrom step10 import race as _race_step10\n\nRESPONSE_GOAL = \"RESPONSE+\"\n\n\ndef _top_income_regret(test_csv):\n    \"\"\"Regret of the test customer with the highest INCOME, or 1.0 if none qualifies.\"\"\"\n    columns, test = _load(test_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    if \"INCOME\" not in columns:\n        return 1.0\n\n    scores = _normalised_scores(test, maximise, minimise)\n    valid = [i for i, s in enumerate(scores) if s is not None]\n    if not valid:\n        return 1.0\n    best_score = min(scores[i] for i in valid)\n\n    candidates = [i for i in valid if _finite(test[i].get(\"INCOME\")) is not None]\n    if not candidates:\n        return 1.0\n    pick = min(candidates, key=lambda i: (-_finite(test[i].get(\"INCOME\")), i))\n    return float(scores[pick] - best_score)\n\n\ndef _response_errors(train_csv, test_csv):\n    \"\"\"Return (guess_nmae, ridge_nmae) for RESPONSE+ alone; (1.0, 1.0) if not computable.\"\"\"\n    train_columns, train = _load(train_csv)\n    _, _, train_inputs = _split_columns(train_columns)\n    test_columns, test = _load(test_csv)\n\n    if RESPONSE_GOAL not in train_columns or RESPONSE_GOAL not in test_columns:\n        return 1.0, 1.0\n\n    spec, models = _fit_all(train, train_inputs, [RESPONSE_GOAL])\n    if RESPONSE_GOAL not in models:\n        return 1.0, 1.0\n\n    known = [v for v in (_finite(r.get(RESPONSE_GOAL)) for r in test) if v is not None]\n    if not known:\n        return 1.0, 1.0\n    span = max(known) - min(known)\n    scale = span if span > 0 else 1.0\n\n    ours_sum = 0.0\n    ridge_sum = 0.0\n    count = 0\n    for r in test:\n        truth = _finite(r.get(RESPONSE_GOAL))\n        if truth is None:\n            continue\n        probe = {c: r.get(c) for c in train_inputs}\n        est = guess(train_csv, probe)\n        if RESPONSE_GOAL not in est:\n            continue\n        feats = _features(probe, spec)\n        pred = sum(w * f for w, f in zip(models[RESPONSE_GOAL], feats))\n        ours_sum += abs(est[RESPONSE_GOAL][0] - truth) / scale\n        ridge_sum += abs(pred - truth) / scale\n        count += 1\n\n    if count == 0:\n        return 1.0, 1.0\n    return ours_sum / count, ridge_sum / count\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Return {method: score} on test_csv. Every score is lower-is-better.\n\n    Includes \"ours\" (step7's choose() regret), the tuner rivals \"random_search\"\n    and \"local_search\", and the overall guesser errors \"guesser_ours_nmae\" and\n    \"guesser_ridge_nmae\" from step10. Adds \"top_income\", the regret of the\n    highest-income customer, and the RESPONSE+-only guesser errors\n    \"guesser_ours_response_nmae\" and \"guesser_ridge_response_nmae\".\n    \"\"\"\n    result = {k: float(v) for k, v in _race_step10(train_csv, test_csv).items()}\n    result[\"top_income\"] = float(_top_income_regret(test_csv))\n\n    ours_response, ridge_response = _response_errors(train_csv, test_csv)\n    result[\"guesser_ours_response_nmae\"] = float(ours_response)\n    result[\"guesser_ridge_response_nmae\"] = float(ridge_response)\n    return result\n```",
+ "ttft_ms": 14680,
+ "type": "result",
+ "duration_ms": 19468,
+ "uuid": "173d1de6-e674-476a-9fc0-4b8351090863",
+ "ttft_stream_ms": 1281,
+ "time_to_request_ms": 109,
+ "queued_turn_count": 0
+}
