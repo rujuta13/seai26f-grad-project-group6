@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 34798,
+ "stop_reason": "end_turn",
+ "session_id": "fa21f293-3321-40d4-ab4a-a0f7bf071888",
+ "total_cost_usd": 0.0340069,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29396,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7541,
+  "output_tokens_details": {
+   "thinking_tokens": 6155
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29396,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7541,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29396,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29396
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 24287,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.024357,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7541,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29396,
+   "webSearchRequests": 0,
+   "costUSD": 0.0096499,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step29.py\n\"\"\"Spot for the client: flag customer records that look wrong, or behave\nunlike anyone else. Are they a typo, an impossible value, or just unusual?\n\nodd() is step9.odd, which scores each row by distance from the training\nrows and by its goals against the training median and nearest neighbours.\nStep9 does not check input values one at a time, so this step adds three\nchecks:\n  * a text cell where a number belongs (a typo such as \"3O\"): score CAP.\n  * an impossible value: AGE outside 0..120, or a negative INCOME: score CAP.\n  * an input far from the training median, in robust spreads. Flags (0/1\n    columns) and constant columns are skipped, since they are not outliers.\nScores near 1 are typical; several times that is worth checking. Missing\ncells ('?') add nothing.\n\"\"\"\nimport ezr\nimport step2\nimport step9\n\nCAP = step9.CAP\nPLAUSIBLE = {\"AGE\": (0, 120), \"INCOME\": (0, None)}   # (low, high); None = no limit\n\n\ndef _input_stats(tbl) -> dict:\n  \"at -> (median, robust spread) for each varying numeric input that is not a flag.\"\n  stats = {}\n  for c in tbl.x:\n    if type(c) is not ezr.Num: continue\n    vals = [r[c.at] for r in tbl.rows if step2._known(r[c.at])]\n    if not vals: continue\n    if set(vals) <= {0, 1}: continue                 # a flag, not a measure\n    med    = step2._pct(vals, .5)\n    mad    = 1.4826 * step2._pct([abs(x - med) for x in vals], .5)\n    spread = mad or c.sd or 0\n    if spread <= 0: continue                         # constant column\n    stats[c.at] = (med, spread)\n  return stats\n\n\ndef _typo(tbl, full) -> bool:\n  \"True if a numeric input cell holds text, such as '3O' for '30'.\"\n  return any(type(c) is ezr.Num and full[c.at] != \"?\"\n             and not step2._known(full[c.at]) for c in tbl.x)\n\n\ndef _plausible(v, lo_hi) -> bool:\n  \"True if V lies within the (low, high) bounds; None means no bound.\"\n  lo, hi = lo_hi\n  return not ((lo is not None and v < lo) or (hi is not None and v > hi))\n\n\ndef _input_score(tbl, stats, full) -> float:\n  \"How odd the numeric inputs of FULL are: impossible values or far outliers.\"\n  s = 0.0\n  for c in tbl.x:\n    if type(c) is not ezr.Num: continue\n    v = full[c.at]\n    if not step2._known(v): continue                 # '?' adds nothing\n    lo_hi = PLAUSIBLE.get(c.txt.rstrip(\"+-\"))\n    if lo_hi and not _plausible(v, lo_hi): return CAP\n    if c.at in stats:\n      med, sc = stats[c.at]\n      s = max(s, abs(v - med) / sc / 3)              # 3 robust spreads out = score 1\n  return s\n\n\ndef odd(train_csv, rows) -> list[float]:\n  \"One suspicion score per row in ROWS (goals included): higher means a likelier glitch, typo, or unlike anything in TRAIN_CSV.\"\n  rows  = list(rows)\n  tbl   = step2._load(train_csv)\n  stats = _input_stats(tbl)\n  fulls = [step2._full(tbl, r) for r in rows]\n  # step9 cannot take text in an input cell, so typo rows are scored here.\n  clean = [i for i, f in enumerate(fulls) if not _typo(tbl, f)]\n  base  = dict(zip(clean, step9.odd(train_csv, [rows[i] for i in clean])))\n  out   = []\n  for i, f in enumerate(fulls):\n    if i not in base:\n      out.append(float(CAP))                         # a typo in an input cell\n      continue\n    s = max(float(base[i]), _input_score(tbl, stats, f))\n    out.append(float(min(CAP, s)))\n  return out\n```",
+ "ttft_ms": 29193,
+ "type": "result",
+ "duration_ms": 33424,
+ "uuid": "75d6a6e8-2089-40be-ace7-7d9d3cac692f",
+ "ttft_stream_ms": 1327,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
