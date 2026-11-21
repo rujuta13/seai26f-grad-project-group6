@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 31195,
+ "stop_reason": "end_turn",
+ "session_id": "295780ba-b657-4d20-ba14-150bb308dcb0",
+ "total_cost_usd": 0.018803399999999998,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 14936,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6152,
+  "output_tokens_details": {
+   "thinking_tokens": 5227
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14936,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6152,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 14936,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 14936
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 12665,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.01274,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6152,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14936,
+   "webSearchRequests": 0,
+   "costUSD": 0.0060634,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step9.py: spot. Which benchmark results look like glitches, and which flag sets behave unlike anything seen?\"\nfrom math import isfinite\nfrom ezr import Sym, xdist\nfrom step2 import _quantile\nfrom step4 import _base, _row\n\nZ_OK         = 3.0    # a goal this many sds from train's mean is still normal\nW_MISS_GOAL  = 1.0    # a missing measurement is a suspicious result\nW_MISS_INPUT = 0.5    # a missing flag is less alarming\nW_UNSEEN     = 1.0    # an input value train never shows\nW_FAR        = 1.0    # distance beyond train's own typical spacing\nQ_FAR        = 0.95   # train's own spread: this quantile of nearest-neighbour distances\nMIN_SCALE    = 0.05   # floor on that spread, so tiny spreads do not explode\n\ndef odd(train_csv, rows) -> list[float]:\n  \"\"\"One suspicion score per row in ROWS (goals included): higher means more\n  likely a glitch, a typo, or unlike anything in TRAIN_CSV.  Each row scores\n  missing cells, input values train never shows, goals far outside train's\n  spread, and inputs far from every train row compared with train's own spacing.\"\"\"\n  base, tbl = _base(str(train_csv))\n  q95  = max(_quantile(base, Q_FAR), MIN_SCALE) if base else MIN_SCALE\n  goal_ids = {id(c) for c in tbl.y}\n  cols = list(tbl.cols.values())\n  out  = []\n  for row in rows:\n    full = _row(tbl, row)\n    s    = 0.0\n    for c in cols:\n      v = full[c.at]\n      if v == \"?\":                                 # a missing cell\n        s += W_MISS_GOAL if id(c) in goal_ids else W_MISS_INPUT\n        continue\n      if type(c) is Sym:\n        if v not in c.has: s += W_UNSEEN           # a value train never shows\n      else:                                        # a Num column\n        if not isinstance(v, (int, float)) or not isfinite(v):\n          s += W_UNSEEN\n        elif c.sd == 0:                            # constant in train\n          s += 1.0 if v != c.mu else 0.0\n        else:                                      # how many sds beyond normal\n          s += max(0.0, abs(v - c.mu) / c.sd - Z_OK)\n    # inputs: how far is this row from its nearest train row?\n    nn  = min((xdist(tbl, full, q) for q in tbl.rows), default=0)\n    s  += W_FAR * max(0.0, nn - q95) / q95\n    out.append(float(s))\n  return out\n```",
+ "ttft_ms": 26974,
+ "type": "result",
+ "duration_ms": 30182,
+ "uuid": "bfda60f4-5960-4951-9cba-a76ed584b74d",
+ "ttft_stream_ms": 1693,
+ "time_to_request_ms": 29,
+ "queued_turn_count": 0
+}
