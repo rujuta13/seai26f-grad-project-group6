@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7242,
+ "stop_reason": "end_turn",
+ "session_id": "00417600-6571-492f-bb37-ee7f8905ff2c",
+ "total_cost_usd": 0.031695,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 29929,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1198,
+  "output_tokens_details": {
+   "thinking_tokens": 832
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29929,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1198,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 29929,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 29929
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25040,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02511,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1198,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29929,
+   "webSearchRequests": 0,
+   "costUSD": 0.006585000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step13.py\n\"\"\"Step 13: certify.  Are two groups really different, or is the gap noise?\n\nUses only the standard library plus ezr.\n\"\"\"\nimport ezr\n\n\ndef _numbers(xs) -> list[float]:\n  \"The numeric values of XS, sorted; unknown or text cells are dropped.\"\n  out = []\n  for v in xs:\n    if isinstance(v, str):\n      try: v = float(v)\n      except ValueError: continue          # '?' and other text: unknown\n    if isinstance(v, (int, float)) and not isinstance(v, bool):\n      out.append(float(v))\n  return sorted(out)\n\n\ndef same(xs, ys) -> bool:\n  \"\"\"True if XS and YS are NOT really different (the gap is noise),\n  False if the difference is real.  Uses ezr's cliffs and\n  Kolmogorov-Smirnov tests, which must both agree the samples match.\"\"\"\n  xs, ys = _numbers(xs), _numbers(ys)\n  if not xs or not ys: return True     # no evidence of a real difference\n  return ezr.same(xs, ys)\n```",
+ "ttft_ms": 5120,
+ "type": "result",
+ "duration_ms": 6147,
+ "uuid": "eeec9791-fd16-484a-9ef4-17af42a529d9",
+ "ttft_stream_ms": 1791,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
