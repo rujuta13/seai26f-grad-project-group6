@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6752,
+ "stop_reason": "end_turn",
+ "session_id": "b8ed6e7d-11e4-4023-a7ff-4708158fdb35",
+ "total_cost_usd": 0.0322881,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30637,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 951,
+  "output_tokens_details": {
+   "thinking_tokens": 763
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30637,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 951,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30637,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30637
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25615,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.025685,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 951,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30637,
+   "webSearchRequests": 0,
+   "costUSD": 0.006603100000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport step15\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Delegates to step15.blame. Bad rows are the worst quarter of the training\n    rows, ranked by the sum of their per-goal ranks across all goal columns.\n    This signature cannot select a single goal, so the ranking reflects overall\n    badness, not campaign response or complaints alone. Inputs that separate\n    the bad rows most come first.\n    \"\"\"\n    return list(step15.blame(train_csv))\n```",
+ "ttft_ms": 4863,
+ "type": "result",
+ "duration_ms": 5470,
+ "uuid": "034b9019-c6cb-488d-9340-fc770ba0273b",
+ "ttft_stream_ms": 1495,
+ "time_to_request_ms": 123,
+ "queued_turn_count": 0
+}
