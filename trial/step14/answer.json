@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 14303,
+ "stop_reason": "end_turn",
+ "session_id": "789a8dda-8b01-4fab-acb4-37842287ec72",
+ "total_cost_usd": 0.0242174,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21911,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2684,
+  "output_tokens_details": {
+   "thinking_tokens": 2351
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21911,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2684,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21911,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21911
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18413,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018493,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2684,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21911,
+   "webSearchRequests": 0,
+   "costUSD": 0.0057244,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step14.py\n\"\"\"Flow: keep good scouting reports as they arrive, and warn on drift.\n\nstream(): each report is judged on arrival, against the best-5% cut of\ntrain_csv (step4.stream). Only train_csv and that report are used.\n\ndrift(): step4.drift. It tests consecutive blocks of new rows against the\ntraining nearness reference, at a stricter KS level, and warns at the end\nof the first block that no longer matches. Each decision uses only the\nrows up to that point.\n\"\"\"\nimport step4\n\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"Keep (True) each row worth following up, judged as it arrives.\"\n  out = []\n  for row in rows:                      # one at a time, in arrival order\n    out.append(step4.stream(train_csv, [row])[0])\n  return out\n\n\ndef drift(train_csv, rows) -> int | None:\n  \"Index of the row at which new rows stop looking like train_csv, or None.\"\n  return step4.drift(train_csv, rows)\n```",
+ "ttft_ms": 12379,
+ "type": "result",
+ "duration_ms": 13319,
+ "uuid": "d2ab89f7-dd97-4cb7-865e-5f69a0569998",
+ "ttft_stream_ms": 1198,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
