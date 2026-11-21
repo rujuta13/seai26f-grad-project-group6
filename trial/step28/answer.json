@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 16947,
+ "stop_reason": "end_turn",
+ "session_id": "963a019e-080d-4e90-8482-0ca30fcc05e1",
+ "total_cost_usd": 0.0509973,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 47713,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4055,
+  "output_tokens_details": {
+   "thinking_tokens": 2413
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 47713,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4055,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 47713,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 47713
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 39357,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.039427000000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4055,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 47713,
+   "webSearchRequests": 0,
+   "costUSD": 0.0115703,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step28.py: fix. Fewest input flags to change so a bad row becomes good, keeping frozen ones.\n\"step28.py: fix. Fewest input flags to change so a bad row becomes good, keeping frozen ones.\"\nimport functools\nimport math\nimport ezr\n\nGOOD_PCT = 25   # a row is \"good\" if its goal distance is in the best 25% of training\n\ndef _is_num(v) -> bool:\n  \"True if V is a usable finite number (bools and infinities do not count).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)\n\ndef _val(v):\n  \"One raw cell as an atom: blanks, None and NaN become '?'; strings are coerced like csv does.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return \"?\" if s == \"\" else ezr.atom(s)\n  if isinstance(v, float) and math.isnan(v): return \"?\"\n  return v\n\ndef _align(tbl, row):\n  \"\"\"ROW in TBL's column order. A dict may omit a column or key it without its goal\n  suffix; missing cells are '?'.\"\"\"\n  n = len(tbl.names)\n  if isinstance(row, dict):\n    raw = []\n    for name in tbl.names:\n      key = str(name)\n      if key in row:                                     raw.append(row[key])\n      elif key and key[-1] in \"+-!\" and key[:-1] in row: raw.append(row[key[:-1]])\n      else:                                              raw.append(\"?\")\n  else:\n    raw  = list(row)[:n]\n    raw += [\"?\"] * (n - len(raw))\n  return [_val(v) for v in raw]\n\ndef _ydist(tbl, row):\n  \"How far ROW's goals are from ideal; infinite if there are no goals or any goal is not a known number.\"\n  if not tbl.y or not all(_is_num(row[c.at]) for c in tbl.y): return math.inf\n  return ezr.ydist(tbl, row)\n\n@functools.lru_cache(maxsize=8)\ndef _model(train_csv):\n  \"The table, its rated rows as (ydist, index) sorted best first, and the cut for good.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  rated = [(_ydist(tbl, r), i) for i, r in enumerate(tbl.rows)]\n  known = sorted(t for t in rated if t[0] < math.inf)\n  cap   = max(1, len(known) * GOOD_PCT // 100)\n  cut   = known[min(cap, len(known)) - 1][0] if known else -math.inf\n  return tbl, known, cut\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"Inputs of ROW (a bad row, goals removed), with as few values changed as possible so\n  it becomes good. Each candidate is a good training flag set, whose goals are known; the\n  cost of a candidate is the number of input columns where ROW differs from it. Columns\n  that already agree keep ROW's value (equal by construction). FROZEN names input columns\n  that must not change. Ties go to fewer changes, then to the better goal distance.\n  Raises ValueError if a frozen name is not an input column, or if no good training flag\n  set agrees with the frozen values.\"\"\"\n  tbl, known, cut = _model(train_csv)\n  xs     = list(tbl.x)\n  inputs = {c.txt for c in xs}\n  if frozen is None: frozen = ()\n  if isinstance(frozen, str): frozen = (frozen,)\n  frozen = set(frozen)\n  if frozen - inputs:\n    raise ValueError(f\"frozen names are not input columns: {sorted(frozen - inputs)}; \"\n                     f\"inputs are {sorted(inputs)}\")\n  if not known:\n    raise ValueError(\"no training row has all its goals known, so nothing is good\")\n  full = _align(tbl, row)\n  mine = {c.txt: full[c.at] for c in xs}\n\n  best = None\n  for y, i in known:                # known is sorted by y, so stop at the first non-good\n    if y > cut: break\n    cand = tbl.rows[i]\n    changes, legal = 0, True\n    for c in xs:\n      cv, mv = cand[c.at], mine[c.txt]\n      if cv == mv: continue\n      if c.txt in frozen or cv == \"?\":   # frozen values must not move; \"?\" is no setting\n        legal = False\n        break\n      changes += 1\n    if not legal: continue\n    key = (changes, y, i)           # fewest changed inputs, then closest to ideal\n    if best is None or key < best[0]: best = (key, i)\n  if best is None:\n    raise ValueError(f\"no good training flag set agrees with the frozen values {sorted(frozen)}\")\n  cand = tbl.rows[best[1]]\n  return {c.txt: cand[c.at] for c in xs}\n```",
+ "ttft_ms": 11385,
+ "type": "result",
+ "duration_ms": 15632,
+ "uuid": "022e55d6-bd25-42fa-a623-ac1e42d0c313",
+ "ttft_stream_ms": 1486,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
