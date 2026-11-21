@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 29432,
+ "stop_reason": "end_turn",
+ "session_id": "ef92fe8e-724b-4d59-a401-0558177e95a8",
+ "total_cost_usd": 0.010407340000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 201,
+  "cache_read_input_tokens": 7844,
+  "output_tokens": 6341,
+  "output_tokens_details": {
+   "thinking_tokens": 5384
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 201,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6341,
+    "cache_read_input_tokens": 7844,
+    "cache_creation_input_tokens": 201,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 201
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7028,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007118,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6341,
+   "cacheReadInputTokens": 7844,
+   "cacheCreationInputTokens": 201,
+   "webSearchRequests": 0,
+   "costUSD": 0.00328934,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step1.py\n\"\"\"Step 1: families of flag combinations, and the unusually good rows.\n\nUses only the standard library plus ezr.\n\"\"\"\nimport random\nimport ezr\n\n\ndef _load(train_csv: str) -> ezr.TBL:\n  \"Read TRAIN_CSV into an ezr table, keeping file order.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\n\ndef families(train_csv: str) -> list[int]:\n  \"One family label per data row of TRAIN_CSV, in file order.\"\n  random.seed(ezr.the.Seed)\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  if not rows: return []\n  k = min(5, len(rows))                       # a handful of families\n  # Clustering uses the flags only (x columns): k-modes/k-means style,\n  # with centroids made by ezr.mids and distances by ezr.xdist.\n  cents  = random.sample(rows, k)             # start from real rows\n  labels = None\n  for _ in range(20):\n    new = [min(range(k), key=lambda j: ezr.xdist(tbl, r, cents[j]))\n           for r in rows]\n    if new == labels: break                   # assignments are stable\n    labels = new\n    for j in range(k):\n      members = [r for r, l in zip(rows, labels) if l == j]\n      if members:                             # keep old centroid if empty\n        cents[j] = ezr.mids(ezr.clone(tbl, members))\n  return labels\n\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl  = _load(train_csv)\n  rows = tbl.rows\n  cap  = int(0.05 * len(rows))                # at most 5% of rows\n  if cap <= 0: return []\n\n  def gaps(r: ezr.ROW) -> list[float]:\n    \"Per goal: distance from the ideal. Smaller is better.\"\n    return [abs(ezr.norm(c, r[c.at]) - c.goal) for c in tbl.y]\n\n  G = [gaps(r) for r in rows]\n\n  def dominates(a: list[float], b: list[float]) -> bool:\n    \"A is no worse than B on every goal, and strictly better on one.\"\n    return (all(x <= y for x, y in zip(a, b))\n            and any(x < y for x, y in zip(a, b)))\n\n  # Pareto front: rows that no other row beats on all goals together.\n  front = [i for i in range(len(rows))\n           if not any(dominates(G[j], G[i])\n                      for j in range(len(rows)) if j != i)]\n  # Keep the closest to the ideal, capped at 5%; return in file order.\n  front.sort(key=lambda i: ezr.ydist(tbl, rows[i]))\n  return sorted(front[:cap])\n```",
+ "ttft_ms": 25375,
+ "type": "result",
+ "duration_ms": 28483,
+ "uuid": "ca2be422-6835-4029-8a7a-1e098a7128b6",
+ "ttft_stream_ms": 1213,
+ "time_to_request_ms": 32,
+ "queued_turn_count": 0
+}
