@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9868,
+ "stop_reason": "end_turn",
+ "session_id": "e0ea29be-118f-4cfa-a27c-1fc3fdc26fae",
+ "total_cost_usd": 0.0425452,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 40790,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1684,
+  "output_tokens_details": {
+   "thinking_tokens": 1078
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 40790,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1684,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 40790,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 40790
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33475,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033545,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1684,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 40790,
+   "webSearchRequests": 0,
+   "costUSD": 0.0090002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step27.py: choose customers to target with a fixed mailing budget.\n\nchoose(blind_csv, label, budget=30, goal=None) maps the client's two requests\nonto the search:\n  - \"Find the best customers to target while test-mailing only 50 people\":\n    choose(blind_csv, label, budget=50)\n  - \"If I care most about store visits rather than web orders, who should I\n    target instead?\": choose(blind_csv, label, budget=50,\n    goal=\"NUMSTOREPURCHASES+\"). The goal name may be given with or without\n    its +/- suffix, so \"NUMSTOREPURCHASES\" also works.\n\nThe search is step17.choose, which is step7.choose (explore across customer\nsegments, then exploit by predicted score). It is reused unchanged. This module\nadds only a check that the caller's label function is never asked for more\nthan `budget` customers. Standard library only.\n\"\"\"\nfrom step17 import choose as _search\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best customer found, mailing (calling label on) at most\n    `budget` customers.\n\n    label(i) returns the goals of row i as a dict and may be called at most\n    `budget` times; a further call raises RuntimeError. If `goal` names one\n    goal column (with or without its +/- suffix), only that goal is optimised.\n    \"\"\"\n    if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:\n        raise ValueError(\"budget must be a whole number of at least 1\")\n\n    calls = 0\n\n    def counted_label(i):\n        nonlocal calls\n        if calls >= budget:\n            raise RuntimeError(\"benchmark budget exhausted\")\n        calls += 1\n        return label(i)\n\n    return _search(blind_csv, counted_label, budget=budget, goal=goal)\n```",
+ "ttft_ms": 5994,
+ "type": "result",
+ "duration_ms": 8046,
+ "uuid": "868cdf27-0705-42b5-984a-465a709fba96",
+ "ttft_stream_ms": 1090,
+ "time_to_request_ms": 11,
+ "queued_turn_count": 0
+}
