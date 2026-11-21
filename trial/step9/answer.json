@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 35902,
+ "stop_reason": "end_turn",
+ "session_id": "5ee7c2f9-bd8e-4fb7-bac2-d263fdef9679",
+ "total_cost_usd": 0.020873000000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 15584,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8618,
+  "output_tokens_details": {
+   "thinking_tokens": 6797
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 15584,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8618,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 15584,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 15584
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 13372,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.013447,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8618,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 15584,
+   "webSearchRequests": 0,
+   "costUSD": 0.007426,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 9: flag benchmark results that look like glitches or unusual flag sets.\n\nodd() returns one suspicion score per row (higher = more suspicious). Two signals\nare combined, both measured against train_csv:\n\n* goal residual: for each goal, how far the reported value is from the median\n  goal value of the K training builds with the most similar flags, in robust\n  units (the goal's median absolute deviation over the whole training set). The\n  largest residual over the goals is used, so one absurd goal value is enough to\n  raise the score. A missing or non-finite goal scores MISSING_RESIDUAL.\n* novelty: the mean normalised flag distance to the K nearest training builds,\n  the same distance step2 and step4 use. High novelty means the flag set is\n  unlike anything in train_csv.\n\nscore = largest goal residual + NOVELTY_WEIGHT * novelty\n\nScores are plain floats on a relative scale; compare them with each other rather\nthan against a fixed cut-off.\n\"\"\"\n\nimport heapq\nimport math\n\nfrom step1 import _load, _split_columns\n\nK = 15\nNOVELTY_WEIGHT = 5.0\nMISSING_RESIDUAL = 50.0\nMAD_TO_SIGMA = 1.4826\n\n\ndef _finite(value):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _median(sorted_vals):\n    n = len(sorted_vals)\n    mid = n // 2\n    if n % 2:\n        return sorted_vals[mid]\n    return 0.5 * (sorted_vals[mid - 1] + sorted_vals[mid])\n\n\ndef _scale(vals):\n    \"\"\"Robust spread of a goal: MAD-based, else std, else a tiny positive value.\"\"\"\n    med = _median(sorted(vals))\n    mad = _median(sorted(abs(v - med) for v in vals)) * MAD_TO_SIGMA\n    if mad > 0.0:\n        return mad\n    mean = sum(vals) / len(vals)\n    sd = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))\n    if sd > 0.0:\n        return sd\n    return max(abs(med) * 1e-3, 1e-9)\n\n\ndef _spec(rows, inputs):\n    \"\"\"Per input column: ('num', lo, hi) if every training value is numeric, else ('cat', None, None).\"\"\"\n    spec = {}\n    for c in inputs:\n        vals = [r.get(c) for r in rows]\n        if vals and all(isinstance(v, float) for v in vals):\n            finite = [v for v in vals if math.isfinite(v)]\n            if finite:\n                spec[c] = (\"num\", min(finite), max(finite))\n                continue\n        spec[c] = (\"cat\", None, None)\n    return spec\n\n\ndef _distance(a, b, inputs, spec):\n    \"\"\"Sum of per-column differences; numeric columns are scaled to [0, 1].\"\"\"\n    d = 0.0\n    for c in inputs:\n        kind, lo, hi = spec[c]\n        x = a.get(c)\n        y = b.get(c)\n        if kind == \"num\":\n            fx = _finite(x)\n            fy = _finite(y)\n            if fx is None or fy is None:\n                d += 1.0\n            else:\n                span = hi - lo\n                d += abs(fx - fy) / span if span > 0 else 0.0\n        else:\n            d += 0.0 if str(x) == str(y) else 1.0\n    return d\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"Return one suspicion score per row of `rows` (higher = more likely a glitch or unusual).\n\n    Each score is the largest robust goal residual against the most similar training\n    builds, plus NOVELTY_WEIGHT times the mean flag-space distance to those builds.\n    If train_csv has no rows there is no reference, so every score is 0.0.\n    \"\"\"\n    columns, train = _load(train_csv)\n    maximise, minimise, inputs = _split_columns(columns)\n    goals = maximise + minimise\n\n    if not rows:\n        return []\n    n = len(train)\n    if n == 0:\n        return [0.0] * len(rows)\n\n    spec = _spec(train, inputs)\n    width = max(1, len(inputs))\n    k = min(K, n)\n\n    train_goal = {g: [_finite(r.get(g)) for r in train] for g in goals}\n    scale = {}\n    for g in goals:\n        vals = [v for v in train_goal[g] if v is not None]\n        if vals:\n            scale[g] = _scale(vals)\n\n    out = []\n    for row in rows:\n        near = heapq.nsmallest(\n            k,\n            ((_distance(t, row, inputs, spec), i) for i, t in enumerate(train)),\n        )\n        novelty = sum(d for d, _ in near) / (k * width)\n\n        worst = 0.0\n        for g in goals:\n            if g not in scale:\n                continue\n            v = _finite(row.get(g))\n            if v is None:\n                worst = max(worst, MISSING_RESIDUAL)\n                continue\n            local = sorted(\n                train_goal[g][i] for _, i in near if train_goal[g][i] is not None\n            )\n            if not local:\n                continue\n            residual = abs(v - _median(local)) / scale[g]\n            worst = max(worst, residual)\n\n        out.append(float(worst + NOVELTY_WEIGHT * novelty))\n    return out\n```",
+ "ttft_ms": 29978,
+ "type": "result",
+ "duration_ms": 34974,
+ "uuid": "30ce2892-5c76-4ab6-b3e2-88de89d803dd",
+ "ttft_stream_ms": 1252,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
