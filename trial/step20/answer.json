@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 38784,
+ "stop_reason": "end_turn",
+ "session_id": "f33d5ba7-9c50-4e57-8605-c0073819c2b5",
+ "total_cost_usd": 0.0483107,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 41860,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9109,
+  "output_tokens_details": {
+   "thinking_tokens": 7188
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 41860,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9109,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 41860,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 41860
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 35314,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.035384,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9109,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 41860,
+   "webSearchRequests": 0,
+   "costUSD": 0.012926700000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 20: does our shortlist beat a simple 'top overall rating' list, and does\nour penalty guesser beat an off-the-shelf model?\n\nrace(train_csv, test_csv) returns {method: score}. Higher is better for every\nkey. A method whose score cannot be computed is reported as -inf.\n\nShortlist race. The test builds form a blind pool, and each method may label\nat most _BUDGET of them. The score is the chosen build's mean goal score over\nthe complete test builds, each goal scaled over those builds (0 worst, 1 best).\n  \"ours\"                step17.choose (scout-limited step7 search)\n  \"top_overall_rating\"  label the _BUDGET builds with the highest OVR and keep\n                        the best labelled one (the simple rating list)\n  \"random_search\"       label random builds, keep the best labelled one\n  \"off_the_shelf_model\" ridge-guided labelling, as in step10\n\nPenalty guesser race. Only the Penalties goal is predicted, on test rows where\nthe Penalties value is finite. The score is minus the mean absolute error,\nscaled by the Penalties range in train_csv.\n  \"penalty_guesser_neg_mae\"  step12.guess median estimate (\"ours\")\n  \"penalty_ridge_neg_mae\"    ridge regression fitted on train_csv\n\"\"\"\nimport math\nimport os\nimport tempfile\n\nfrom step1 import _load\nfrom step10 import (\n    _BUDGET,\n    _Encoder,\n    _best_of,\n    _combined,\n    _complete,\n    _finite,\n    _goal_specs,\n    _is_goal,\n    _is_input,\n    _model_search,\n    _neg_mae,\n    _random_search,\n    _ridge_preds,\n    _spans,\n    _write_blind,\n)\nfrom step12 import guess as _guess12\nfrom step17 import choose as _choose17\n\n\ndef _top_ovr(pool, vecs, budget):\n    \"\"\"Label the budget builds with the highest OVR and return the best labelled one.\n\n    Builds with no finite OVR are ranked last; ties go to the lower index.\n    \"\"\"\n    def ovr(i):\n        v = _finite(pool[i].get(\"OVR\"))\n        return v if v is not None else -math.inf\n\n    ids = sorted(range(len(pool)), key=lambda i: (-ovr(i), i))[:budget]\n    return _best_of(ids, vecs)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Scores (higher is better) for our shortlist and penalty guesser and the rivals.\n\n    Keys: \"ours\", \"top_overall_rating\", \"random_search\", \"off_the_shelf_model\"\n    (shortlist race, score = mean goal score of the chosen build) and\n    \"penalty_guesser_neg_mae\", \"penalty_ridge_neg_mae\" (Penalties prediction\n    race, score = minus the mean scaled absolute error).\n    \"\"\"\n    header, train = _load(train_csv)\n    theader, test = _load(test_csv)\n    specs = _goal_specs(theader)\n    train_inputs = [c for c in header if _is_input(c)]\n    test_inputs = [c for c in theader if _is_input(c)]\n\n    scores = {\n        \"ours\": -math.inf,\n        \"top_overall_rating\": -math.inf,\n        \"random_search\": -math.inf,\n        \"off_the_shelf_model\": -math.inf,\n        \"penalty_guesser_neg_mae\": -math.inf,\n        \"penalty_ridge_neg_mae\": -math.inf,\n    }\n\n    # Shortlist race on the complete test builds.\n    keep, vecs = _complete(test, specs)\n    pool = [test[i] for i in keep]\n    n = len(pool)\n    if n > 0 and specs:\n        pool_score = _combined(vecs)\n        budget = min(_BUDGET, n)\n        goal_cols = [c for c, _ in specs]\n\n        def label(i):\n            return {c: pool[i][c] for c in goal_cols}\n\n        with tempfile.TemporaryDirectory() as tmp:\n            blind = os.path.join(tmp, \"blind.csv\")\n            _write_blind(blind, theader, pool)\n            ours = _choose17(blind, label, budget=budget)\n        scores[\"ours\"] = float(pool_score[ours])\n\n        scores[\"random_search\"] = float(\n            pool_score[_random_search(n, vecs, budget)]\n        )\n\n        enc = _Encoder(pool, test_inputs)\n        X = [enc.encode(r) for r in pool]\n        scores[\"off_the_shelf_model\"] = float(\n            pool_score[_model_search(X, vecs, budget)]\n        )\n\n        if \"OVR\" in theader:\n            scores[\"top_overall_rating\"] = float(\n                pool_score[_top_ovr(pool, vecs, budget)]\n            )\n\n    # Penalty guesser race on the Penalties goal.\n    pen_cols = [c for c in header if _is_goal(c) and c[:-1] == \"Penalties\"]\n    if pen_cols and pen_cols[0] in theader and train and test:\n        pen = pen_cols[0]\n        spans = _spans(train, [pen])\n\n        g_preds = []\n        for r in test:\n            row = {c: r[c] for c in train_inputs if c in r}\n            est = _guess12(train_csv, row)\n            g_preds.append([est[pen][0] if pen in est else None])\n        scores[\"penalty_guesser_neg_mae\"] = float(\n            _neg_mae(g_preds, test, [pen], spans)\n        )\n\n        r_preds = _ridge_preds(train, test, train_inputs, [pen])\n        scores[\"penalty_ridge_neg_mae\"] = float(\n            _neg_mae(r_preds, test, [pen], spans)\n        )\n\n    return scores\n```",
+ "ttft_ms": 32154,
+ "type": "result",
+ "duration_ms": 37406,
+ "uuid": "394bb555-45ce-49aa-9244-34bef371d160",
+ "ttft_stream_ms": 1324,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
