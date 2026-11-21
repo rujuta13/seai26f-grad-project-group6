@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6442,
+ "stop_reason": "end_turn",
+ "session_id": "b45ec145-c49c-4e1c-86bc-b62ecee679aa",
+ "total_cost_usd": 0.0511557,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 48580,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1201,
+  "output_tokens_details": {
+   "thinking_tokens": 415
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 48580,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1201,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 48580,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 48580
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 40759,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.04083899999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1201,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 48580,
+   "webSearchRequests": 0,
+   "costUSD": 0.010316700000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 23: certify whether two samples really differ.\n\nsame(xs, ys) runs a two-sided permutation test on the difference of means.\nIt pools the values, repeatedly shuffles them into two groups of the original\nsizes, and counts how often a random split gives a gap at least as large as\nthe observed one. If that happens often, the gap is consistent with chance and\nsame() returns True. If it is rare (p < 0.05), the difference is treated as\nreal and same() returns False. The shuffles use a fixed seed, so the answer is\nreproducible.\n\"\"\"\nimport math\nimport random\n\n_ALPHA = 0.05\n_N_PERM = 5000\n_SEED = 1\n\n\ndef _clean(vals):\n    \"\"\"Return the finite numeric values of vals as floats, skipping the rest.\"\"\"\n    out = []\n    for v in vals:\n        try:\n            f = float(v)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            out.append(f)\n    return out\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys do not differ significantly (the gap is noise).\n\n    False if the difference in means is unlikely to be chance at the 5% level.\n    Empty samples give True, since no real difference can be shown.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        return True\n\n    n1, n2 = len(a), len(b)\n    n = n1 + n2\n    pooled = a + b\n    total = sum(pooled)\n    sum_a = sum(a)\n    observed = abs(sum_a / n1 - (total - sum_a) / n2)\n\n    # Tolerance for floating-point ties between observed and permuted gaps.\n    scale = max(1.0, max(abs(v) for v in pooled))\n    eps = 1e-9 * scale\n\n    rng = random.Random(_SEED)\n    idx = list(range(n))\n    hits = 0\n    for _ in range(_N_PERM):\n        rng.shuffle(idx)\n        s = sum(pooled[i] for i in idx[:n1])\n        d = abs(s / n1 - (total - s) / n2)\n        if d >= observed - eps:\n            hits += 1\n\n    # Add-one correction keeps the p-value strictly positive and valid.\n    p = (hits + 1) / (_N_PERM + 1)\n    return p >= _ALPHA\n```",
+ "ttft_ms": 3058,
+ "type": "result",
+ "duration_ms": 5177,
+ "uuid": "0302e763-d2c2-404d-b1f1-4b5c25473caa",
+ "ttft_stream_ms": 1236,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
