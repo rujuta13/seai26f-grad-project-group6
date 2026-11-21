@@ -1,0 +1,347 @@
+Use the Python 3.13 standard library plus scikit-learn 1.7 and numpy 1.26. No other third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+import csv
+
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+_cache = {}
+
+
+def _num(v):
+    try:
+        return float(v)
+    except ValueError:
+        return v.strip()
+
+
+def _load(path):
+    if path in _cache:
+        return _cache[path]
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = reader.fieldnames or []
+        rows = [{k: _num(v) for k, v in r.items()} for r in reader]
+
+    inputs, maxg, ming = [], [], []
+    for c in cols:
+        if c.endswith("+"):
+            maxg.append(c)
+        elif c.endswith("-"):
+            ming.append(c)
+        elif c.endswith("X"):
+            continue
+        else:
+            inputs.append(c)
+
+    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)
+    X = X.reshape(len(rows), len(inputs))
+    G = np.array(
+        [[float(r[c]) for c in maxg] + [-float(r[c]) for c in ming] for r in rows],
+        dtype=float,
+    ).reshape(len(rows), len(maxg) + len(ming))
+
+    d = {"rows": rows, "X": X, "G": G}
+    _cache[path] = d
+    return d
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    d = _load(train_csv)
+    X = d["X"]
+    n = len(X)
+    if n == 0:
+        return []
+    distinct = np.unique(X, axis=0)
+    if len(distinct) < 3:
+        return [0] * n
+
+    best_s, best_labels = None, None
+    for k in range(2, min(9, len(distinct))):
+        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)
+        labels = km.labels_
+        if len(set(labels.tolist())) < 2:
+            continue
+        s = silhouette_score(X, labels)
+        if best_s is None or s > best_s:
+            best_s, best_labels = s, labels
+    if best_labels is None:
+        return [0] * n
+    return [int(x) for x in best_labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of unusually good rows (best on all goals together), at most 5% of rows."""
+    d = _load(train_csv)
+    G = d["G"]
+    n = len(G)
+    cap = int(0.05 * n)
+    if cap == 0 or G.shape[1] == 0:
+        return []
+
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    Z = (G - mu) / sd  # higher is better on every column
+
+    # Pareto front: rows not dominated by any other row on all goals.
+    nondominated = np.ones(n, dtype=bool)
+    for i in range(n):
+        dominated = np.all(Z >= Z[i], axis=1) & np.any(Z > Z[i], axis=1)
+        if dominated.any():
+            nondominated[i] = False
+    cand = np.flatnonzero(nondominated)
+
+    # Rank the front by average standardized goal score, keep at most 5%.
+    score = Z.mean(axis=1)
+    order = cand[np.argsort(-score[cand], kind="stable")]
+    return sorted(int(i) for i in order[:cap])
+```
+
+### step2.py
+```python
+import csv
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import KFold, cross_val_predict
+
+from step1 import _load
+
+
+def _columns(train_csv):
+    with open(train_csv, newline="") as f:
+        cols = next(csv.reader(f), [])
+    goals = [c for c in cols if c.endswith("+") or c.endswith("-")]
+    inputs = [c for c in cols
+              if not (c.endswith("+") or c.endswith("-") or c.endswith("X"))]
+    return inputs, goals
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate each goal for a flag set, with an interval calibrated on held-out errors."""
+    inputs, goals = _columns(train_csv)
+    if not goals:
+        return {}
+
+    d = _load(train_csv)
+    rows = d["rows"]
+    n = len(rows)
+
+    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)
+    X = X.reshape(n, len(inputs))
+    Y = np.array([[float(r[g]) for g in goals] for r in rows], dtype=float)
+    Y = Y.reshape(n, len(goals))
+
+    x_new = np.array(
+        [[_as_float(row.get(c, 0.0)) for c in inputs]], dtype=float
+    ).reshape(1, len(inputs))
+
+    if n == 0:
+        return {g: (0.0, 0.0, 0.0) for g in goals}
+    if n < 4:
+        # Too little data for a model; report the observed spread.
+        out = {}
+        for j, g in enumerate(goals):
+            lo, mid, hi = float(Y[:, j].min()), float(Y[:, j].mean()), float(Y[:, j].max())
+            out[g] = (mid, lo, hi)
+        return out
+
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+    )
+    if len(inputs) == 0:
+        est = Y.mean(axis=0).reshape(1, -1)
+        oof = np.tile(Y.mean(axis=0), (n, 1))
+    else:
+        model.fit(X, Y)
+        est = model.predict(x_new).reshape(1, -1)
+        cv = KFold(n_splits=min(5, n), shuffle=True, random_state=0)
+        oof = cross_val_predict(
+            RandomForestRegressor(
+                n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+            ),
+            X, Y, cv=cv,
+        ).reshape(n, len(goals))
+
+    resid = Y - oof
+    lo_r = np.quantile(resid, 0.10, axis=0)
+    hi_r = np.quantile(resid, 0.90, axis=0)
+
+    result = {}
+    for j, g in enumerate(goals):
+        e = float(est[0, j])
+        lo = e + float(lo_r[j])
+        hi = e + float(hi_r[j])
+        lo, hi = min(lo, e), max(hi, e)
+        result[g] = (e, lo, hi)
+    return result
+
+
+def _as_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+```
+
+### step3.py
+```python
+import numpy as np
+
+_ALPHA = 0.05
+_RESAMPLES = 10000
+
+
+def same(xs, ys) -> bool:
+    """True if the two samples do NOT differ beyond run-to-run noise, False if the difference is real.
+
+    Two-sided permutation test on the difference of means, at the 5% level.
+    Empty samples, or samples whose means are identical, count as not different.
+    """
+    x = np.asarray(list(xs), dtype=float).ravel()
+    y = np.asarray(list(ys), dtype=float).ravel()
+    x = x[np.isfinite(x)]
+    y = y[np.isfinite(y)]
+    if len(x) == 0 or len(y) == 0:
+        return True
+
+    observed = abs(float(x.mean()) - float(y.mean()))
+    if observed == 0.0:
+        return True
+
+    n = len(x)
+    pooled = np.concatenate([x, y])
+    rng = np.random.default_rng(0)
+    threshold = observed - 1e-12 * max(1.0, observed)
+
+    count = 0
+    for _ in range(_RESAMPLES):
+        p = rng.permutation(pooled)
+        d = abs(float(p[:n].mean()) - float(p[n:].mean()))
+        if d >= threshold:
+            count += 1
+
+    p_value = (count + 1) / (_RESAMPLES + 1)
+    return p_value >= _ALPHA
+```
+
+### step4.py
+```python
+import numpy as np
+
+from step1 import _load
+from step2 import _columns, _as_float
+from step3 import same
+
+_WINDOW = 20  # recent rows compared against the training reference
+
+
+def _goal_layout(train_csv):
+    """Goal columns in the same order step1._load uses: maximised, then minimised."""
+    _, goals = _columns(train_csv)
+    maxg = [g for g in goals if g.endswith("+")]
+    ming = [g for g in goals if g.endswith("-")]
+    return maxg, ming
+
+
+def _goal_vec(row, maxg, ming):
+    return ([_as_float(row.get(g, 0.0)) for g in maxg]
+            + [-_as_float(row.get(g, 0.0)) for g in ming])
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Keep a row if no earlier row (training or streamed) dominates it on the
+    standardized goals, and its average standardized score is in the top 5% of
+    the reference rows. Only training data and earlier rows are used."""
+    maxg, ming = _goal_layout(train_csv)
+    if not (maxg or ming):
+        return [False] * len(rows)
+
+    G0 = _load(train_csv)["G"]
+    if len(G0) == 0:
+        return [False] * len(rows)
+
+    mu = G0.mean(axis=0)
+    sd = G0.std(axis=0)
+    sd[sd == 0] = 1.0
+    ref = (G0 - mu) / sd  # higher is better on every column
+
+    decisions = []
+    for row in rows:
+        z = (np.array(_goal_vec(row, maxg, ming), dtype=float) - mu) / sd
+        dominated = bool(np.any(np.all(ref >= z, axis=1) & np.any(ref > z, axis=1)))
+        threshold = float(np.quantile(ref.mean(axis=1), 0.95))
+        keep = (not dominated) and float(z.mean()) >= threshold
+        decisions.append(bool(keep))
+        # Every row, kept or not, becomes part of the reference for later rows.
+        ref = np.vstack([ref, z.reshape(1, -1)])
+    return decisions
+
+
+def _nn_distances(A, B):
+    """Distance from each row of A to its nearest row of B (Euclidean)."""
+    sq = (A ** 2).sum(axis=1)[:, None] + (B ** 2).sum(axis=1)[None, :] - 2.0 * (A @ B.T)
+    return np.sqrt(np.maximum(sq, 0.0)).min(axis=1)
+
+
+def drift(train_csv, rows) -> int | None:
+    """Warn at the first index where the last _WINDOW rows' nearest-training-row
+    distances differ from the training set's own leave-one-out nearest-neighbour
+    distances (permutation test from step3). Uses only rows up to that index."""
+    inputs, _ = _columns(train_csv)
+    X0 = _load(train_csv)["X"]
+    n = len(X0)
+    if n < 2 or not inputs or not rows:
+        return None
+
+    # Leave-one-out nearest-neighbour distances within the training set.
+    sq0 = (X0 ** 2).sum(axis=1)
+    D0 = np.sqrt(np.maximum(sq0[:, None] + sq0[None, :] - 2.0 * (X0 @ X0.T), 0.0))
+    np.fill_diagonal(D0, np.inf)
+    ref_nn = D0.min(axis=1)
+
+    Xn = np.array(
+        [[_as_float(r.get(c, 0.0)) for c in inputs] for r in rows], dtype=float
+    ).reshape(len(rows), len(inputs))
+    new_nn = _nn_distances(Xn, X0)
+
+    for i in range(_WINDOW - 1, len(rows)):
+        window = new_nn[i - _WINDOW + 1:i + 1]
+        if not same(ref_nn, window):
+            return i
+    return None
+```
+
+Step 5: blame.
+The client asks:
+  - "Why are the slow builds slow? Which passes are to blame?"
+  - "Why do some fast builds still eat so much CPU?"
+
+Write step5.py defining exactly these functions:
+def blame(train_csv) -> list[str]
+    Input column names, most to blame for bad rows (bad on the goals) first.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step5.py in one ```python block.

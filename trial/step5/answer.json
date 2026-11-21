@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 14545,
+ "duration_api_ms": 14533,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _load\nfrom step2 import _columns\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    inputs, _ = _columns(train_csv)\n    if not inputs:\n        return []\n\n    d = _load(train_csv)\n    X = d[\"X\"]\n    G = d[\"G\"]\n    n = len(X)\n    if n < 2 or G.shape[1] == 0:\n        return list(inputs)\n\n    # Same standardization as step1.best: higher score is better on every goal.\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    score = ((G - mu) / sd).mean(axis=1)\n    badness = -score  # higher means worse\n\n    if np.all(badness == badness[0]):\n        return list(inputs)\n\n    # Importance of each input for predicting badness.\n    model = RandomForestRegressor(\n        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1\n    )\n    model.fit(X, badness)\n    imp = model.feature_importances_\n\n    # An input is only blamed if its \"on\" state (any value above the column\n    # minimum) goes with worse rows than its \"off\" state. Inputs whose\n    # presence helps get zero blame and sink to the end.\n    blame_scores = np.zeros(len(inputs))\n    for j in range(len(inputs)):\n        col = X[:, j]\n        on = col != col.min()\n        off = ~on\n        if on.any() and off.any() and imp[j] > 0:\n            if badness[on].mean() > badness[off].mean():\n                blame_scores[j] = imp[j]\n\n    order = sorted(range(len(inputs)), key=lambda j: (-blame_scores[j], j))\n    return [inputs[j] for j in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "bcbf9bed-0763-4c6d-b2f8-73b9bfec3b37",
+ "total_cost_usd": 0.0018739,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 4984,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2501,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4984,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2501,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4984,
+   "webSearchRequests": 0,
+   "costUSD": 0.0018739,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c4bfbc7f-c545-4743-8701-30d652fcbe5d"
+}
