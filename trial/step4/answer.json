@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28647,
+ "stop_reason": "end_turn",
+ "session_id": "ec9a22c9-0843-426d-abed-4532ad9aa57e",
+ "total_cost_usd": 0.0137467,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 10020,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6031,
+  "output_tokens_details": {
+   "thinking_tokens": 5158
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 10020,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6031,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 10020,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 10020
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 8647,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.008727,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6031,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 10020,
+   "webSearchRequests": 0,
+   "costUSD": 0.0050197,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step4.py\n\"\"\"\nstep4: flow.  Rows arrive one at a time.  stream() keeps the ones worth\nkeeping (good on the goals).  drift() warns when the new rows stop looking\nlike the training rows.  Reuses step2 (table, tree, _full, guess), step3\n(same), and ezr (ydist, same).  Each decision uses only train_csv and the\nrows seen so far.\n\"\"\"\nimport ezr\nimport step2\nimport step3\n\nKEEP_FRAC = 0.05   # keep rows at least as good as the best 5% of training\nWINDOW    = 20     # drift: the last WINDOW rows are tested against training\n\n_ys_cache: dict = {}   # train_csv -> sorted training ydists\n\n\ndef _train_ys(train_csv: str) -> list[float]:\n  \"Sorted ydist of every training row, measured with training's stats.\"\n  if train_csv not in _ys_cache:\n    tbl, _ = step2._model(train_csv)\n    _ys_cache[train_csv] = sorted(ezr.ydist(tbl, r) for r in tbl.rows)\n  return _ys_cache[train_csv]\n\n\ndef _ydist(train_csv: str, row) -> float:\n  \"How far ROW's goals are from ideal, using training's stats.\"\n  tbl, _ = step2._model(train_csv)\n  full = step2._full(tbl, row)\n  miss = [c for c in tbl.y if full[c.at] == \"?\"]\n  if miss:                                  # unknown goals: fill by guess\n    g = step2.guess(train_csv, row)\n    for c in miss:\n      v = g[c.txt][0]\n      full[c.at] = c.mu if v != v else v    # nan -> training mean\n  return ezr.ydist(tbl, full)\n\n\ndef stream(train_csv: str, rows) -> list[bool]:\n  \"Keep (True) each row whose goals are as good as the best training rows.\"\n  ys  = _train_ys(train_csv)\n  k   = max(1, int(KEEP_FRAC * len(ys)))\n  bar = ys[k - 1]\n  return [_ydist(train_csv, row) <= bar for row in rows]\n\n\ndef drift(train_csv: str, rows) -> int | None:\n  \"Index of the first row where the recent rows stop matching training.\"\n  base = _train_ys(train_csv)\n  seen: list[float] = []\n  for i, row in enumerate(rows):\n    seen.append(_ydist(train_csv, row))\n    recent = seen[-WINDOW:]\n    if len(recent) == WINDOW and not step3.same(base, recent):\n      return i\n  return None\n```",
+ "ttft_ms": 25245,
+ "type": "result",
+ "duration_ms": 27796,
+ "uuid": "fd5035db-0fe0-4584-82bb-b5fb47be5b42",
+ "ttft_stream_ms": 1225,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
