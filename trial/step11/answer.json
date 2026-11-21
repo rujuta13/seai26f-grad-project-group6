@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 50710,
+ "stop_reason": "end_turn",
+ "session_id": "7b4736f7-c76b-4a94-b2c6-1f7dd7b229d0",
+ "total_cost_usd": 0.0286154,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21946,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11216,
+  "output_tokens_details": {
+   "thinking_tokens": 9493
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21946,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11216,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21946,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21946
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 18543,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.018618,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11216,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21946,
+   "webSearchRequests": 0,
+   "costUSD": 0.0099974,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step11.py\nimport ezr\n\nK   = 5      # how many families of player: a handful\nTOP = 0.05   # best: at most this share of rows\n\n\ndef _is_num(v) -> bool:\n  \"True if V is a real number (a bool is not).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _goals(tbl: ezr.TBL) -> list:\n  \"The numeric goal columns of TBL: names ending in + or -.\"\n  return [c for c in tbl.cols.values()\n          if type(c) is ezr.Num and tbl.names[c.at][-1] in \"+-\"]\n\ndef _ydist(goals: list, r: ezr.ROW) -> float:\n  \"How far R's goals are from the best they could be (0 is best).\"\n  return ezr.dist((abs(ezr.norm(c, r[c.at]) - c.goal) for c in goals),\n                  len(goals))\n\ndef _usable(tbl: ezr.TBL, cols: list) -> list:\n  \"Input columns worth clustering on. Ids and names are nearly unique symbols, so they add only noise.\"\n  n = len(tbl.rows)\n  return [c for c in cols\n          if type(c) is ezr.Num or len(c.has) <= max(1, n // 2)]\n\ndef _encode(cols: list, row: ezr.ROW) -> list:\n  \"ROW over COLS: a normalised number for a Num, the symbol for a Sym, None if unknown.\"\n  out = []\n  for c in cols:\n    v = row[c.at]\n    if v is None or (isinstance(v, str) and v.strip() in (\"\", \"?\")):\n      out.append(None)\n    elif type(c) is ezr.Num:\n      out.append(ezr.norm(c, v) if _is_num(v) else None)\n    else:\n      out.append(v)\n  return out\n\ndef _far(r: list, m: list, num: list) -> float:\n  \"Squared distance between encoded row R and encoded centroid M (same ranking as the root mean square).\"\n  total = 0.0\n  for a, b, n in zip(r, m, num):\n    if a is None or b is None: g = 1.0          # unknown = far\n    elif n:                    g = abs(a - b)\n    else:                      g = 0.0 if a == b else 1.0\n    total += g * g\n  return total\n\ndef _centre(rows: list, num: list) -> list:\n  \"Middle of encoded ROWS: the mean for numbers, the most common symbol otherwise; None if none known.\"\n  out = []\n  for j, n in enumerate(num):\n    vals = [r[j] for r in rows if r[j] is not None]\n    if not vals:\n      out.append(None)\n    elif n:\n      out.append(sum(vals) / len(vals))\n    else:\n      counts: dict = {}\n      for v in vals: counts[v] = counts.get(v, 0) + 1\n      out.append(max(counts, key=counts.get))\n  return out\n\n\ndef families(train_csv) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  if not rows: return []\n  cols = _usable(tbl, tbl.x)\n  if not cols: return [0] * len(rows)\n  num  = [type(c) is ezr.Num for c in cols]\n  enc  = [_encode(cols, r) for r in rows]\n  k    = min(K, len(rows))\n  # farthest-point seeding: deterministic, and spreads the seeds out\n  seeds = [0]\n  dmin  = [_far(e, enc[0], num) for e in enc]\n  while len(seeds) < k:\n    far   = max(range(len(enc)), key=lambda i: dmin[i])\n    seeds.append(far)\n    dmin  = [min(d, _far(e, enc[far], num)) for d, e in zip(dmin, enc)]\n  cents = [enc[i] for i in seeds]\n  # k-modes style refinement: assign to nearest, then recentre on middles\n  labels: list[int] = []\n  for _ in range(30):\n    new = [min(range(k), key=lambda j: _far(e, cents[j], num)) for e in enc]\n    if new == labels: break\n    labels = new\n    for j in range(k):\n      members = [e for e, l in zip(enc, labels) if l == j]\n      if members: cents[j] = _centre(members, num)\n  return labels\n\ndef best(train_csv) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl   = ezr.Tbl(ezr.csv(train_csv))\n  rows  = tbl.rows\n  goals = _goals(tbl)\n  cap   = int(TOP * len(rows))\n  if not goals or cap < 1: return []\n  scored = []\n  for i, r in enumerate(rows):\n    if all(_is_num(r[c.at]) for c in goals):   # incomplete goals cannot be ranked\n      scored.append((_ydist(goals, r), i))\n  scored.sort()\n  return [i for _, i in scored[:cap]]\n```",
+ "ttft_ms": 44871,
+ "type": "result",
+ "duration_ms": 49625,
+ "uuid": "c31dbc23-6578-41c8-92e2-d947f93c7940",
+ "ttft_stream_ms": 1573,
+ "time_to_request_ms": 81,
+ "queued_turn_count": 0
+}
