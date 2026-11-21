@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 48106,
+ "stop_reason": "end_turn",
+ "session_id": "f1cb0bf6-8bb9-47b1-b7b2-6b14bbd5551f",
+ "total_cost_usd": 0.056554099999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 50307,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10573,
+  "output_tokens_details": {
+   "thinking_tokens": 8415
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 50307,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10573,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 50307,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 50307
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 41131,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.041206,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10573,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 50307,
+   "webSearchRequests": 0,
+   "costUSD": 0.0153481,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 29: spot. Flag customer records that look wrong or unlike anyone else.\n\nServes the client's questions:\n  - \"Flag customer records that look wrong: impossible ages, odd incomes, typos.\"\n  - \"Which customers behave unlike anyone else? Are they fraud, or just unusual?\"\n\nBuilds on step9.odd, which scores each record for an unfamiliar flag set, odd\ngoal values, and disagreement with exact flag-set twins. This module adds checks\non the input columns themselves, which step9 does not examine directly:\n\n  1. Impossible values: in a numeric column whose training values are never\n     negative, a negative value is flagged outright (for example an age or an\n     income below zero).\n  2. Odd numeric values: a robust z-score against the training median and MAD,\n     as in step9, so an age of 200 or an income far beyond anything seen scores\n     as suspicious. Infinite values count as suspicious.\n  3. Typos: a non-blank text cell in a column whose training values are mostly\n     numbers (for example \"3l\" in an income column) is flagged. A text value\n     never seen in training, in a column with few distinct text values, is\n     flagged as weakly suspicious, since it may be a misspelling or a genuinely\n     new category.\n\nBlank cells are not treated as errors: missing data is common, and step9\nalready treats missing goal values as worst.\n\nEach record's score is its largest signal plus a small share of the average\nsignal, the same rule as step9, so one strong problem flags the record while\nweaker signals still rank it above a clean one. Scores lie in [0, 1.1].\n\"\"\"\n\nimport math\nimport statistics\nfrom functools import lru_cache\n\nimport step1\nimport step9\n\n_Z_LO = 3.0          # robust z-score below which a numeric value is not odd\n_Z_SPAN = 7.0        # z-score range over which suspicion rises from 0 to 1\n_TYPO = 1.0          # text cell in a column that is otherwise numeric\n_IMPOSSIBLE = 1.0    # negative value where training values are never negative\n_UNSEEN = 0.3        # text value never seen in a low-cardinality text column\n_NUM_SHARE = 0.9     # share of non-blank cells that must be numbers for a numeric column\n_MIN_NUM = 2         # fewest numeric training values needed to judge a column\n_MAX_CATS = 40       # text columns with more distinct values are not checked\n_MIX = 0.1           # weight of the average signal added to the largest one\n\n\ndef _blank(v):\n    \"\"\"True for an empty, missing or NaN cell.\"\"\"\n    if v is None:\n        return True\n    if isinstance(v, str):\n        return v.strip() == \"\"\n    return isinstance(v, float) and math.isnan(v)\n\n\n@lru_cache(maxsize=4)\ndef _input_model(train_csv):\n    \"\"\"What the training data says about each input column.\n\n    Returns (inputs, numeric, texts):\n      numeric: {name: (median, robust scale, training minimum)} for columns that\n               are mostly numbers.\n      texts:   {name: frozenset of training values as strings} for columns that\n               are mostly text and have few distinct values.\n    Columns with no usable training values are left out.\n    \"\"\"\n    header, rows = step1._read(train_csv)\n    inputs, _, _ = step1._classify(header)\n    numeric = {}\n    texts = {}\n    for name in inputs:\n        present = [v for v in (r.get(name) for r in rows) if not _blank(v)]\n        if not present:\n            continue\n        floats = [v for v in present if isinstance(v, float) and math.isfinite(v)]\n        if len(floats) >= _MIN_NUM and len(floats) >= _NUM_SHARE * len(present):\n            med = statistics.median(floats)\n            scale = 1.4826 * statistics.median([abs(x - med) for x in floats])\n            if scale <= 0:\n                scale = statistics.pstdev(floats)\n            numeric[name] = (med, scale, min(floats))\n        else:\n            keys = {str(v) for v in present}\n            if len(keys) <= _MAX_CATS:\n                texts[name] = frozenset(keys)\n    return inputs, numeric, texts\n\n\ndef _z_suspicion(v, med, scale):\n    \"\"\"Suspicion in [0, 1] for a numeric value against a centre and robust scale.\"\"\"\n    if scale > 0:\n        z = (v - med) / scale\n        return min(1.0, max(0.0, (abs(z) - _Z_LO) / _Z_SPAN))\n    return 0.0 if v == med else 1.0\n\n\ndef _input_signals(row, inputs, numeric, texts):\n    \"\"\"Suspicion signals in [0, 1] from the input cells of one record.\"\"\"\n    signals = []\n    for name in inputs:\n        if name in numeric:\n            v = row.get(name)\n            if _blank(v):\n                continue\n            if not isinstance(v, float) or not math.isfinite(v):\n                signals.append(_TYPO)  # text or infinity where numbers belong\n                continue\n            med, scale, lo = numeric[name]\n            if lo >= 0 and v < 0:\n                signals.append(_IMPOSSIBLE)\n                continue\n            signals.append(_z_suspicion(v, med, scale))\n        elif name in texts:\n            v = row.get(name)\n            if _blank(v):\n                continue\n            if str(v) not in texts[name]:\n                signals.append(_UNSEEN)\n    return signals\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included), in order.\n\n    Higher means more likely a glitch, a typo, an impossible value, or a record\n    unlike anything in train_csv. Scores lie in [0, 1.1]. A record whose step9\n    score cannot be computed is flagged as fully suspicious (1.0).\n    \"\"\"\n    base = step9.odd(train_csv, rows)\n    inputs, numeric, texts = _input_model(train_csv)\n\n    scores = []\n    for row, b in zip(rows, base):\n        b = float(b)\n        if not math.isfinite(b):\n            scores.append(1.0)\n            continue\n        signals = _input_signals(row, inputs, numeric, texts)\n        if not signals:\n            scores.append(b)\n            continue\n        parts = [min(1.0, max(0.0, b))] + signals\n        top = max(parts)\n        mean = sum(parts) / len(parts)\n        scores.append(float(top + _MIX * mean))\n    return scores\n```",
+ "ttft_ms": 39896,
+ "type": "result",
+ "duration_ms": 46200,
+ "uuid": "e80766f6-4247-4bfd-b48e-874b091d76d8",
+ "ttft_stream_ms": 1418,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
