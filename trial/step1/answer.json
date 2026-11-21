@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 29598,
+ "stop_reason": "end_turn",
+ "session_id": "e03f3d50-36e0-472b-bc02-cbb3046f6b42",
+ "total_cost_usd": 0.010372140000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 200,
+  "cache_read_input_tokens": 7844,
+  "output_tokens": 6301,
+  "output_tokens_details": {
+   "thinking_tokens": 5648
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 200,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6301,
+    "cache_read_input_tokens": 7844,
+    "cache_creation_input_tokens": 200,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 200
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7028,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007103000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6301,
+   "cacheReadInputTokens": 7844,
+   "cacheCreationInputTokens": 200,
+   "webSearchRequests": 0,
+   "costUSD": 0.0032691400000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step1.py\nimport ezr\n\nK = 5  # how many families: a handful\n\ndef _nearest(tbl: ezr.TBL, row: ezr.ROW, cents: list) -> int:\n  \"Index of the centroid closest to ROW, over the x columns.\"\n  return min(range(len(cents)), key=lambda j: ezr.xdist(tbl, row, cents[j]))\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  if not rows: return []\n  k = min(K, len(rows))\n  # farthest-point seeding: deterministic, and spreads the seeds out\n  cents = [rows[0]]\n  while len(cents) < k:\n    far = max(range(len(rows)),\n              key=lambda i: min(ezr.xdist(tbl, rows[i], c) for c in cents))\n    cents.append(rows[far])\n  # k-modes style refinement: assign to nearest, then recentre on middles\n  labels: list[int] = []\n  for _ in range(20):\n    new = [_nearest(tbl, r, cents) for r in rows]\n    if new == labels: break\n    labels = new\n    for j in range(k):\n      members = [r for r, l in zip(rows, labels) if l == j]\n      if members: cents[j] = ezr.mids(ezr.clone(tbl, members))\n  return labels\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the best rows on all goals together, at most 5% of rows.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  n   = len(tbl.rows)\n  cap = int(0.05 * n)\n  return sorted(range(n), key=lambda i: ezr.ydist(tbl, tbl.rows[i]))[:cap]\n```",
+ "ttft_ms": 26641,
+ "type": "result",
+ "duration_ms": 28578,
+ "uuid": "cadd96c1-4f0d-46d1-bf53-2c84d11a1e4b",
+ "ttft_stream_ms": 1700,
+ "time_to_request_ms": 26,
+ "queued_turn_count": 0
+}
