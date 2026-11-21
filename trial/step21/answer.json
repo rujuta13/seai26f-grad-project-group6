@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 7428,
+ "stop_reason": "end_turn",
+ "session_id": "7f3a206c-612d-40b5-96a2-c5787ceec49f",
+ "total_cost_usd": 0.0409533,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 39173,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 781,
+  "output_tokens_details": {
+   "thinking_tokens": 642
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39173,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 781,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 39173,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 39173
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 32643,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.032728,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 781,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39173,
+   "webSearchRequests": 0,
+   "costUSD": 0.008225300000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step21.py\nimport step11\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  return step11.families(train_csv)\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  return step11.best(train_csv)\n```",
+ "ttft_ms": 4670,
+ "type": "result",
+ "duration_ms": 5070,
+ "uuid": "a920b838-7f02-4d18-b590-e4842a3da049",
+ "ttft_stream_ms": 2005,
+ "time_to_request_ms": 92,
+ "queued_turn_count": 0
+}
