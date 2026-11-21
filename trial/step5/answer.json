@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21971,
+ "stop_reason": "end_turn",
+ "session_id": "ccd9c6a4-a886-4b62-a8b7-294d20dfe7b0",
+ "total_cost_usd": 0.0089533,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5733,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4937,
+  "output_tokens_details": {
+   "thinking_tokens": 3608
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5733,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4937,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5733,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5733
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5278,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005338,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4937,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5733,
+   "webSearchRequests": 0,
+   "costUSD": 0.0036153,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\n\nimport step1\n\n\ndef _column_values(rows, c):\n    \"\"\"Return (\"num\", floats) if every cell is finite, else (\"cat\", strings).\"\"\"\n    raw = [r.get(c, \"\") for r in rows]\n    nums = [step1._to_num(v) for v in raw]\n    if all(x is not None and math.isfinite(x) for x in nums):\n        return \"num\", nums\n    return \"cat\", [str(v) for v in raw]\n\n\ndef _numeric_effect(bad_vals, rest_vals):\n    \"\"\"Absolute standardised mean difference between the two groups.\"\"\"\n    nb, nr = len(bad_vals), len(rest_vals)\n    mb = sum(bad_vals) / nb\n    mr = sum(rest_vals) / nr\n    diff = abs(mb - mr)\n    vb = sum((x - mb) ** 2 for x in bad_vals) / (nb - 1) if nb > 1 else 0.0\n    vr = sum((x - mr) ** 2 for x in rest_vals) / (nr - 1) if nr > 1 else 0.0\n    pooled = math.sqrt(((nb - 1) * vb + (nr - 1) * vr) / (nb + nr - 2))\n    if pooled > 1e-12:\n        return diff / pooled\n    # no spread inside the groups: any difference in means is complete separation\n    return 0.0 if diff <= 1e-12 else math.inf\n\n\ndef _categorical_effect(bad_vals, rest_vals):\n    \"\"\"Largest absolute difference in value frequency between the two groups.\"\"\"\n    nb, nr = len(bad_vals), len(rest_vals)\n    cb = {}\n    for v in bad_vals:\n        cb[v] = cb.get(v, 0) + 1\n    cr = {}\n    for v in rest_vals:\n        cr[v] = cr.get(v, 0) + 1\n    best = 0.0\n    for v in set(cb) | set(cr):\n        d = abs(cb.get(v, 0) / nb - cr.get(v, 0) / nr)\n        if d > best:\n            best = d\n    return best\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Bad rows are the worst quarter of the training rows, ranked by the\n    sum of their per-goal ranks (missing values count as worst). Each input\n    is scored by how strongly its values separate bad rows from the rest.\n    Inputs that separate the bad rows most come first. Ties keep column order.\n    \"\"\"\n    rows, inputs, goals = step1._load(train_csv)\n    n = len(rows)\n    if n < 4 or not inputs or not goals:\n        return list(inputs)\n\n    # rank sum across goals: low means bad (missing values count as worst)\n    rank_sum = [0] * n\n    for name, sign in goals:\n        scores = []\n        for r in rows:\n            v = step1._to_num(r.get(name, \"\"))\n            scores.append(sign * v if v is not None else -math.inf)\n        order = sorted(range(n), key=lambda i: (scores[i], i))\n        for pos, i in enumerate(order):\n            rank_sum[i] += pos\n\n    order = sorted(range(n), key=lambda i: (rank_sum[i], i))\n    k = max(1, n // 4)\n    bad_set = set(order[:k])\n    bad_rows = [i for i in range(n) if i in bad_set]\n    rest_rows = [i for i in range(n) if i not in bad_set]\n\n    scored = []\n    for j, c in enumerate(inputs):\n        kind, vals = _column_values(rows, c)\n        b = [vals[i] for i in bad_rows]\n        r_ = [vals[i] for i in rest_rows]\n        if kind == \"num\":\n            s = _numeric_effect(b, r_)\n        else:\n            s = _categorical_effect(b, r_)\n        scored.append((-s, j, c))\n\n    scored.sort()\n    return [c for _, _, c in scored]\n```",
+ "ttft_ms": 17351,
+ "type": "result",
+ "duration_ms": 21240,
+ "uuid": "4c6b819e-9720-42a9-83e7-a28ef2077667",
+ "ttft_stream_ms": 1297,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
