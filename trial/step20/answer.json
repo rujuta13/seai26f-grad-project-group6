@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 64587,
+ "stop_reason": "end_turn",
+ "session_id": "26ba97a7-cb8c-4a87-914c-ad94bd4b8599",
+ "total_cost_usd": 0.0347905,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 26049,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 15065,
+  "output_tokens_details": {
+   "thinking_tokens": 12039
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26049,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 15065,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 26049,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 26049
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21978,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.022048,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 15065,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26049,
+   "webSearchRequests": 0,
+   "costUSD": 0.0127425,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\nimport math\nimport random\n\nimport step1\nimport step10\nimport step12\n\n_SEED = 0            # fixed seed so the same inputs always give the same answer\n_SHORTLIST = 0.05    # shortlist size as a share of the rows (same cap as step1.best)\n_RANDOM_DRAWS = 200  # random shortlists averaged for the random baseline\n_MAX_CATS = 10       # categorical inputs with more values are left out of the model\n_OVR_NAME = \"ovr\"    # overall-rating input, matched case-insensitively\n_PENALTY_HINT = \"penal\"\n\n\ndef _size(n):\n    return max(1, int(_SHORTLIST * n)) if n > 0 else 0\n\n\ndef _shortlist_quality(shortlist, signed):\n    \"\"\"For each goal, take the best value inside the shortlist and measure the\n    share of rows it matches or beats. Average over goals (0..1).\"\"\"\n    n = len(signed)\n    if n == 0 or not shortlist or not signed[0]:\n        return 0.0\n    g = len(signed[0])\n    total = 0.0\n    for k in range(g):\n        best = max(signed[i][k] for i in shortlist)\n        total += sum(1 for t in signed if t[k] <= best) / n\n    return total / g\n\n\ndef _top_by_rank(signed, size):\n    \"\"\"Shortlist by the highest sum of per-goal ranks (same idea as step1.best).\"\"\"\n    n = len(signed)\n    if n == 0 or size <= 0:\n        return []\n    rank_sum = [0] * n\n    for k in range(len(signed[0])):\n        order = sorted(range(n), key=lambda i: (signed[i][k], i))\n        for pos, i in enumerate(order):\n            rank_sum[i] += pos\n    order = sorted(range(n), key=lambda i: (-rank_sum[i], i))\n    return order[:size]\n\n\ndef _top_by_column(rows, col, size):\n    \"\"\"Shortlist by one rating column, highest first; missing values rank last.\"\"\"\n    vals = [step10._finite_or_none(r.get(col, \"\")) for r in rows]\n    order = sorted(\n        range(len(rows)),\n        key=lambda i: (-vals[i] if vals[i] is not None else math.inf, i),\n    )\n    return order[:size]\n\n\ndef _ovr_column(inputs):\n    for c in inputs:\n        if c.strip().lower() == _OVR_NAME:\n            return c\n    return None\n\n\ndef _penalty_goal(goals):\n    for name, _sign in goals:\n        if _PENALTY_HINT in name.lower():\n            return name\n    return goals[0][0] if goals else None\n\n\ndef _ridge_spec(trows, inputs):\n    \"\"\"Standardised numeric inputs, plus one-hot inputs with few categories.\n    Columns with many distinct values (names, links) are left out, which\n    keeps the normal equations small.\"\"\"\n    spec = []\n    for c in inputs:\n        nums = [step10._finite_or_none(r.get(c, \"\")) for r in trows]\n        if nums and all(x is not None for x in nums):\n            mean = sum(nums) / len(nums)\n            var = sum((x - mean) ** 2 for x in nums) / len(nums)\n            sd = math.sqrt(var) if var > 0 else 1.0\n            spec.append((\"num\", c, mean, sd))\n        else:\n            cats = sorted({str(r.get(c, \"\")) for r in trows})\n            if len(cats) <= _MAX_CATS:\n                spec.append((\"cat\", c, cats))\n    return spec\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare our shortlist and penalty guesser with simple rivals on test_csv.\n\n    Shortlist keys are on the same 0..1 scale: the share of test rows that the\n    shortlist's best value on each goal matches or beats, averaged over goals.\n      \"ours\"                  shortlist from step12 guesses made from inputs\n                              only, using train_csv (no test goal values used).\n      \"top_overall_rating\"    the rows with the highest OVR rating (0.0 if the\n                              file has no OVR column).\n      \"random_shortlist\"      random shortlists of the same size, averaged.\n      \"hindsight_shortlist\"   step1.best on test_csv's own goals. This is an\n                              upper reference, not a fair competitor.\n\n    Penalty keys are skill scores on the same scale as step10: 1 minus the\n    model's mean absolute error divided by the error of predicting the training\n    median, so 1 is perfect, 0 is no better than the median, and negative is worse.\n      \"ours_penalty_guesser\"  step12 nearest-neighbour guess of the penalty goal.\n      \"stdlib_penalty_model\"  ridge regression on the same goal.\n    \"\"\"\n    keys = (\n        \"ours\",\n        \"top_overall_rating\",\n        \"random_shortlist\",\n        \"hindsight_shortlist\",\n        \"ours_penalty_guesser\",\n        \"stdlib_penalty_model\",\n    )\n    zero = {k: 0.0 for k in keys}\n\n    test_rows, test_inputs, test_goals = step1._load(test_csv)\n    n = len(test_rows)\n    if n == 0 or not test_goals:\n        return zero\n\n    trows, inputs, _train_goals = step1._load(train_csv)\n    if not trows:\n        return zero\n\n    signed = [step10._signed(r, test_goals) for r in test_rows]\n    size = _size(n)\n\n    # ours: guesses made from inputs only, ranked to form the shortlist\n    guesses = [step12.guess(train_csv, r) for r in test_rows]\n    predicted = []\n    for g in guesses:\n        vals = []\n        for name, sign in test_goals:\n            est = g.get(name)\n            if est is not None and math.isfinite(est[0]):\n                vals.append(sign * est[0])\n            else:\n                vals.append(-math.inf)\n        predicted.append(tuple(vals))\n    ours = _shortlist_quality(_top_by_rank(predicted, size), signed)\n\n    # rival: top overall rating list\n    ovr = _ovr_column(test_inputs)\n    if ovr is not None:\n        top_overall = _shortlist_quality(\n            _top_by_column(test_rows, ovr, size), signed)\n    else:\n        top_overall = 0.0\n\n    # rival: random shortlists of the same size\n    rng = random.Random(_SEED)\n    total = 0.0\n    for _ in range(_RANDOM_DRAWS):\n        total += _shortlist_quality(rng.sample(range(n), min(size, n)), signed)\n    random_shortlist = total / _RANDOM_DRAWS\n\n    # reference: shortlist chosen with the test file's own goals\n    hindsight = _shortlist_quality(step1.best(test_csv), signed)\n\n    # penalty guesser vs off-the-shelf ridge model\n    target = _penalty_goal(test_goals)\n    truth = [step10._finite_or_none(r.get(target, \"\")) for r in test_rows] \\\n        if target is not None else []\n    eval_idx = [i for i, v in enumerate(truth) if v is not None]\n    train_vals = [v for v in (step10._finite_or_none(r.get(target, \"\"))\n                              for r in trows) if v is not None] \\\n        if target is not None else []\n\n    ours_penalty = 0.0\n    stdlib_penalty = 0.0\n    if eval_idx and train_vals:\n        med = step10._median(train_vals)\n        base_mae = sum(abs(truth[i] - med) for i in eval_idx) / len(eval_idx)\n\n        g_err = 0.0\n        for i in eval_idx:\n            est = guesses[i].get(target)\n            pred_v = est[0] if est is not None and math.isfinite(est[0]) else med\n            g_err += abs(truth[i] - pred_v)\n        ours_penalty = step10._skill(g_err / len(eval_idx), base_mae)\n\n        spec = _ridge_spec(trows, inputs)\n        X, y = [], []\n        for r in trows:\n            v = step10._finite_or_none(r.get(target, \"\"))\n            if v is not None:\n                X.append(step10._features(r, spec))\n                y.append(v)\n        if X:\n            w = step10._fit(X, y)\n            m_err = 0.0\n            for i in eval_idx:\n                feats = step10._features(test_rows[i], spec)\n                pred_v = sum(a * b for a, b in zip(w, feats))\n                if not math.isfinite(pred_v):\n                    pred_v = med\n                m_err += abs(truth[i] - pred_v)\n            stdlib_penalty = step10._skill(m_err / len(eval_idx), base_mae)\n\n    return {\n        \"ours\": float(ours),\n        \"top_overall_rating\": float(top_overall),\n        \"random_shortlist\": float(random_shortlist),\n        \"hindsight_shortlist\": float(hindsight),\n        \"ours_penalty_guesser\": float(ours_penalty),\n        \"stdlib_penalty_model\": float(stdlib_penalty),\n    }\n```",
+ "ttft_ms": 54375,
+ "type": "result",
+ "duration_ms": 63215,
+ "uuid": "dada2713-0876-43f7-a15b-1989f9a487a0",
+ "ttft_stream_ms": 1534,
+ "time_to_request_ms": 84,
+ "queued_turn_count": 0
+}
