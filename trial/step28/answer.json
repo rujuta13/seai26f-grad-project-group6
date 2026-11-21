@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 5072,
+ "stop_reason": "end_turn",
+ "session_id": "2c4a0ce2-11f2-4d0d-a8ba-aa32bcb9fe50",
+ "total_cost_usd": 0.0322521,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 31012,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 565,
+  "output_tokens_details": {
+   "thinking_tokens": 241
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 31012,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 565,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 31012,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 31012
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25682,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.025766999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 565,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 31012,
+   "webSearchRequests": 0,
+   "costUSD": 0.006485100000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step28.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep28.py: fix.  Given a customer who is drifting away (goals removed),\nfind the fewest input columns to change so that the customer becomes good.\nThe work is step8.fix: it tries one changed column, then two, and so on,\nand judges each candidate by its predicted goals against the keep cut from\nstep4.  Columns named in FROZEN are never changed, so a fixed trait such as\nage or marital status can be locked.  For the offer question, freeze every\ncolumn the offer cannot touch and let the search choose among the rest.\nNothing here is new code; this file fixes the client-facing signature.\n\"\"\"\nimport step8\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"Return ROW's inputs with as few values changed as possible so the\n  customer becomes good.  Columns named in FROZEN are never changed.\"\"\"\n  return step8.fix(train_csv, row, frozen=frozen)\n```",
+ "ttft_ms": 2669,
+ "type": "result",
+ "duration_ms": 3691,
+ "uuid": "f299830f-761b-4449-9229-53612ef77ca4",
+ "ttft_stream_ms": 1328,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
