@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 58348,
+ "stop_reason": "end_turn",
+ "session_id": "3da12f43-035f-4f24-8fc5-a514d522d288",
+ "total_cost_usd": 0.0318591,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24222,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13381,
+  "output_tokens_details": {
+   "thinking_tokens": 10703
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24222,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13381,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24222,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24222
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20244,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020324000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13381,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24222,
+   "webSearchRequests": 0,
+   "costUSD": 0.0115351,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 11: the client's two questions, answered on large player files.\n\nfamilies(train_csv): sorts rows into types of player with k-means (K families).\n  Numeric input columns are min-max scaled to [0, 1] so no column dominates the\n  distances. Text input columns are one-hot encoded when they have at most\n  MAX_LEVELS distinct values. Text columns with more values (identifier-like,\n  e.g. a url or a name) are skipped. Constant columns are dropped.\n\nbest(train_csv): the \"strong and good from the spot\" players. These are rows on\n  the Pareto front of the goals (no other row is at least as good on every goal\n  and better on one), capped at 5% of rows and ordered by mean normalised goal\n  score. The front is found by sorting on the goal sum, so each row is checked\n  only against the front found so far. This keeps 17,000 rows fast.\n\nRows with a missing or non-numeric value in an input or goal cell are handled\nwithout crashing: goal cells that are unusable exclude the row from best().\n\"\"\"\nimport csv\nimport math\nimport random\n\nK = 5                  # number of families reported\nSEED = 1               # fixed seed so results are reproducible\nMAX_ITER = 200\nMAX_LEVELS = 25        # text columns with more distinct values are skipped (identifier-like)\nFRONT_CAP = 0.05       # at most this share of rows is reported as \"good\"\n\n\ndef _finite(v):\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _text(v):\n    if isinstance(v, str):\n        return v\n    return \"\" if v is None else str(v)\n\n\ndef _load(path):\n    \"\"\"Read a MOOT csv. Returns (rows, input_columns, goal_columns).\n    goal_columns is a list of (name, sign): +1 maximise, -1 minimise.\"\"\"\n    with open(path, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        rows = list(reader)\n        cols = reader.fieldnames or []\n    inputs, goals = [], []\n    for c in cols:\n        if c.endswith(\"+\"):\n            goals.append((c, 1))\n        elif c.endswith(\"-\"):\n            goals.append((c, -1))\n        elif c.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(c)\n    return rows, inputs, goals\n\n\ndef _features(rows, inputs):\n    \"\"\"Encode input cells as rows of floats in [0, 1], one column per feature.\n    Constant features are dropped. Returns [] if nothing is left.\"\"\"\n    n = len(rows)\n    cols = []\n    for c in inputs:\n        raw = [r.get(c) for r in rows]\n        nums = [_finite(v) for v in raw]\n        if all(x is not None for x in nums):\n            cols.append(nums)\n            continue\n        texts = [_text(v) for v in raw]\n        levels = sorted(set(texts))\n        if len(levels) > MAX_LEVELS:\n            continue  # identifier-like text: one-hot would explode and carry no type\n        index = {lv: j for j, lv in enumerate(levels)}\n        block = [[0.0] * n for _ in levels]\n        for i, t in enumerate(texts):\n            block[index[t]][i] = 1.0\n        cols.extend(block)\n\n    kept = []\n    for col in cols:\n        lo, hi = min(col), max(col)\n        if hi > lo:\n            span = hi - lo\n            kept.append([(x - lo) / span for x in col])\n    if not kept:\n        return []\n    return [list(t) for t in zip(*kept)]\n\n\ndef _kmeans(X, k, seed):\n    \"\"\"Plain k-means with k-means++ initialisation, standard library only.\"\"\"\n    n = len(X)\n    rng = random.Random(seed)\n\n    # k-means++ seeding, keeping each point's squared distance to its nearest centre.\n    centers = [list(X[rng.randrange(n)])]\n    near = [math.dist(x, centers[0]) ** 2 for x in X]\n    while len(centers) < k:\n        total = math.fsum(near)\n        if total > 0:\n            r = rng.random() * total\n            acc = 0.0\n            pick = n - 1\n            for i, dv in enumerate(near):\n                acc += dv\n                if acc >= r:\n                    pick = i\n                    break\n        else:\n            pick = rng.randrange(n)\n        c = list(X[pick])\n        centers.append(c)\n        for i, x in enumerate(X):\n            dv = math.dist(x, c) ** 2\n            if dv < near[i]:\n                near[i] = dv\n\n    labels = [-1] * n\n    for _ in range(MAX_ITER):\n        changed = False\n        for i, x in enumerate(X):\n            best_c = min(range(k), key=lambda j: math.dist(x, centers[j]))\n            if best_c != labels[i]:\n                labels[i] = best_c\n                changed = True\n        if not changed:\n            break\n        groups = [[] for _ in range(k)]\n        for x, c in zip(X, labels):\n            groups[c].append(x)\n        for c in range(k):\n            if groups[c]:\n                m = len(groups[c])\n                centers[c] = [sum(col) / m for col in zip(*groups[c])]\n            else:\n                centers[c] = list(X[rng.randrange(n)])\n    return labels\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    rows, inputs, _ = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    X = _features(rows, inputs)\n    if not X or not X[0]:\n        return [0] * n\n    distinct = len({tuple(x) for x in X})\n    k = max(1, min(K, distinct))\n    if k == 1:\n        return [0] * n\n    return _kmeans(X, k, SEED)\n\n\ndef _dominates(q, p):\n    \"\"\"True if q is at least as good as p on every goal and better on at least one.\"\"\"\n    return all(a >= b for a, b in zip(q, p)) and any(a > b for a, b in zip(q, p))\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows. Pareto front over the goals, ranked by mean normalised\n    goal score (ties by row index).\"\"\"\n    rows, _, goals = _load(train_csv)\n    n = len(rows)\n    m = int(FRONT_CAP * n)\n    if n == 0 or m == 0 or not goals:\n        return []\n\n    # Oriented goal vectors (higher is always better); rows with unusable goals are left out.\n    oriented = {}\n    for i, r in enumerate(rows):\n        vec = []\n        for c, sign in goals:\n            x = _finite(r.get(c))\n            if x is None:\n                break\n            vec.append(sign * x)\n        else:\n            oriented[i] = vec\n    if not oriented:\n        return []\n\n    g = len(goals)\n    lo = [min(v[j] for v in oriented.values()) for j in range(g)]\n    hi = [max(v[j] for v in oriented.values()) for j in range(g)]\n\n    scores = {}\n    for i, v in oriented.items():\n        total = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            if span > 0:\n                total += (v[j] - lo[j]) / span\n        scores[i] = total / g\n\n    # A row can only be dominated by a row with a strictly larger goal sum, so\n    # visiting rows in decreasing sum order and checking against the front found\n    # so far gives the exact Pareto front (dominance is transitive).\n    order = sorted(oriented, key=lambda i: -sum(oriented[i]))\n    front = []\n    for i in order:\n        p = oriented[i]\n        if any(_dominates(oriented[j], p) for j in front):\n            continue\n        front.append(i)\n\n    front.sort(key=lambda i: (-scores[i], i))\n    return front[:m]\n```",
+ "ttft_ms": 49014,
+ "type": "result",
+ "duration_ms": 57293,
+ "uuid": "c623efae-3885-4225-92f4-f61a4d7e1a5a",
+ "ttft_stream_ms": 1726,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
