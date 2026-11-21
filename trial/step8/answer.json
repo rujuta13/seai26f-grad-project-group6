@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 58392,
+ "stop_reason": "end_turn",
+ "session_id": "9176f9c2-4c60-4acf-b5d1-36eb20267372",
+ "total_cost_usd": 0.0208201,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13627,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12815,
+  "output_tokens_details": {
+   "thinking_tokens": 11495
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13627,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12815,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13627,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13627
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11597,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011687,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12815,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13627,
+   "webSearchRequests": 0,
+   "costUSD": 0.0091331,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step8.py: fix. What is the fewest input flips that make a bad build good?\"\nfrom itertools import combinations, product\nfrom ezr import Num, ranker\nfrom step4 import _ref, _row\n\nMAX_VALS  = 8         # values tried per numeric input, spread by rank\nMAX_EVALS = 200_000   # tree look-ups allowed for the exact search\n\n_trees: dict = {}     # train_csv -> ranker, grown once per file\n\ndef fix(train_csv, row, frozen=()) -> dict:\n  \"\"\"The same row's inputs, with as few values changed as possible so\n  that its predicted goals are good.  Columns named in FROZEN never change.\n  Exact (fewest changes) while the search is small; greedy beyond that.\"\"\"\n  key = str(train_csv)\n  tbl, cutoff = _ref(key)\n  if key not in _trees: _trees[key] = ranker(tbl)\n  rank  = _trees[key]\n  names = tbl.names\n  if isinstance(frozen, str): frozen = (frozen,)\n  frozen = set(frozen)\n  if frozen - set(names):\n    raise ValueError(f\"frozen columns not in {names}: \"\n                     f\"{sorted(frozen - set(names))}\")\n\n  def key_of(v):\n    \"Numbers first, by value; other symbols after, by text.\"\n    return (0, v, \"\") if isinstance(v, (int, float)) else (1, 0, str(v))\n\n  def values(col, now) -> list:\n    \"Values COL could take, from train, other than NOW.\"\n    vals = sorted({r[col.at] for r in tbl.rows} - {\"?\", now}, key=key_of)\n    if type(col) is Num and len(vals) > MAX_VALS:\n      vals = [vals[i*len(vals)//MAX_VALS] for i in range(MAX_VALS)]\n    return vals\n\n  def out(cand) -> dict:\n    \"The input cells of CAND, by column name.\"\n    return {s: cand[i] for i, s in enumerate(names) if s[-1] not in \"+-\"}\n\n  base  = _row(tbl, row)\n  moves = []\n  for c in tbl.x:\n    if names[c.at] in frozen: continue\n    vals = values(c, base[c.at])\n    if vals: moves.append((c.at, vals))\n\n  if rank(base) <= cutoff: return out(base)\n\n  # Exact: try k changes for k = 1, 2, ... while the search stays small.\n  lens = [len(vs) for _, vs in moves]\n  ways = [1] + [0]*len(lens)   # ways[k]: ways to pick k moves, one value each\n  for n in lens:\n    for k in range(len(lens), 0, -1): ways[k] += ways[k-1]*n\n  spent = 0\n  for k in range(1, len(moves)+1):\n    if spent + ways[k] > MAX_EVALS: break\n    spent += ways[k]\n    best = None\n    for combo in combinations(moves, k):\n      for picks in product(*(vs for _, vs in combo)):\n        cand = list(base)\n        for (at, _), v in zip(combo, picks): cand[at] = v\n        s = rank(cand)\n        if s <= cutoff and (best is None or s < best[0]):\n          best = (s, cand)\n    if best is not None: return out(best[1])\n\n  # Greedy fallback: flip the one input that most lowers the score, repeatedly.\n  cur, cs, free = list(base), rank(base), list(moves)\n  while cs > cutoff and free:\n    step = None\n    for at, vs in free:\n      for v in vs:\n        cand = list(cur); cand[at] = v\n        s = rank(cand)\n        if step is None or s < step[0]: step = (s, at, cand)\n    if step is None or step[0] >= cs: break\n    cs, at, cur = step\n    free = [(a, vs) for a, vs in free if a != at]\n  return out(cur)\n```",
+ "ttft_ms": 53813,
+ "type": "result",
+ "duration_ms": 57478,
+ "uuid": "306f09da-9b45-4eee-8812-05731c316aca",
+ "ttft_stream_ms": 1096,
+ "time_to_request_ms": 41,
+ "queued_turn_count": 0
+}
