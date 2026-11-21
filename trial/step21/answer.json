@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 50076,
+ "stop_reason": "end_turn",
+ "session_id": "a0c286b5-96b6-47c9-aeb0-13a522a2b5cc",
+ "total_cost_usd": 0.047314199999999994,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 40435,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11512,
+  "output_tokens_details": {
+   "thinking_tokens": 9509
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 40435,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11512,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 40435,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 40435
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33391,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033470999999999994,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11512,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 40435,
+   "webSearchRequests": 0,
+   "costUSD": 0.0138432,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step21.py\n#!/usr/bin/env python3 -B\n\"Kinds of customer (families) and the unusually good customers, via ezr.\"\nimport math\nimport random\nimport ezr\n\nFAMILIES   = 5    # how many kinds of shopper to sort customers into\nITERS      = 30   # k-means passes, at most\nBEST_SHARE = 5    # the unusually good rows: at most this percent of all rows\n\ndef _num(v) -> bool:\n  \"True for an int or float, but not a bool.\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool)\n\ndef _cell(v):\n  \"V as one cell: '?' if blank or unknown, or not finite; otherwise its atom.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    v = v.strip()\n    if v in (\"\", \"?\"): return \"?\"\n    v = ezr.atom(v)\n  if isinstance(v, float) and not math.isfinite(v): return \"?\"\n  return v\n\ndef _is_goal(name: str) -> bool:\n  \"True for a goal column: its name ends in + or -.\"\n  return name[-1:] in (\"+\", \"-\")\n\ndef _is_input(name: str) -> bool:\n  \"True for an input column: neither a goal nor an ignored X column.\"\n  return name[-1:] not in (\"+\", \"-\", \"X\")\n\ndef _read(train_csv: str) -> tuple[list, list]:\n  \"Header and data rows of TRAIN_CSV, cells read by _cell; short rows are padded with '?'.\"\n  src   = ezr.csv(train_csv)\n  first = next(src, None)\n  if first is None: return [], []\n  head  = [str(v).strip() or f\"col{at}\" for at, v in enumerate(first)]\n  width = len(head)\n  rows  = []\n  for r in src:\n    cells = [_cell(v) for v in r][:width]\n    rows.append(cells + [\"?\"] * (width - len(cells)))\n  return head, rows\n\ndef _numeric_cols(head: list, rows: list, want) -> list[int]:\n  \"Positions of columns that WANT selects and that are mostly numbers.\"\n  out = []\n  for at, name in enumerate(head):\n    if not want(name): continue\n    vals = [r[at] for r in rows if r[at] != \"?\"]\n    if vals and sum(_num(v) for v in vals) * 2 >= len(vals):\n      out.append(at)\n  return out\n\ndef _scaled(head: list, rows: list, ats: list[int]) -> list[list[float]]:\n  \"Each row's cells in columns ATS, scaled to 0..1 by ezr.norm; a missing or non-number cell is the middle, 0.5.\"\n  cols = {at: ezr.Num(head[at], at) for at in ats}\n  for r in rows:\n    for at in ats:\n      if _num(r[at]): ezr.add(cols[at], r[at])\n  return [[ezr.norm(cols[at], r[at]) if _num(r[at]) else 0.5 for at in ats]\n          for r in rows]\n\ndef _sq(a: list, b: list) -> float:\n  \"Squared distance between two feature vectors.\"\n  return sum((x - y) ** 2 for x, y in zip(a, b))\n\ndef _kmeans(vs: list, k: int, rng: random.Random) -> list[int]:\n  \"Lloyd's k-means with farthest-first starts, so the families start out spread apart.\"\n  n     = len(vs)\n  cents = [list(vs[rng.randrange(n)])]\n  while len(cents) < k:\n    far = max(range(n), key=lambda i: min(_sq(vs[i], c) for c in cents))\n    cents.append(list(vs[far]))\n  labs = []\n  for _ in range(ITERS):\n    new = [min(range(k), key=lambda c: _sq(v, cents[c])) for v in vs]\n    if new == labs: break\n    labs = new\n    for c in range(k):\n      mem = [vs[i] for i in range(n) if labs[i] == c]\n      cents[c] = ([sum(col) / len(mem) for col in zip(*mem)] if mem\n                  else list(vs[rng.randrange(n)]))\n  return labs\n\ndef families(train_csv) -> list[int]:\n  \"One family (kind of shopper) label per data row of TRAIN_CSV, in file order.\"\n  head, rows = _read(train_csv)\n  if not rows: return []\n  ats = _numeric_cols(head, rows, _is_input)\n  if not ats: return [0] * len(rows)\n  vs    = _scaled(head, rows, ats)\n  k     = min(FAMILIES, len(vs))\n  rng   = random.Random(ezr.the.Seed)\n  labs  = _kmeans(vs, k, rng)\n  remap = {}                                   # relabel 0,1,2... by first use\n  return [remap.setdefault(c, len(remap)) for c in labs]\n\ndef best(train_csv) -> list[int]:\n  \"Row indices of the unusually good customers (best on all goals together), at most 5% of rows.\"\n  head, rows = _read(train_csv)\n  if not rows: return []\n  gats = _numeric_cols(head, rows, _is_goal)\n  if not gats: return []\n  cols = {at: ezr.Num(head[at], at) for at in gats}\n  for r in rows:\n    for at in gats:\n      if _num(r[at]): ezr.add(cols[at], r[at])\n  ys = []\n  for r in rows:\n    if any(not _num(r[at]) for at in gats):    # an unknown goal: not ranked\n      ys.append(None)\n      continue\n    ys.append(ezr.dist((abs(ezr.norm(cols[at], r[at]) - cols[at].goal)\n                        for at in gats), len(gats)))\n  known = [i for i, y in enumerate(ys) if y is not None]\n  cap   = len(rows) * BEST_SHARE // 100\n  return sorted(known, key=lambda i: (ys[i], i))[:cap]\n```",
+ "ttft_ms": 43477,
+ "type": "result",
+ "duration_ms": 48807,
+ "uuid": "1cedb94a-e797-48b6-9f8d-0422b8be5f23",
+ "ttft_stream_ms": 1640,
+ "time_to_request_ms": 18,
+ "queued_turn_count": 0
+}
