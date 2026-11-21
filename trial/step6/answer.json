@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 53221,
+ "stop_reason": "end_turn",
+ "session_id": "3972f6e1-4ded-4f95-a8ad-d5756dda816a",
+ "total_cost_usd": 0.016146300000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8903,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12841,
+  "output_tokens_details": {
+   "thinking_tokens": 10152
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8903,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12841,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8903,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8903
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7880,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007945,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12841,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8903,
+   "webSearchRequests": 0,
+   "costUSD": 0.0082013,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 6: justify the recommended flag set and single builds in plain words.\n\nexplain() reports which goal values the non-dominated builds reach and which\ninput settings they share, with the counts behind each claim so a skeptic can\nrecompute them. why() rates one build against the training data and states the\ntwo facts that drive the rating.\n\"\"\"\n\nimport math\n\nfrom step1 import _load, _split_columns, best\nfrom step2 import _quantile, guess\nfrom step3 import same\nfrom step5 import _as_float, _column_labels, blame\n\nMIN_SUPPORT = 5\nTOP_BLAME = 3\n\n\ndef _median(vals):\n    return _quantile(sorted(vals), 0.5)\n\n\ndef _dominates(a, b):\n    \"\"\"True if a Pareto-dominates b (all dimensions minimised).\"\"\"\n    return all(x <= y for x, y in zip(a, b)) and any(x < y for x, y in zip(a, b))\n\n\ndef _min_vector(values, maximise, minimise):\n    \"\"\"Goal values as a minimisation vector ('+' negated), or None if any is missing.\"\"\"\n    vec = []\n    for c in maximise:\n        v = _as_float(values.get(c))\n        if v is None:\n            return None\n        vec.append(-v)\n    for c in minimise:\n        v = _as_float(values.get(c))\n        if v is None:\n            return None\n        vec.append(v)\n    return vec\n\n\ndef _normaliser(vecs):\n    \"\"\"Return a function scaling a minimisation vector by the range of vecs.\"\"\"\n    m = len(vecs[0])\n    lo = [min(v[j] for v in vecs) for j in range(m)]\n    hi = [max(v[j] for v in vecs) for j in range(m)]\n\n    def norm(v):\n        return [\n            (v[j] - lo[j]) / (hi[j] - lo[j]) if hi[j] > lo[j] else 0.0\n            for j in range(m)\n        ]\n\n    return norm\n\n\ndef _label_text(label):\n    if isinstance(label, int) and not isinstance(label, bool):\n        return f\"quantile bin {label} of this column (0 = lowest values)\"\n    return f\"value {label}\"\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons that make rows good, with the counts behind them.\"\"\"\n    columns, rows = _load(train_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    goals = maximise + minimise\n    n = len(rows)\n    if n == 0 or not goals:\n        return \"No goal columns or no rows, so there is nothing to justify.\"\n\n    good = set(best(train_csv))\n    if not good:\n        return \"No build is non-dominated on the goals, so no recommended set exists to explain.\"\n    rest = [i for i in range(n) if i not in good]\n\n    lines = [\n        f\"Of {n} measured builds, {len(good)} are on the goal Pareto front: no other build \"\n        \"is at least as good on every goal and strictly better on at least one. \"\n        \"These are the recommended builds; the remaining builds are the comparison group.\"\n    ]\n\n    if rest:\n        goal_lines = []\n        good_sorted = sorted(good)\n        for g in goals:\n            gv = [v for v in (_as_float(rows[i].get(g)) for i in good_sorted) if v is not None]\n            rv = [v for v in (_as_float(rows[i].get(g)) for i in rest) if v is not None]\n            if not gv or not rv:\n                continue\n            verdict = (\n                \"significant difference\" if not same(gv, rv) else \"no significant difference\"\n            )\n            goal_lines.append(\n                f\"  {g}: median {_median(gv):.6g} vs {_median(rv):.6g} ({verdict}, \"\n                \"permutation test at the 5% level).\"\n            )\n        if goal_lines:\n            lines.append(\"Goal values, recommended builds vs the rest:\")\n            lines.extend(goal_lines)\n            lines.append(\n                \"This comparison favours the recommended builds by construction, so treat it \"\n                \"as a check on the selection, not as evidence that the settings cause the goals.\"\n            )\n\n        ng, nr = len(good), len(rest)\n        setting_lines = []\n        for c in blame(train_csv)[:TOP_BLAME]:\n            labels = _column_labels(rows, c)\n            g_counts, r_counts = {}, {}\n            for i in range(n):\n                tgt = g_counts if i in good else r_counts\n                tgt[labels[i]] = tgt.get(labels[i], 0) + 1\n\n            best_lab, best_gain, best_pair = None, 0.0, None\n            for lab, cnt in g_counts.items():\n                if cnt < MIN_SUPPORT:\n                    continue\n                gs = cnt / ng\n                rs = r_counts.get(lab, 0) / nr\n                if gs - rs > best_gain:\n                    best_lab, best_gain, best_pair = lab, gs - rs, (gs, rs)\n            if best_lab is None:\n                continue\n            gs, rs = best_pair\n            setting_lines.append(\n                f\"  {c} = {_label_text(best_lab)}: {gs:.0%} of recommended builds \"\n                f\"vs {rs:.0%} of the rest.\"\n            )\n\n        if setting_lines:\n            lines.append(\"Input settings that most separate the recommended builds from the rest:\")\n            lines.extend(setting_lines)\n        else:\n            lines.append(\n                \"No single input setting is shared by at least \"\n                f\"{MIN_SUPPORT} recommended builds much more often than by the rest.\"\n            )\n\n    lines.append(\n        \"These are associations in this data set; confirm any single setting by building \"\n        \"with and without it before relying on it.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences saying whether this build is good or bad, and why.\"\"\"\n    columns, rows = _load(train_csv)\n    maximise, minimise, _ = _split_columns(columns)\n    goals = maximise + minimise\n    if not rows or not goals:\n        return \"Cannot rate this build: the training data has no rows or no goal columns.\"\n\n    train_vecs = []\n    for r in rows:\n        v = _min_vector(r, maximise, minimise)\n        if v is not None and all(math.isfinite(x) for x in v):\n            train_vecs.append(v)\n    if not train_vecs:\n        return \"Cannot rate this build: no training row has complete, finite goal values.\"\n\n    measured = {g: _as_float(row.get(g)) for g in goals}\n    if all(v is not None for v in measured.values()):\n        values = measured\n        source = \"measured\"\n    else:\n        est = guess(train_csv, row)\n        values = {g: est[g][0] for g in goals}\n        source = \"estimated from the most similar training builds\"\n\n    norm = _normaliser(train_vecs)\n    tn = [norm(v) for v in train_vecs]\n    q = norm(_min_vector(values, maximise, minimise))\n\n    q_score = sum(q)\n    t_scores = [sum(t) for t in tn]\n    threshold = _quantile(sorted(t_scores), 0.75)\n    is_good = q_score <= threshold\n    pct_worse = 100.0 * sum(1 for s in t_scores if s > q_score) / len(t_scores)\n    dominators = sum(1 for t in tn if _dominates(t, q))\n\n    goal_txt = \", \".join(f\"{g}={values[g]:.6g}\" for g in goals)\n    verdict = \"good\" if is_good else \"bad\"\n    s1 = f\"Rated {verdict}: its {source} goals are {goal_txt}.\"\n\n    if dominators == 0:\n        dom = \"no training build is at least as good on every goal and strictly better on one\"\n    else:\n        dom = (\n            f\"{dominators} of {len(tn)} training builds are at least as good on every goal \"\n            \"and strictly better on one\"\n        )\n    s2 = (\n        f\"Its normalised goal sum (lower is better) is better than {pct_worse:.0f}% of the \"\n        f\"{len(tn)} training builds, and {dom}.\"\n    )\n    return f\"{s1} {s2}\"\n```",
+ "ttft_ms": 45125,
+ "type": "result",
+ "duration_ms": 52465,
+ "uuid": "6634cdf1-613b-4f7c-9c71-36d0d770c334",
+ "ttft_stream_ms": 1061,
+ "time_to_request_ms": 20,
+ "queued_turn_count": 0
+}
