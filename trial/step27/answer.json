@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6944,
+ "stop_reason": "end_turn",
+ "session_id": "4f4e56a3-458a-4e1f-9e90-db2a38737a48",
+ "total_cost_usd": 0.058002599999999994,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 55332,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1144,
+  "output_tokens_details": {
+   "thinking_tokens": 680
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 55332,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1144,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 55332,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 55332
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 46289,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.046363999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1144,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 55332,
+   "webSearchRequests": 0,
+   "costUSD": 0.0116386,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 27: pick the best customers to target with a limited test mailing.\n\nchoose(blind_csv, label, budget=30, goal=None) is the scout-limited search\nfrom step17. It labels at most `budget` customers (for example, a test\nmailing to 50 people) and returns the index of the best one found.\n\nIf `goal` names one goal, only that goal is optimised. For example,\ngoal=\"NUMSTOREPURCHASES\" (or \"NUMSTOREPURCHASES+\") targets store visits\nrather than web orders, which would be goal=\"NUMWEBPURCHASES\".\n\nCalls to label() beyond the budget raise RuntimeError, as in step17.\n\"\"\"\nfrom step17 import choose as _choose17\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found after at most `budget` calls to label().\n\n    blind_csv: MOOT csv whose goal cells are all '?'.\n    label(i): returns {goal column: value} for row i.\n    budget: maximum number of label() calls. Exceeding it raises RuntimeError.\n    goal: optional goal column (or its name without the +/- suffix) to optimise\n          alone. If None, all goals are combined.\n\n    Raises ValueError for budget < 1, an empty file, or an unknown goal.\n    \"\"\"\n    return _choose17(blind_csv, label, budget=budget, goal=goal)\n```",
+ "ttft_ms": 4223,
+ "type": "result",
+ "duration_ms": 5569,
+ "uuid": "bc9867fa-a9d5-49f8-b95b-48ba5fb4e621",
+ "ttft_stream_ms": 1414,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
