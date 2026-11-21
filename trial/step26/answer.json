@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 52354,
+ "stop_reason": "end_turn",
+ "session_id": "a026e357-13fc-4b77-93ba-3b1fc8895da0",
+ "total_cost_usd": 0.044950699999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 37505,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13199,
+  "output_tokens_details": {
+   "thinking_tokens": 9953
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 37505,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13199,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 37505,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 37505
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 30780,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.03085,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13199,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 37505,
+   "webSearchRequests": 0,
+   "costUSD": 0.0141007,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step26.py: justify the campaign group and rate single customers.\n\nexplain(train_csv): reasons a sales director can check in the customer data for\nwhy a group should get the next campaign. The group is the best-customer front\nfrom step21.best: customers that no other customer is at least as good as on\nevery goal and better than on one, capped and ranked as in step1.best. The group\nis described by its goal medians against all customers, by the customer\nsegments (step21.families) that hold it, and by the flag settings that set it\napart. A setting is reported as shifting a goal only when step23.same finds that\ngoal difference real.\n\nwhy(train_csv, row): one or two sentences on whether a customer is low value. A\ncustomer is low value when some training customer is at least as good on every\ngoal and better on one. The reasons name the goals on which the customer falls\nbelow the calibrated 10th-90th percentile range from step12.guess, so the sales\nteam knows what to work on.\n\nReuses step1 loading and column roles, step5 category limit, step6 share rules,\nstep11 fast front, step12 calibrated guesser, step14 orientation, step16 format\nand sampling helpers, step21 segments and step23 certification. Standard library only.\n\"\"\"\nimport math\nimport statistics\nfrom collections import Counter\n\nfrom step1 import _load, _columns, _dominates, BEST_FRACTION\nfrom step5 import CATEGORY_LIMIT\nfrom step6 import MIN_SHARE_GAP, MAX_REASONS, _predicted\nfrom step11 import _pareto_front, _top_by_score\nfrom step12 import guess\nfrom step14 import _orient\nfrom step16 import _fmt, _sample, SAMPLE_SEED\nfrom step21 import families\nfrom step23 import same\n\n\ndef explain(train_csv) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    n = len(rows)\n    if n == 0 or not goals:\n        return (\"There is no campaign group to recommend: the customer file has no \"\n                \"rows or no goal columns.\")\n\n    V = [_orient(r, goals) for r in rows]\n    usable = [i for i in range(n) if V[i] is not None]\n    if not usable:\n        return (\"There is no campaign group to recommend: no customer has usable \"\n                \"values for every goal.\")\n\n    # Best-customer front, as in step1.best and step11.best, on the usable rows.\n    cap = max(1, int(BEST_FRACTION * n))\n    UV = [V[i] for i in usable]\n    front_pos = _pareto_front(UV)\n    if len(front_pos) > cap:\n        front_pos = _top_by_score(UV, front_pos, cap)\n    front = sorted(usable[p] for p in front_pos)\n    if not front:\n        return (\"There is no campaign group to recommend: too few usable customers \"\n                \"to form a best-customer front.\")\n\n    nf = len(front)\n    nu = len(usable)\n\n    lines = [\n        f\"The campaign group is the best-customer front: {nf} of {nu} usable \"\n        \"customers. No other customer is at least as good on every goal and better \"\n        \"on at least one of them, so these are the customers who do best overall.\",\n        \"Goals, the campaign group against all customers (medians):\",\n    ]\n    for c, sgn in goals:\n        raw_all = [float(rows[i][c]) for i in usable]\n        raw_front = [float(rows[i][c]) for i in front]\n        direction = \"higher\" if sgn > 0 else \"lower\"\n        lines.append(\n            f\"- {c}: group median {statistics.median(raw_front):g}; all-customer \"\n            f\"median {statistics.median(raw_all):g}; {direction} is better.\"\n        )\n\n    # Segments: which customer clusters hold more of the group than their size.\n    labels = families(train_csv)\n    size = Counter(labels[i] for i in usable)\n    in_group = Counter(labels[i] for i in front)\n    share = {k: in_group.get(k, 0) / size[k] for k in size}\n    overall = nf / nu\n    ranked = sorted(size, key=lambda k: (-share[k], k))\n    strong = [k for k in ranked if share[k] > overall][:MAX_REASONS]\n    lines.append(\n        \"Customer segments (clusters of similar flags), against the group's overall \"\n        f\"share of {overall:.0%}:\"\n    )\n    if not strong:\n        lines.append(\"- No segment holds a larger share of the group than of all \"\n                     \"customers.\")\n    for k in strong:\n        lines.append(\n            f\"- Segment {k}: {in_group.get(k, 0)} of its {size[k]} customers \"\n            f\"({share[k]:.0%}) are in the group.\"\n        )\n\n    # For each input with few distinct values, find the setting whose share\n    # among group customers differs most from its share among all customers.\n    cands = []\n    for c in inputs:\n        count_all = Counter(rows[i][c] for i in usable)\n        if not count_all or len(count_all) > CATEGORY_LIMIT:\n            continue  # continuous input: no shares to compare\n        count_front = Counter(rows[i][c] for i in front)\n        gap, v, sf, sa = max(\n            ((abs(count_front.get(v, 0) / nf - cnt / nu),\n              v, count_front.get(v, 0) / nf, cnt / nu)\n             for v, cnt in count_all.items()),\n            key=lambda t: t[0],\n        )\n        cands.append((gap, c, v, sf, sa))\n    cands.sort(key=lambda t: -t[0])\n\n    lines.append(\"Flag settings that set the group apart \"\n                 \"(share among group customers vs among all customers):\")\n    shown = 0\n    for gap, c, v, sf, sa in cands:\n        if gap < MIN_SHARE_GAP or shown == MAX_REASONS:\n            break\n        shown += 1\n        inside = [i for i in usable if rows[i][c] == v]\n        outside = [i for i in usable if rows[i][c] != v]\n        checks = []\n        for g, _ in goals:\n            xs = _sample([float(rows[i][g]) for i in inside], SAMPLE_SEED)\n            ys = _sample([float(rows[i][g]) for i in outside], SAMPLE_SEED)\n            real = bool(xs and ys) and not same(xs, ys)\n            checks.append(f\"{g} {'differs' if real else 'shows no real difference'}\")\n        lines.append(\n            f\"- {c}={_fmt(v)}: {sf:.0%} of group customers vs {sa:.0%} of all \"\n            f\"customers. Customers with it vs without it: {'; '.join(checks)}.\"\n        )\n    if shown == 0:\n        lines.append(f\"- No single setting differs by {MIN_SHARE_GAP:.0%} or more \"\n                     \"between group customers and all customers.\")\n\n    lines.append(\n        \"These are associations in the training data: they show what the best \"\n        \"customers look like, not that a campaign will cause a response. Test the \"\n        \"group with a small held-out campaign before scaling it up.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    cols, rows = _load(train_csv)\n    inputs, maxi, mini = _columns(cols, rows)\n    goals = [(c, 1.0) for c in maxi] + [(c, -1.0) for c in mini]\n    if not goals:\n        return \"This file has no goal columns, so the customer cannot be rated.\"\n\n    pred = guess(train_csv, row)\n    V = _orient(row, goals)\n    if V is None:\n        missing = [c for c, _ in goals\n                   if not isinstance(row.get(c), float) or not math.isfinite(row[c])]\n        predicted = \"; \".join(_predicted(c, pred[c]) for c, _ in goals)\n        return (\"This customer cannot be rated: no usable value for \"\n                f\"{', '.join(missing)}. Their most similar training customers predict \"\n                f\"{predicted}.\")\n\n    train_vecs = [v for v in (_orient(r, goals) for r in rows) if v is not None]\n    if not train_vecs:\n        return (\"This customer cannot be rated: the training file has no usable \"\n                \"customers to compare with.\")\n    n = len(train_vecs)\n    dominators = sum(1 for t in train_vecs if _dominates(t, V))\n    if dominators == 0:\n        verdict = (f\"This customer is not low value: none of the {n} training \"\n                   \"customers is at least as good on every goal and better on one\")\n    else:\n        verdict = (f\"This customer is low value: {dominators} of the {n} training \"\n                   \"customers are at least as good on every goal and better on one\")\n\n    parts = []\n    shortfall = []\n    for c, sgn in goals:\n        est, lo, hi = pred[c]\n        value = float(row[c])\n        o = sgn * value\n        olo, ohi = sorted((sgn * lo, sgn * hi))\n        if o > ohi:\n            rel = \"is better than\"\n        elif o < olo:\n            rel = \"is worse than\"\n            shortfall.append(c)\n        else:\n            rel = \"is within\"\n        direction = \"lower\" if sgn < 0 else \"higher\"\n        parts.append(\n            f\"{c} = {value:g} {rel} the calibrated range {lo:g} to {hi:g} \"\n            f\"(median {est:g}; {direction} is better)\"\n        )\n\n    work_on = (\", \".join(shortfall) if shortfall\n               else \"none, as no goal sits below its calibrated range\")\n    return (f\"{verdict}. Against the nearest training customers, \"\n            + \"; \".join(parts) + f\"; goals to work on: {work_on}.\")\n```",
+ "ttft_ms": 42399,
+ "type": "result",
+ "duration_ms": 51156,
+ "uuid": "99f3d866-4ca6-4dd6-b230-638385808ed7",
+ "ttft_stream_ms": 1251,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
