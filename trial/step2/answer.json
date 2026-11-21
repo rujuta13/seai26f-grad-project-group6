@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 18920,
+ "stop_reason": "end_turn",
+ "session_id": "851326f8-a562-4530-83cc-af60e47dd202",
+ "total_cost_usd": 0.011289500000000001,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8599,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4061,
+  "output_tokens_details": {
+   "thinking_tokens": 3224
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8599,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4061,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8599,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8599
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7469,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007539,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4061,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8599,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037505000000000004,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step2.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep2.py: guess.  Given a flag set, guess each goal, with a range.\nReuses ezr for tables and distance.  The training rows nearest the\nflag set (by input columns) vote: estimate = median, range = the\n10th..90th percentile of their goal values.\n\"\"\"\nfrom functools import lru_cache\nfrom math import sqrt\nimport ezr\n\n@lru_cache(maxsize=None)\ndef _tbl(train_csv: str):\n  \"Load the training table once per file.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\ndef _quantile(xs: list, q: float) -> float:\n  \"Linear interpolation between ranks.  XS must be sorted and non-empty.\"\n  i  = q * (len(xs) - 1)\n  lo = int(i)\n  hi = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef _probe(tbl, row: dict) -> list:\n  \"Turn a dict row (goals removed) into an ezr row; missing cells are '?'.\"\n  out = []\n  for name in tbl.names:\n    v = row.get(name, \"?\")\n    out.append(\"?\" if v is None else v)\n  return out\n\ndef guess(train_csv: str, row: dict) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal column.\n  Goal keys are the header names (e.g. 'Performance-').  ESTIMATE is the\n  median goal value of the nearest training rows; LOW..HIGH is their\n  10th..90th percentile range.\"\"\"\n  tbl   = _tbl(train_csv)\n  probe = _probe(tbl, row)\n  k     = max(3, int(sqrt(len(tbl.rows))))\n  near  = sorted(tbl.rows,\n                 key=lambda r: ezr.xdist(tbl, probe, r))[:k]\n  out = {}\n  for col in tbl.y:\n    xs = sorted(r[col.at] for r in near if r[col.at] != \"?\")\n    if not xs:   # no neighbour knows this goal: fall back to every row\n      xs = sorted(r[col.at] for r in tbl.rows if r[col.at] != \"?\")\n    out[col.txt] = (_quantile(xs, .5),\n                    _quantile(xs, .1),\n                    _quantile(xs, .9))\n  return out\n```",
+ "ttft_ms": 15514,
+ "type": "result",
+ "duration_ms": 18115,
+ "uuid": "64ef3c55-66bb-47d8-8e8f-f75c75c45dad",
+ "ttft_stream_ms": 1050,
+ "time_to_request_ms": 22,
+ "queued_turn_count": 0
+}
