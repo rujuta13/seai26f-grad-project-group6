@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 15697,
+ "duration_api_ms": 15685,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    cols, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n\n    inputs, _, _ = _split_columns(cols)\n    if not inputs:\n        return [0] * n\n\n    X = np.array(\n        [[_to_float(r[c]) for c in inputs] for r in rows], dtype=float\n    )\n    X = np.where(np.isnan(X), 0.0, X)\n\n    n_unique = len(np.unique(X, axis=0))\n    k = min(5, n_unique)\n    if k <= 1:\n        return [0] * n\n\n    model = KMeans(n_clusters=k, n_init=10, random_state=0)\n    labels = model.fit_predict(X)\n    return [int(x) for x in labels]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows.\"\"\"\n    cols, rows = _load(train_csv)\n    n = len(rows)\n    cap = int(math.floor(0.05 * n))\n    if n == 0 or cap == 0:\n        return []\n\n    _, goal_max, goal_min = _split_columns(cols)\n    goals = goal_min + goal_max\n    if not goals:\n        return []\n\n    # Build a matrix where every goal is minimised.\n    G = np.empty((n, len(goals)), dtype=float)\n    for j, c in enumerate(goals):\n        vals = np.array([_to_float(r[c]) for r in rows], dtype=float)\n        vals = np.where(np.isnan(vals), np.inf, vals)  # missing = worst\n        if c.endswith(\"+\"):\n            vals = -vals\n        G[:, j] = vals\n\n    # Pareto front (non-dominated rows), all goals minimised.\n    dominated = np.zeros(n, dtype=bool)\n    for i in range(n):\n        weakly = np.all(G <= G[i], axis=1)\n        strictly = np.any(G < G[i], axis=1)\n        dominated[i] = np.any(weakly & strictly)\n    front = np.flatnonzero(~dominated)\n\n    if len(front) > cap:\n        # Too many non-dominated rows: keep those with the best average rank\n        # across goals.\n        sub = G[front]\n        rank_sum = np.zeros(len(front), dtype=float)\n        for j in range(sub.shape[1]):\n            order = np.argsort(sub[:, j], kind=\"stable\")\n            ranks = np.empty(len(front), dtype=float)\n            ranks[order] = np.arange(len(front), dtype=float)\n            rank_sum += ranks\n        keep = np.argsort(rank_sum, kind=\"stable\")[:cap]\n        front = front[keep]\n\n    return sorted(int(i) for i in front)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "c0d0d0c0-2dbf-4979-9bda-ded95bb77f72",
+ "total_cost_usd": 0.00147912,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 822,
+  "output_tokens": 2941,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2941,
+   "cacheReadInputTokens": 822,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00147912,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "d6782b84-5c41-4b58-8c60-792566ead14c"
+}
