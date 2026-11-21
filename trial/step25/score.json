@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 25,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.04742285087118655,
+ "baseline": 0.03047795579998813,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "KIDHOME",
+   "INCOME",
+   "MNTFISHPRODUCTS"
+  ]
+ }
+}
