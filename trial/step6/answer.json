@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 46865,
+ "stop_reason": "end_turn",
+ "session_id": "fdb75763-8954-4793-b039-6e8756051546",
+ "total_cost_usd": 0.017689700000000003,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 11550,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10847,
+  "output_tokens_details": {
+   "thinking_tokens": 8693
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11550,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10847,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 11550,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 11550
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 9886,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.009956000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10847,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11550,
+   "webSearchRequests": 0,
+   "costUSD": 0.0077337,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep6.py: justify.  Plain-words answers for a skeptical engineer.\nexplain() names the recommended flag set and gives checks anyone can\nrepeat: goal medians, a significance test, the tree path to the best\nleaf, and the blamed inputs.  why() says in one or two sentences why\none build was rated good or bad.\nReuses ezr (tree, ydist, norm, say), step1 (best), step2 (cached table,\nprobe, guess, quantile), step3 (same), step4 (cut, stream, row), and\nstep5 (blame).  Only the wording and the path-to-leaf walk are new.\n\"\"\"\nimport ezr\nimport step1, step2, step3, step4, step5\n\ndef _test(tbl, node, yes: bool) -> str:\n  \"One tree split in words: the yes side or the no side.\"\n  name = tbl.names[node.at]\n  if type(tbl.cols[node.at]) is ezr.Sym:\n    op = \"=\" if yes else \"!=\"\n  else:\n    op = \"<=\" if yes else \">\"\n  return f\"{name} {op} {ezr.say(node.v)}\"\n\ndef _path(tbl, node, target) -> list[str] | None:\n  \"The splits from NODE down to TARGET, or None if TARGET is not below NODE.\"\n  if node is target: return []\n  for yes, kid in zip((True, False), node.kids):\n    sub = _path(tbl, kid, target)\n    if sub is not None: return [_test(tbl, node, yes)] + sub\n  return None\n\ndef explain(train_csv: str) -> str:\n  \"Plain-words reasons that separate good builds from bad, each one checkable.\"\n  tbl  = step2._tbl(train_csv)\n  done = [r for r in tbl.rows if all(r[c.at] != \"?\" for c in tbl.y)]\n  good = [tbl.rows[i] for i in step1.best(train_csv)\n          if all(tbl.rows[i][c.at] != \"?\" for c in tbl.y)]\n  if not done or not good:\n    return \"No training build has every goal known, so there is nothing to explain.\"\n  rec = min(good, key=lambda r: ezr.ydist(tbl, r))\n  out = [\n    \"Recommended flag set (the best of the best 5% on all goals together; \"\n    f\"ydist {ezr.say(ezr.ydist(tbl, rec))}, where 0 is ideal):\",\n    \"  \" + \", \".join(f\"{c.txt}={ezr.say(rec[c.at])}\" for c in tbl.x),\n  ]\n  for c in tbl.y:   # goal check: the best 5% against every build\n    best_xs = sorted(r[c.at] for r in good)\n    all_xs  = sorted(r[c.at] for r in done)\n    apart   = not step3.same(best_xs, all_xs)\n    verdict = (\"clearly different by Cliff's delta and KS.\" if apart\n               else \"not clearly different by Cliff's delta and KS.\")\n    out.append(\n      f\"{c.txt} (better is {'higher' if c.goal else 'lower'}): best-5% median \"\n      f\"{ezr.say(step2._quantile(best_xs, .5))} vs all-builds median \"\n      f\"{ezr.say(step2._quantile(all_xs, .5))}; \" + verdict)\n  old = ezr.the.Leaf                       # few, big leaves, as in step1\n  ezr.the.Leaf = max(old, len(done)//8)\n  try:     node = ezr.tree(tbl, done)\n  finally: ezr.the.Leaf = old\n  leaf = min(ezr.leafs(node), key=lambda z: z.mu)\n  path = _path(tbl, node, leaf) or []\n  out.append(\n    f\"A tree on all {len(done)} builds (mean ydist {ezr.say(node.mu)}) finds its \"\n    f\"best leaf (mean ydist {ezr.say(leaf.mu)}, {len(leaf.rows)} builds) at: \"\n    + (\" and \".join(path) if path else \"the root, so no single split helped.\"))\n  names = step5.blame(train_csv)[:3]\n  out.append(\"Inputs most tied to bad builds, by eta-squared: \"\n             + \", \".join(names)\n             + \". These are associations in this data, not proven causes.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv: str, row: dict) -> str:\n  \"One or two sentences: why this build (goals included) is good or bad.\"\n  tbl   = step2._tbl(train_csv)\n  probe = step4._row(tbl, row)\n  if any(probe[c.at] == \"?\" for c in tbl.y):   # no goals: rate by neighbours\n    est, good_side, notes = step2.guess(train_csv, row), True, []\n    for c in tbl.y:\n      xs = sorted(r[c.at] for r in tbl.rows if r[c.at] != \"?\")\n      med = step2._quantile(xs, .5)\n      e, lo, hi = est[c.txt]\n      if (e >= med) != (c.goal == 1): good_side = False\n      notes.append(f\"{c.txt} about {ezr.say(e)} \"\n                   f\"(range {ezr.say(lo)} to {ezr.say(hi)})\")\n    verdict = \"likely good\" if good_side else \"likely bad\"\n    return (f\"This build's goals are missing, so it is rated by its nearest \"\n            f\"training builds: {verdict}, which predict {'; '.join(notes)}.\")\n  y     = ezr.ydist(tbl, probe)\n  cut   = step4._cut(train_csv)\n  ok    = step4.stream(train_csv, [row])[0]\n  verdict = \"good\" if ok else \"bad\"\n  worst = max(tbl.y, key=lambda c: abs(ezr.norm(c, probe[c.at]) - c.goal))\n  top   = step5.blame(train_csv)[0]\n  top_v = probe[tbl.names.index(top)]\n  return (f\"This build is {verdict}: its goals sit {ezr.say(y)} from the best \"\n          f\"possible (the keep cut is {ezr.say(cut)}), and {worst.txt} is the \"\n          f\"furthest off at {ezr.say(probe[worst.at])}. The input most tied to \"\n          f\"bad builds in training is {top}, which this build sets to \"\n          f\"{ezr.say(top_v)}.\")\n```",
+ "ttft_ms": 39940,
+ "type": "result",
+ "duration_ms": 46100,
+ "uuid": "1feaf286-8d7e-4a25-a428-50362ec7610d",
+ "ttft_stream_ms": 1103,
+ "time_to_request_ms": 32,
+ "queued_turn_count": 0
+}
