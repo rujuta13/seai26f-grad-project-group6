@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 18799,
+ "duration_api_ms": 18787,
+ "num_turns": 1,
+ "result": "```python\nimport csv\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\nfrom sklearn.metrics import silhouette_score\n\n_cache = {}\n\n\ndef _num(v):\n    try:\n        return float(v)\n    except ValueError:\n        return v.strip()\n\n\ndef _load(path):\n    if path in _cache:\n        return _cache[path]\n    with open(path, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = reader.fieldnames or []\n        rows = [{k: _num(v) for k, v in r.items()} for r in reader]\n\n    inputs, maxg, ming = [], [], []\n    for c in cols:\n        if c.endswith(\"+\"):\n            maxg.append(c)\n        elif c.endswith(\"-\"):\n            ming.append(c)\n        elif c.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(c)\n\n    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)\n    X = X.reshape(len(rows), len(inputs))\n    G = np.array(\n        [[float(r[c]) for c in maxg] + [-float(r[c]) for c in ming] for r in rows],\n        dtype=float,\n    ).reshape(len(rows), len(maxg) + len(ming))\n\n    d = {\"rows\": rows, \"X\": X, \"G\": G}\n    _cache[path] = d\n    return d\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    d = _load(train_csv)\n    X = d[\"X\"]\n    n = len(X)\n    if n == 0:\n        return []\n    distinct = np.unique(X, axis=0)\n    if len(distinct) < 3:\n        return [0] * n\n\n    best_s, best_labels = None, None\n    for k in range(2, min(9, len(distinct))):\n        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)\n        labels = km.labels_\n        if len(set(labels.tolist())) < 2:\n            continue\n        s = silhouette_score(X, labels)\n        if best_s is None or s > best_s:\n            best_s, best_labels = s, labels\n    if best_labels is None:\n        return [0] * n\n    return [int(x) for x in best_labels]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of unusually good rows (best on all goals together), at most 5% of rows.\"\"\"\n    d = _load(train_csv)\n    G = d[\"G\"]\n    n = len(G)\n    cap = int(0.05 * n)\n    if cap == 0 or G.shape[1] == 0:\n        return []\n\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    Z = (G - mu) / sd  # higher is better on every column\n\n    # Pareto front: rows not dominated by any other row on all goals.\n    nondominated = np.ones(n, dtype=bool)\n    for i in range(n):\n        dominated = np.all(Z >= Z[i], axis=1) & np.any(Z > Z[i], axis=1)\n        if dominated.any():\n            nondominated[i] = False\n    cand = np.flatnonzero(nondominated)\n\n    # Rank the front by average standardized goal score, keep at most 5%.\n    score = Z.mean(axis=1)\n    order = cand[np.argsort(-score[cand], kind=\"stable\")]\n    return sorted(int(i) for i in order[:cap])\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1d2d4c29-a197-458e-8c0a-971ffae6d7bb",
+ "total_cost_usd": 0.00169754,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 864,
+  "output_tokens": 3377,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3377,
+   "cacheReadInputTokens": 864,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.00169754,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "3de46000-b817-4b07-a2df-85f0977adb92"
+}
