@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 117330,
+ "duration_api_ms": 117319,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step8.py: fewest input flips that make a bad build good.\n\nfix() first looks for an observed build in the training data. It must be on the\ntraining Pareto front (step1 dominance, the same test step4.stream and step6.why\nuse), agree with the query on every frozen column, and differ from it in the\nfewest mutable input columns. Such a build has measured goals, so it is preferred.\n\nIf no observed build qualifies, or a predicted build needs fewer changes, fix()\nruns a bounded breadth-first search over single-column changes. Each candidate's\ngoals are estimated with step2.guess, and a candidate counts as good when that\nestimate is not dominated by any training build. Predicted results are used only\nwhen they need strictly fewer changes than the observed build, so ties go to the\nmeasured build.\n\nLoading, classification, goal matrices, value coercion and the mean-rank helper\nare reused from step1 and step6. guess() comes from step2.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\n\nfrom step1 import _classify, _goal_matrix, _load, _to_value\nfrom step2 import guess\nfrom step6 import _mean_rank\n\n_BUDGET = 400        # maximum number of predicted (guessed) candidates evaluated\n_BEAM = 20           # predicted candidates carried into the next search level\n_MAX_VALUES = 12     # values tried per mutable column (evenly spaced if more)\n\n\ndef _norm(v):\n    \"\"\"Comparable form of a cell: float if numeric, otherwise its string.\"\"\"\n    if isinstance(v, bool):\n        return str(v)\n    try:\n        return float(v)\n    except (TypeError, ValueError):\n        return str(v)\n\n\ndef _is_dominated(G, g):\n    \"\"\"True if some row of G is at least as good on every goal and strictly better on one.\"\"\"\n    return bool(((G <= g).all(axis=1) & (G < g).any(axis=1)).any())\n\n\ndef _domain(rows, col):\n    \"\"\"Distinct raw cell values seen in the training data for one input column.\"\"\"\n    first = {}\n    for r in rows:\n        first.setdefault(_norm(r[col]), r[col])\n    vals = sorted(first.values(), key=lambda v: (isinstance(v, str), _norm(v)))\n    if len(vals) > _MAX_VALUES:\n        idx = np.unique(np.linspace(0, len(vals) - 1, _MAX_VALUES).round().astype(int))\n        vals = [vals[i] for i in idx]\n    return vals\n\n\ndef _render(cfg, base, names):\n    \"\"\"Output dict: unchanged columns keep the caller's value, changed ones are coerced.\"\"\"\n    out = {}\n    for n in names:\n        if _norm(cfg[n]) == _norm(base[n]):\n            out[n] = base[n]\n        else:\n            v = cfg[n]\n            out[n] = _to_value(v) if isinstance(v, str) else v\n    return out\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row` with as few values changed as possible so the build becomes good.\n\n    row: dict {input column name: value} for a bad build (goals removed).\n    frozen: input column names that must not change.\n    Returns {input column name: value} for every input column of the training file.\n    If no candidate is found within the search budget, the lowest-scoring predicted\n    configuration is returned, and it is not guaranteed to be good.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        raise ValueError(\"train_csv contains no data rows\")\n    maximise, minimise, inputs = _classify(header)\n    names = [header[c] for c in inputs]\n\n    frozen = set(frozen)\n    unknown = frozen - set(names)\n    if unknown:\n        raise ValueError(f\"frozen columns are not input columns: {sorted(unknown)}\")\n    missing = [n for n in names if n not in row]\n    if missing:\n        raise KeyError(f\"row is missing input columns: {missing}\")\n\n    base = {n: row[n] for n in names}\n    mutable = [n for n in names if n not in frozen]\n    G = _goal_matrix(rows, maximise, minimise)\n    if G.shape[1] == 0:\n        raise ValueError(\"train_csv has no goal columns\")\n\n    def changes(cfg):\n        return sum(_norm(cfg[n]) != _norm(base[n]) for n in names)\n\n    # Observed candidates: training builds on the Pareto front that agree on frozen columns.\n    rank = _mean_rank(G)\n    best_obs = None\n    for i in range(len(rows)):\n        if _is_dominated(G, G[i]):\n            continue\n        cand = {n: rows[i][header[inputs[names.index(n)]]] for n in names}\n        if any(_norm(cand[n]) != _norm(base[n]) for n in frozen):\n            continue\n        key = (changes(cand), float(rank[i]))\n        if best_obs is None or key < best_obs[0]:\n            best_obs = (key, cand)\n\n    if best_obs is not None and best_obs[0][0] == 0:\n        return _render(base, base, names)\n\n    # Predicted search, limited to fewer changes than the observed build if one exists.\n    max_level = len(mutable) if best_obs is None else best_obs[0][0] - 1\n    search_cfg = _search(train_csv, header, rows, G, maximise, minimise,\n                         names, mutable, base, max_level, changes)\n\n    if search_cfg is not None:\n        return _render(search_cfg, base, names)\n    if best_obs is not None:\n        return _render(best_obs[1], base, names)\n    return _render(_best_effort_last, base, names) if _best_effort_last is not None else _render(base, base, names)\n\n\n_best_effort_last = None  # set by _search when nothing good is found\n\n\ndef _search(train_csv, header, rows, G, maximise, minimise, names, mutable, base,\n            max_level, changes):\n    \"\"\"Breadth-first search over single-column changes using step2.guess predictions.\n\n    Returns the good configuration with the fewest changes (ties broken by predicted\n    score), or None. Sets _best_effort_last to the best-scoring configuration seen.\n    \"\"\"\n    global _best_effort_last\n    _best_effort_last = None\n    if max_level < 1 or not mutable:\n        return None\n\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0) + 1e-12\n    domains = {n: _domain(rows, inputs_col) for n, inputs_col in\n               ((n, header.index(n)) for n in mutable)}\n\n    def predict(cfg):\n        est = guess(train_csv, cfg)\n        gv = np.array([est[header[c]][0] for c in minimise]\n                      + [-est[header[c]][0] for c in maximise], dtype=float)\n        good = not _is_dominated(G, gv)\n        score = float((((gv - mu) / sd)).sum())\n        return good, score\n\n    seen = {tuple(_norm(base[n]) for n in names)}\n    frontier = [(base, 0.0)]\n    best_effort = None  # (score, changes, cfg)\n    evals = 0\n\n    for _level in range(1, max_level + 1):\n        found = []\n        scored = []\n        for cfg, _ in frontier:\n            for n in mutable:\n                for v in domains[n]:\n                    if _norm(v) == _norm(cfg[n]):\n                        continue\n                    new = dict(cfg)\n                    new[n] = v\n                    key = tuple(_norm(new[m]) for m in names)\n                    if key in seen:\n                        continue\n                    seen.add(key)\n                    if evals >= _BUDGET:\n                        _best_effort_last = best_effort[2] if best_effort else None\n                        return _pick(found)\n                    evals += 1\n                    good, score = predict(new)\n                    k = changes(new)\n                    if best_effort is None or (score, k) < (best_effort[0], best_effort[1]):\n                        best_effort = (score, k, new)\n                    if good:\n                        found.append((k, score, new))\n                    scored.append((score, new))\n        if found:\n            _best_effort_last = best_effort[2] if best_effort else None\n            return _pick(found)\n        scored.sort(key=lambda t: t[0])\n        frontier = [(cfg, s) for s, cfg in scored[:_BEAM]]\n        if not frontier:\n            break\n\n    _best_effort_last = best_effort[2] if best_effort else None\n    return None\n\n\ndef _pick(found):\n    \"\"\"Good configuration with the fewest changes, then the best predicted score.\"\"\"\n    if not found:\n        return None\n    found.sort(key=lambda t: (t[0], t[1]))\n    return found[0][2]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4e5d8478-b1d0-4c9a-ab1a-37978e387363",
+ "total_cost_usd": 0.006762775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 11979,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10530,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11979,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 10530,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11979,
+   "webSearchRequests": 0,
+   "costUSD": 0.006762775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "a7d5814e-e4c7-42c7-8586-53583756b944"
+}
