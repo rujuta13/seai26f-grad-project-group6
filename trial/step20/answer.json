@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11112,
+ "stop_reason": "end_turn",
+ "session_id": "bd0f10df-d72a-44ec-af90-7f17b7264ead",
+ "total_cost_usd": 0.0215622,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 19485,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2116,
+  "output_tokens_details": {
+   "thinking_tokens": 1664
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19485,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2116,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 19485,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 19485
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 16542,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.016607,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2116,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19485,
+   "webSearchRequests": 0,
+   "costUSD": 0.0049552,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py\nimport ezr\nimport step10\n\ndef _top_rating(test: ezr.TBL) -> int:\n  \"Index of the row with the highest OVR, the simple 'top overall rating' list. Goals are never read.\"\n  if \"OVR\" not in test.names: raise ValueError(\"race: no OVR column to rank by\")\n  at   = test.names.index(\"OVR\")\n  vals = [(r[at], i) for i, r in enumerate(test.rows) if r[at] != \"?\"]\n  if not vals: raise ValueError(\"race: no OVR values to rank by\")\n  return max(vals, key=lambda t: (t[0], -t[1]))[1]   # ties: earlier row wins\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Each method picks one row of TEST_CSV; score it by wins on test (100 = best, 0 = average). Includes 'ours' and the 'top' overall-rating list.\"\n  test   = ezr.Tbl(ezr.csv(test_csv))\n  if not test.rows: raise ValueError(f\"no rows in {test_csv}\")\n  scores = step10.race(train_csv, test_csv)          # ours, random, grid, linear\n  score  = ezr.wins(test)\n  scores[\"top\"] = float(score(test.rows[_top_rating(test)]))\n  return scores\n```",
+ "ttft_ms": 8804,
+ "type": "result",
+ "duration_ms": 10243,
+ "uuid": "a841267a-f24b-4977-ae1a-e4109995cad3",
+ "ttft_stream_ms": 1242,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
