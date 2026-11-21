@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 63481,
+ "stop_reason": "end_turn",
+ "session_id": "a11f49d1-d5e7-414c-954e-3c1707dbc150",
+ "total_cost_usd": 0.0397187,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30875,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 14401,
+  "output_tokens_details": {
+   "thinking_tokens": 11938
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30875,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 14401,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30875,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30875
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26263,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026343000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 14401,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30875,
+   "webSearchRequests": 0,
+   "costUSD": 0.0133757,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 14: flow. Two sequential checks on scouting reports that arrive one at a time.\n\nstream(train_csv, rows) keeps a report when it is worth following up: no build\nseen so far (every training build and every earlier report) is at least as good\non every goal. Goals ending in '+' are maximised and goals ending in '-' are\nminimised. A report with a missing or non-numeric goal value cannot be judged\nand is not kept.\n\ndrift(train_csv, rows) warns at the first report after which the new reports\nno longer look like the training data. After the m-th report, the first m values\nof each tested column are compared with that column's training values by a\ntwo-sample Kolmogorov-Smirnov test at level 0.05 / (m (m+1) g), where g is the\nnumber of tested columns. Over all m these levels sum to 0.05, and the union\nbound over columns keeps the chance of any false warning at most 0.05, however\nlong the stream runs. Tested columns are the numeric inputs (identifier-like\nintegers such as row numbers are skipped) and the numeric goals. Text columns\nare not tested.\n\"\"\"\nimport bisect\nimport math\n\nfrom step1 import _load\n\n_ALPHA = 0.05\n_ID_MIN = 20   # integer-valued columns this long with almost all values distinct look like identifiers\n\n\ndef _is_goal(c):\n    return c.endswith(\"+\") or c.endswith(\"-\")\n\n\ndef _finite(v):\n    \"\"\"Return v as a finite float, or None.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _goals(header):\n    \"\"\"Return [(column, sign)]: +1.0 for '+' goals, -1.0 for '-' goals.\"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"+\"):\n            out.append((c, 1.0))\n        elif c.endswith(\"-\"):\n            out.append((c, -1.0))\n    return out\n\n\ndef _oriented(row, goals):\n    \"\"\"Goal values with signs applied (higher is always better), or None if any is missing.\"\"\"\n    vec = []\n    for c, sg in goals:\n        f = _finite(row.get(c))\n        if f is None:\n            return None\n        vec.append(sg * f)\n    return tuple(vec)\n\n\ndef _at_least_as_good(a, b):\n    \"\"\"True if a is at least as good as b on every goal.\"\"\"\n    return all(x >= y for x, y in zip(a, b))\n\n\ndef _admit(archive, v):\n    \"\"\"Try to add v to the archive of unbeaten builds.\n\n    Returns False and changes nothing if some archived build is at least as\n    good as v on every goal. Otherwise v is added, archived builds that v is\n    at least as good as are dropped (anything they cover, v covers too), and\n    True is returned.\n    \"\"\"\n    for a in archive:\n        if _at_least_as_good(a, v):\n            return False\n    archive[:] = [a for a in archive if not _at_least_as_good(v, a)]\n    archive.append(v)\n    return True\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide keep (True) or not (False) for each row, in arrival order.\n\n    A row is kept when no training build and no earlier row is at least as\n    good on every goal, so it extends the unbeaten front seen so far. Rows\n    missing a goal value are not kept.\n    \"\"\"\n    header, train = _load(train_csv)\n    goals = _goals(header)\n\n    archive = []\n    if goals:\n        for r in train:\n            v = _oriented(r, goals)\n            if v is not None:\n                _admit(archive, v)\n\n    out = []\n    for row in rows:\n        v = _oriented(row, goals) if goals else None\n        out.append(False if v is None else _admit(archive, v))\n    return out\n\n\ndef _ks_stat(a, b):\n    \"\"\"Two-sample Kolmogorov-Smirnov statistic for sorted non-empty lists.\"\"\"\n    n1, n2 = len(a), len(b)\n    i = j = 0\n    d = 0.0\n    while i < n1 and j < n2:\n        x = a[i] if a[i] <= b[j] else b[j]\n        while i < n1 and a[i] == x:\n            i += 1\n        while j < n2 and b[j] == x:\n            j += 1\n        d = max(d, abs(i / n1 - j / n2))\n    return d\n\n\ndef _ks_pvalue(d, n1, n2):\n    \"\"\"Asymptotic two-sided p-value for KS statistic d with sizes n1, n2.\"\"\"\n    en = math.sqrt(n1 * n2 / (n1 + n2))\n    lam = (en + 0.12 + 0.11 / en) * d\n    if lam < 0.2:\n        return 1.0\n    total = 0.0\n    for k in range(1, 101):\n        term = math.exp(-2.0 * k * k * lam * lam)\n        total += (-1.0) ** (k - 1) * term\n        if term < 1e-12:\n            break\n    return min(1.0, max(0.0, 2.0 * total))\n\n\ndef _looks_like_id(vals):\n    \"\"\"True for integer-valued columns with almost all values distinct (row numbers, ranks).\"\"\"\n    return (\n        len(vals) >= _ID_MIN\n        and all(v.is_integer() for v in vals)\n        and len(set(vals)) >= 0.9 * len(vals)\n    )\n\n\ndef _tested(header, train):\n    \"\"\"Return [(column, sorted training values)] for the numeric columns to monitor.\n\n    A column qualifies when at least 90% of its non-blank training cells are\n    finite numbers. Identifier-like input columns are skipped; goal columns\n    are always kept.\n    \"\"\"\n    out = []\n    for c in header:\n        if c.endswith(\"X\"):\n            continue\n        present = [\n            v for v in (r.get(c) for r in train)\n            if v is not None and not (isinstance(v, str) and not v.strip())\n        ]\n        if not present:\n            continue\n        vals = [v for v in present if isinstance(v, float) and math.isfinite(v)]\n        if not vals or len(vals) < 0.9 * len(present):\n            continue\n        if not _is_goal(c) and _looks_like_id(vals):\n            continue\n        out.append((c, sorted(vals)))\n    return out\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which new rows stop looking like train_csv.\n\n    After the m-th row, the first m finite values of each tested column are\n    tested against that column's training values with a KS test at level\n    0.05 / (m (m+1) g), where g is the number of tested columns. The first\n    rejection warns at row index m-1. Returns None if no warning is raised.\n    \"\"\"\n    header, train = _load(train_csv)\n    rows = list(rows)\n    if not rows:\n        return None\n\n    cols = _tested(header, train)\n    if not cols:\n        return None\n    g = len(cols)\n\n    seen = {c: [] for c, _ in cols}\n    for m, row in enumerate(rows, start=1):\n        for c, _ in cols:\n            f = _finite(row.get(c))\n            if f is not None:\n                bisect.insort(seen[c], f)\n\n        alpha = _ALPHA / (m * (m + 1) * g)\n        for c, ref in cols:\n            sample = seen[c]\n            if not sample:\n                continue\n            d = _ks_stat(sample, ref)\n            if _ks_pvalue(d, len(sample), len(ref)) < alpha:\n                return m - 1\n    return None\n```",
+ "ttft_ms": 55417,
+ "type": "result",
+ "duration_ms": 62291,
+ "uuid": "f9b94728-32fd-48c5-9041-1eee6a82ae16",
+ "ttft_stream_ms": 1505,
+ "time_to_request_ms": 17,
+ "queued_turn_count": 0
+}
