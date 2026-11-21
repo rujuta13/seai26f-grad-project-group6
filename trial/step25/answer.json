@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21721,
+ "stop_reason": "end_turn",
+ "session_id": "9932b19d-bfde-4307-b8fc-49af61158ad1",
+ "total_cost_usd": 0.0272996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24047,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4710,
+  "output_tokens_details": {
+   "thinking_tokens": 3905
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24047,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4710,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24047,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24047
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20070,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020135,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4710,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24047,
+   "webSearchRequests": 0,
+   "costUSD": 0.0071646,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step25.py\n\"\"\"\nstep25: blame, for the client.  Two asks: why do some customers never\nrespond to campaigns (RESPONSE+), and what do the customers who complain\nhave in common (COMPLAIN-)?  So only those two goals count toward \"bad\".\nThe other goals are renamed to end in X, which makes ezr skip them (the\nsame trick step7 uses).  Then step5's blame runs unchanged on that copy.\n\"\"\"\nimport os\nimport tempfile\nimport step5\n\nFOCUS = (\"RESPONSE+\", \"COMPLAIN-\")   # the two goals the client asks about\n\n\ndef _lines(train_csv: str) -> list[str]:\n  \"The non-blank lines of TRAIN_CSV, read the way ezr.csv reads them.\"\n  with open(os.path.expanduser(train_csv), encoding=\"utf-8-sig\") as f:\n    return [line for line in f if line.strip()]\n\n\ndef _names(lines: list[str]) -> list[str]:\n  \"Header names of the csv, stripped of spaces and line ends.\"\n  return [s.strip() for s in lines[0].split(\",\")]\n\n\ndef _focus_csv(train_csv: str) -> str:\n  \"A temp csv like TRAIN_CSV in which only FOCUS goals still count. Returns its path.\"\n  lines = _lines(train_csv)\n  names = [s if (not s or s in FOCUS or s[-1] not in \"+-!\") else s[:-1] + \"X\"\n           for s in _names(lines)]\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n    f.write(\",\".join(names) + \"\\n\")\n    f.writelines(lines[1:])\n  return path\n\n\ndef blame(train_csv: str) -> list[str]:\n  \"\"\"Input column names, most to blame for bad rows (bad on the goals)\n  first. Bad rows here are bad on RESPONSE+ and COMPLAIN- together.\n  If neither of those goals is in the file, every goal counts instead.\n  Ties keep the order of the header.\"\"\"\n  names = _names(_lines(train_csv))\n  if not any(s in FOCUS for s in names):\n    return list(step5.blame(train_csv))     # no such goals: use all of them\n  path = _focus_csv(train_csv)\n  try:\n    return list(step5.blame(path))\n  finally:\n    os.remove(path)\n```",
+ "ttft_ms": 18474,
+ "type": "result",
+ "duration_ms": 20642,
+ "uuid": "ad0a4679-4a02-4202-b0b3-7198c24d35d9",
+ "ttft_stream_ms": 1258,
+ "time_to_request_ms": 112,
+ "queued_turn_count": 0
+}
