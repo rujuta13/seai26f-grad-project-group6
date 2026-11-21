@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 27787,
+ "stop_reason": "end_turn",
+ "session_id": "9a179192-08ad-4403-a335-029c163a04e0",
+ "total_cost_usd": 0.0379445,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 33514,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6547,
+  "output_tokens_details": {
+   "thinking_tokens": 4913
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33514,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6547,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 33514,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 33514
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 27898,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.027968,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6547,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33514,
+   "webSearchRequests": 0,
+   "costUSD": 0.009976500000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 15: blame. Which input columns are most to blame for bad rows, where a bad\nrow does poorly on the goals. This answers the client's questions by ranking the\ninput columns, for example why some players are weak from the spot (Penalties+)\nand what separates the physically strong players (Strength+) from the rest.\n\nMethod: each row gets a badness score. It is 0 for the best value on every goal\nand larger for worse values, averaged over goals after scaling each goal to [0, 1].\nFor each input column and each of its values, the badness of rows having that\nvalue is compared with the badness of all other rows using a Welch-style t\nstatistic. Only values associated with worse rows count. A column's blame is the\nlargest such t over its values, so columns whose values sharply separate bad rows\nfrom good rows rank first.\n\nStandard library only. Missing or non-finite cells do not crash the function:\nrows with an unusable goal cell are left out of the comparison, and a missing or\ntext input cell is its own group.\n\"\"\"\nimport math\n\nfrom step1 import _load\n\nMIN_GROUP = 3   # smallest number of rows a value needs on each side of the comparison\n\n\ndef _finite(v):\n    \"\"\"The cell as a finite float, or None if it is missing, non-numeric, or non-finite.\"\"\"\n    try:\n        x = float(v)\n    except (TypeError, ValueError):\n        return None\n    return x if math.isfinite(x) else None\n\n\ndef _key(v):\n    \"\"\"Group key for one input cell: its finite number if it has one, else its text\n    ('' for a missing cell).\"\"\"\n    x = _finite(v)\n    if x is not None:\n        return x\n    return \"\" if v is None else str(v)\n\n\ndef _badness(rows, goals):\n    \"\"\"Per row: 0 if best on every goal, larger when worse, averaged over goals.\n    None if any goal cell of the row is unusable.\"\"\"\n    oriented = []\n    for r in rows:\n        vec = []\n        for c, sign in goals:\n            x = _finite(r.get(c))\n            if x is None:\n                vec = None\n                break\n            vec.append(sign * x)\n        oriented.append(vec)\n\n    ok = [v for v in oriented if v is not None]\n    if not ok:\n        return [None] * len(rows)\n\n    g = len(goals)\n    lo = [min(v[j] for v in ok) for j in range(g)]\n    hi = [max(v[j] for v in ok) for j in range(g)]\n\n    out = []\n    for v in oriented:\n        if v is None:\n            out.append(None)\n            continue\n        b = 0.0\n        for j in range(g):\n            span = hi[j] - lo[j]\n            if span > 0:\n                # oriented values: higher is better, so hi - v measures distance from the best\n                b += (hi[j] - v[j]) / span\n        out.append(b / g)\n    return out\n\n\ndef _var(n, s, ss):\n    \"\"\"Sample variance from count, sum and sum of squares.\"\"\"\n    if n < 2:\n        return 0.0\n    return max(0.0, (ss - s * s / n) / (n - 1))\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not inputs:\n        return []\n    if not goals or not rows:\n        return list(inputs)\n\n    bad = _badness(rows, goals)\n    idx = [i for i, b in enumerate(bad) if b is not None]\n    m = len(idx)\n    if m < 2 * MIN_GROUP:\n        return list(inputs)\n\n    b_vals = [bad[i] for i in idx]\n    total_s = sum(b_vals)\n    total_ss = sum(x * x for x in b_vals)\n\n    scored = []\n    for pos, c in enumerate(inputs):\n        keys = [_key(rows[i].get(c)) for i in idx]\n\n        # per-value group statistics: [count, sum, sum of squares]\n        stats = {}\n        for k, key in enumerate(keys):\n            st = stats.get(key)\n            if st is None:\n                st = stats[key] = [0, 0.0, 0.0]\n            st[0] += 1\n            st[1] += b_vals[k]\n            st[2] += b_vals[k] * b_vals[k]\n\n        best = 0.0\n        for nm, sm, ssm in stats.values():\n            nr = m - nm\n            if nm < MIN_GROUP or nr < MIN_GROUP:\n                continue\n            sr = total_s - sm\n            ssr = total_ss - ssm\n            effect = sm / nm - sr / nr\n            if effect <= 0:\n                continue  # value is not associated with worse rows\n            se = math.sqrt(_var(nm, sm, ssm) / nm + _var(nr, sr, ssr) / nr)\n            t = effect / (se + 1e-9)\n            if t > best:\n                best = t\n\n        scored.append((-best, pos, c))\n\n    scored.sort()\n    return [c for _, _, c in scored]\n```",
+ "ttft_ms": 22161,
+ "type": "result",
+ "duration_ms": 26699,
+ "uuid": "72c3b49a-bc2f-4ae5-958a-ca6245aaca51",
+ "ttft_stream_ms": 1104,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
