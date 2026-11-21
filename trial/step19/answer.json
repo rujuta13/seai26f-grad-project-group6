@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 38807,
+ "stop_reason": "end_turn",
+ "session_id": "e2bdb950-c5bd-4443-965b-657806f77ad5",
+ "total_cost_usd": 0.0379165,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 32294,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 9077,
+  "output_tokens_details": {
+   "thinking_tokens": 7392
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32294,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 9077,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 32294,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 32294
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 26829,
+   "outputTokens": 18,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026919,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 9077,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32294,
+   "webSearchRequests": 0,
+   "costUSD": 0.0109975,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step19.py: spot. Flag benchmark rows that look like glitches or are unlike anything seen.\n\"step19.py: spot. Flag benchmark rows that look like glitches or are unlike anything seen.\"\nimport functools\nimport math\nimport ezr\n\nSAMPLE = 100   # training rows used to measure the normal nearest-neighbour gap\nQ      = 0.95  # the normal gap is this quantile of leave-one-out gaps\nSIGMA  = 3     # a number this many sds from train's mean is extreme\nNEW    = 1.0   # an unseen symbol, or a non-number in a number column, counts this much\n\ndef _is_num(v):\n  \"True if V is a usable finite number (bools and infinities do not count).\"\n  return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)\n\ndef _val(v):\n  \"One raw cell as an atom: blanks, None and NaN become '?'; strings are coerced like csv does.\"\n  if v is None: return \"?\"\n  if isinstance(v, str):\n    s = v.strip()\n    return \"?\" if s == \"\" else ezr.atom(s)\n  if isinstance(v, float) and math.isnan(v): return \"?\"\n  return v\n\ndef _clean(tbl, row):\n  \"ROW in TBL's column order (all columns, goals included), with each cell coerced; missing is '?'.\"\n  n = len(tbl.names)\n  if isinstance(row, dict):\n    raw = [row.get(name, \"?\") for name in tbl.names]\n  else:\n    raw = list(row)[:n]\n    raw += [\"?\"] * (n - len(raw))\n  return [_val(v) for v in raw]\n\ndef _vec(cs, row):\n  \"ROW as one entry per column: 0..1 for numbers, the symbol for symbols, None if unknown or not a number.\"\n  out = []\n  for c in cs:\n    v = row[c.at]\n    if v == \"?\":\n      out.append(None)\n    elif type(c) is ezr.Sym:\n      out.append(v)\n    elif not _is_num(v):\n      out.append(None)\n    else:\n      out.append(ezr.norm(c, v))\n  return out\n\ndef _dist(cs, a, b):\n  \"Root mean square of the column gaps between two _vecs; unknown is far, symbols match or not.\"\n  total = 0.0\n  for c, x, y in zip(cs, a, b):\n    if x is None or y is None: g = 1.0\n    elif type(c) is ezr.Sym:   g = 0.0 if x == y else 1.0\n    else:                      g = x - y\n    total += g * g\n  return math.sqrt(total / len(cs)) if cs else 0.0\n\ndef _extreme(c, v):\n  \"How far one cleaned cell V is from what its column shows in train; 0 if unknown or typical.\"\n  if v == \"?\": return 0.0\n  if type(c) is ezr.Sym:\n    return 0.0 if v in c.has else NEW        # a symbol never seen in train\n  if not _is_num(v): return NEW              # text or junk where a number belongs\n  if c.n == 0: return NEW                    # train has no numbers here at all\n  if c.sd == 0:\n    return 0.0 if v == c.mu else NEW         # train never varies here\n  z = abs(v - c.mu) / c.sd\n  return max(0.0, z - SIGMA)                 # only the far tail counts\n\n@functools.lru_cache(maxsize=8)\ndef _model(train_csv):\n  \"The table, its columns, its rows as _vecs, and the normal nearest-neighbour gap.\"\n  tbl = ezr.Tbl(ezr.csv(train_csv))\n  if not tbl.rows: raise ValueError(\"train has no rows to compare against\")\n  cs  = [tbl.cols[at] for at in sorted(tbl.cols)]\n  vs  = [_vec(cs, r) for r in tbl.rows]\n  n   = len(vs)\n  if n < 2: return tbl, cs, vs, 1.0\n  step = max(1, n // SAMPLE)\n  base = sorted(min(_dist(cs, vs[i], vs[j]) for j in range(n) if j != i)\n                for i in range(0, n, step))\n  scale = base[min(len(base) - 1, int(Q * len(base)))]\n  if scale <= 0: scale = 1.0                 # zero gap in train: use 1 as the unit\n  return tbl, cs, vs, scale\n\ndef odd(train_csv, rows) -> list[float]:\n  \"One suspicion score per row of ROWS (goals included): higher is more glitch-like or unlike train.\"\n  tbl, cs, vs, scale = _model(train_csv)\n  out = []\n  for row in rows:\n    r    = _clean(tbl, row)\n    v    = _vec(cs, r)\n    near = min((_dist(cs, v, u) for u in vs), default=math.inf)\n    ext  = sum(_extreme(c, r[c.at]) for c in cs)\n    out.append(float(near / scale + ext))\n  return out\n```",
+ "ttft_ms": 32808,
+ "type": "result",
+ "duration_ms": 37609,
+ "uuid": "5787f9c4-425d-47c1-a8d8-53f290df0b1c",
+ "ttft_stream_ms": 1443,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
