@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 29347,
+ "duration_api_ms": 29335,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\n\nfrom step1 import _load\nfrom step2 import _columns\nfrom step4 import _goal_layout, _nn_distances\n\n_BAD_WEIGHT = 10.0  # each invalid or never-seen cell adds this much suspicion\n\n\ndef _cell(v):\n    \"\"\"A cell as a float, or NaN if it is missing or not numeric.\"\"\"\n    try:\n        return float(v)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row (higher = more likely a glitch, typo, or unlike training).\n\n    Three parts are added together:\n      * flag novelty: distance from the row's flags to the nearest training row,\n        in units of the typical training nearest-neighbour distance;\n      * goal anomaly: the largest absolute z-score of the row's goals against\n        the training goals (minimised goals already sign-flipped, as in step1);\n      * bad cells: missing or non-numeric values, and flag values never seen in\n        that column of the training data (typos), each weighted heavily.\n    \"\"\"\n    rows = list(rows)\n    if not rows:\n        return []\n\n    inputs, _ = _columns(train_csv)\n    maxg, ming = _goal_layout(train_csv)\n    gnames = maxg + ming\n\n    d = _load(train_csv)\n    X0 = d[\"X\"]\n    G0 = d[\"G\"]\n    n = len(X0)\n    m = len(inputs)\n    k = len(rows)\n\n    # Flags of the new rows.\n    Xn = np.array(\n        [[_cell(r.get(c, math.nan)) for c in inputs] for r in rows], dtype=float\n    ).reshape(k, m)\n\n    bad = np.zeros(k)\n    bad += np.sum(~np.isfinite(Xn), axis=1)\n\n    # Flag values never seen in that column of the training data (typos).\n    if n > 0:\n        for j in range(m):\n            seen = set(X0[:, j].tolist())\n            for i in range(k):\n                v = Xn[i, j]\n                if np.isfinite(v) and v not in seen:\n                    bad[i] += 1\n\n    # Flag novelty: nearest-training-row distance, scaled by the typical\n    # leave-one-out nearest-neighbour distance within the training set.\n    nov = np.zeros(k)\n    if n >= 2 and m > 0:\n        X0c = np.where(np.isfinite(X0), X0, 0.0)\n        Xc = np.where(np.isfinite(Xn), Xn, 0.0)\n\n        sq0 = (X0c ** 2).sum(axis=1)\n        D0 = np.sqrt(np.maximum(sq0[:, None] + sq0[None, :] - 2.0 * (X0c @ X0c.T), 0.0))\n        np.fill_diagonal(D0, np.inf)\n        ref = D0.min(axis=1)\n\n        pos = ref[np.isfinite(ref) & (ref > 0)]\n        scale = float(np.median(pos)) if pos.size else 1.0\n        if not (scale > 0 and math.isfinite(scale)):\n            scale = 1.0\n\n        nov = _nn_distances(Xc, X0c) / scale\n\n    # Goal anomaly: largest absolute z-score against the training goals.\n    gz = np.zeros(k)\n    if n > 0 and G0.shape[1] > 0 and gnames:\n        mu = G0.mean(axis=0)\n        sd = G0.std(axis=0)\n        sd[sd == 0] = 1.0\n        for i, r in enumerate(rows):\n            vals = ([_cell(r.get(g, math.nan)) for g in maxg]\n                    + [-_cell(r.get(g, math.nan)) for g in ming])\n            vec = np.array(vals, dtype=float)\n            finite = np.isfinite(vec)\n            bad[i] += int(np.sum(~finite))\n            if finite.any():\n                z = (vec[finite] - mu[finite]) / sd[finite]\n                gz[i] = float(np.max(np.abs(z)))\n\n    score = nov + gz + _BAD_WEIGHT * bad\n    return [float(s) for s in score]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "a176abfc-4eb1-491d-b883-a4940d50973f",
+ "total_cost_usd": 0.0037679000000000002,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 11020,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4780,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11020,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4780,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11020,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037679000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "18224781-db24-4d0b-9bb2-b8e50abeca83"
+}
