@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 30854,
+ "duration_api_ms": 30842,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step1.py: flag-combination families and best-row detection for the MOOT data.\n\nNote: no earlier step modules were available to import from, so this file is\nself-contained. It uses only the standard library, numpy 1.26 and scikit-learn 1.7.\n\"\"\"\nfrom __future__ import annotations\n\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\nfrom sklearn.metrics import silhouette_score\nfrom sklearn.preprocessing import StandardScaler\n\n_BUDGET_FRACTION = 0.05   # \"best\" rows may be at most 5% of the data\n_KMAX = 8                 # largest number of families considered\n_SEED = 0\n_CHUNK = 512              # chunk size for the O(n^2) dominance test\n\n\ndef _load(path):\n    \"\"\"Return (header, rows) where rows are lists of raw string cells.\"\"\"\n    with open(path, newline=\"\") as f:\n        reader = csv.reader(f)\n        header = next(reader)\n        rows = [r for r in reader if r]\n    return header, rows\n\n\ndef _to_value(cell):\n    try:\n        return float(cell)\n    except ValueError:\n        return cell\n\n\ndef _classify(header):\n    \"\"\"Split column indices into (maximise, minimise, inputs). 'X' columns are dropped.\"\"\"\n    maximise, minimise, inputs = [], [], []\n    for i, name in enumerate(header):\n        if name.endswith(\"+\"):\n            maximise.append(i)\n        elif name.endswith(\"-\"):\n            minimise.append(i)\n        elif name.endswith(\"X\"):\n            continue\n        else:\n            inputs.append(i)\n    return maximise, minimise, inputs\n\n\ndef _input_matrix(rows, inputs):\n    \"\"\"Numeric matrix of the input columns; non-numeric columns are category-coded.\"\"\"\n    n = len(rows)\n    X = np.zeros((n, len(inputs)), dtype=float)\n    for j, col in enumerate(inputs):\n        vals = [_to_value(r[col]) for r in rows]\n        if all(isinstance(v, float) for v in vals):\n            X[:, j] = vals\n        else:\n            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}\n            X[:, j] = [codes[str(v)] for v in vals]\n    return X\n\n\ndef _goal_matrix(rows, maximise, minimise):\n    \"\"\"Goals as a minimisation matrix: maximised columns are negated.\"\"\"\n    cols = []\n    for col in minimise:\n        cols.append([float(r[col]) for r in rows])\n    for col in maximise:\n        cols.append([-float(r[col]) for r in rows])\n    if not cols:\n        return np.zeros((len(rows), 0), dtype=float)\n    return np.array(cols, dtype=float).T\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    _, _, inputs = _classify(header)\n    if not inputs:\n        return [0] * n\n\n    X = StandardScaler().fit_transform(_input_matrix(rows, inputs))\n    distinct = len(np.unique(X, axis=0))\n    if distinct < 2:\n        return [0] * n\n\n    # Choose k in [2, _KMAX] by silhouette score.\n    best_labels, best_score = None, -math.inf\n    k_max = min(_KMAX, distinct - 1, n - 1)\n    for k in range(2, k_max + 1):\n        km = KMeans(n_clusters=k, n_init=10, random_state=_SEED)\n        labels = km.fit_predict(X)\n        if len(set(labels.tolist())) < 2:\n            continue\n        score = silhouette_score(X, labels)\n        if score > best_score:\n            best_score, best_labels = score, labels\n\n    if best_labels is None:\n        # Too few distinct points for the search range; fall back to two clusters.\n        best_labels = KMeans(n_clusters=2, n_init=10, random_state=_SEED).fit_predict(X)\n\n    return [int(v) for v in best_labels]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together).\n\n    A row is kept if no other row is at least as good on every goal and strictly\n    better on one (the Pareto front). If the front holds more rows than 5% of the\n    data, the rows with the best mean goal rank are kept. Returned indices are sorted.\n    \"\"\"\n    header, rows = _load(train_csv)\n    n = len(rows)\n    maximise, minimise, _ = _classify(header)\n    G = _goal_matrix(rows, maximise, minimise)\n    if n == 0 or G.shape[1] == 0:\n        return []\n\n    # Pareto front (all goals are minimised in G). Chunked to bound memory.\n    dominated = np.zeros(n, dtype=bool)\n    for start in range(0, n, _CHUNK):\n        stop = min(start + _CHUNK, n)\n        Gi = G[start:stop, None, :]   # (c, 1, m)\n        Gj = G[None, :, :]            # (1, n, m)\n        le = (Gj <= Gi).all(axis=2)   # row j is no worse than row i on every goal\n        lt = (Gj < Gi).any(axis=2)    # row j is strictly better on some goal\n        dominated[start:stop] = (le & lt).any(axis=1)\n    front = np.flatnonzero(~dominated)\n\n    # Mean rank across goals (lower is better), used to order and cap the front.\n    ranks = np.empty_like(G)\n    for k in range(G.shape[1]):\n        order = np.argsort(G[:, k], kind=\"stable\")\n        r = np.empty(n, dtype=float)\n        r[order] = np.arange(n, dtype=float)\n        ranks[:, k] = r\n    score = ranks.mean(axis=1)\n\n    cap = int(math.floor(_BUDGET_FRACTION * n))\n    if cap < 1:\n        return []\n    ordered = front[np.argsort(score[front], kind=\"stable\")]\n    chosen = ordered[:cap]\n    return sorted(int(i) for i in chosen)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "baa66899-4f88-4c13-a1c9-3cc008c465c4",
+ "total_cost_usd": 0.0025695399999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 864,
+  "output_tokens": 5121,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5121,
+   "cacheReadInputTokens": 864,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.0025695399999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ab092df6-2971-4ea6-9b70-39c1a90868d5"
+}
