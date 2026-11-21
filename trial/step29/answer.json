@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 22064,
+ "stop_reason": "end_turn",
+ "session_id": "929f5e32-7ace-417e-bdf2-b6531508c08a",
+ "total_cost_usd": 0.0343078,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 31448,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4770,
+  "output_tokens_details": {
+   "thinking_tokens": 3780
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 31448,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4770,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 31448,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 31448
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25568,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.025633,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4770,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 31448,
+   "webSearchRequests": 0,
+   "costUSD": 0.0086748,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 29: spot. Suspicion scores for customer records.\n\nStandard library only. The cached training model is reused from step2, and the\nsuspicion score from step9 (input-space novelty, flag values never seen in\ntraining, goal disagreement, goal range and bad goal cells) is reused unchanged.\n\nThis module adds one check that step9 does not make per input column:\n  - range_part: a numeric input column (such as AGE or INCOME) holds a value\n    outside the range seen in training for that column, in units of that range.\n    An impossible age such as 230 is caught here even when the rest of the\n    record looks typical.\n  - A numeric input column that holds text or no value is counted like an\n    unseen flag value, at the same UNSEEN_COST as step9.\n\n\"Behaves unlike anyone else\" is answered by step9's input-space novelty term.\n\"Looks wrong\" is answered by the sum of all terms.\n\"\"\"\n\nimport math\n\nfrom step2 import _model\nfrom step9 import odd as _odd, UNSEEN_COST\n\n\nRANGE_WEIGHT = 1.0   # points per unit of a column's training range outside that range\n\n\ndef _numeric_ranges(model):\n    \"\"\"For each input column whose training values are all numbers, return\n    (lo, hi, unit). unit is the training span, or the size of lo when the span\n    is zero, so that a constant column still gives a finite score.\"\"\"\n    ranges = {}\n    rows = model[\"rows\"]\n    if not rows:\n        return ranges\n    for c in model[\"inputs\"]:\n        vals = [r[c] for r in rows]\n        if not all(isinstance(v, (int, float)) for v in vals):\n            continue\n        lo, hi = float(min(vals)), float(max(vals))\n        span = hi - lo\n        unit = span if span > 0 else max(abs(lo), 1.0)\n        ranges[c] = (lo, hi, unit)\n    return ranges\n\n\ndef _range_part(row, ranges):\n    \"\"\"Points for numeric inputs outside their training range, and for numeric\n    inputs that are missing, text, or not finite.\"\"\"\n    score = 0.0\n    for c, (lo, hi, unit) in ranges.items():\n        v = row.get(c)\n        if not isinstance(v, (int, float)) or not math.isfinite(v):\n            score += UNSEEN_COST\n            continue\n        v = float(v)\n        excess = max(lo - v, v - hi, 0.0)\n        score += RANGE_WEIGHT * excess / unit\n    return score\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included): higher means more\n    likely a glitch, a typo, or unlike anything in train_csv.\"\"\"\n    if not rows:\n        return []\n    base = _odd(train_csv, rows)\n    model = _model(train_csv)\n    if not model[\"targets\"]:\n        return base\n    ranges = _numeric_ranges(model)\n    return [float(s + _range_part(row, ranges)) for s, row in zip(base, rows)]\n```",
+ "ttft_ms": 17831,
+ "type": "result",
+ "duration_ms": 20783,
+ "uuid": "d23685a5-2282-4a97-90a3-3d19e321d8e3",
+ "ttft_stream_ms": 1312,
+ "time_to_request_ms": 95,
+ "queued_turn_count": 0
+}
