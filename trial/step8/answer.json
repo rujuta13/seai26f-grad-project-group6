@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 379448,
+ "duration_api_ms": 379434,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step8.py: the smallest change to a bad build that makes it good, leaving frozen settings alone.\n\nThe fix is a measured build from the training data, so its goals are known rather than predicted.\n\"\"\"\n\nfrom step1 import _load, best\nfrom step5 import _goal_scores\nfrom step6 import _num\n\n\ndef _same_value(a, b) -> bool:\n    \"\"\"Equal as numbers when both parse as numbers (so '1' matches 1.0), otherwise as strings.\"\"\"\n    fa, fb = _num(a), _num(b)\n    if fa is not None and fb is not None:\n        return fa == fb\n    return str(a) == str(b)\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the bad row's inputs with as few values changed as possible so the build is good.\n\n    Candidates are measured training builds that agree with `row` on every frozen column,\n    so no frozen setting changes. Among the good candidates (the Pareto front, or the ranked\n    subset when the front is large), the one that changes the fewest settings wins, with\n    the best combined goal score breaking ties. If no good candidate is eligible, the\n    eligible build with the best combined score is returned instead.\n\n    Raises ValueError if `frozen` names a column that is not an input, or if no measured\n    build has the frozen settings.\n    \"\"\"\n    rows, inputs, goals = _load(train_csv)\n    frozen = set(frozen)\n\n    unknown = frozen - set(inputs)\n    if unknown:\n        raise ValueError(f\"frozen columns are not inputs: {sorted(unknown)}\")\n\n    base = {c: row.get(c, \"\") for c in inputs}\n    if not rows or not goals:\n        raise ValueError(\"train_csv has no measured builds with goal columns\")\n\n    score = _goal_scores(rows, goals)\n    good = set(best(train_csv))\n\n    eligible = [\n        i for i in range(len(rows))\n        if all(_same_value(rows[i][c], base[c]) for c in frozen)\n    ]\n    if not eligible:\n        raise ValueError(\"no measured build has the frozen settings, so no fix is possible\")\n\n    def changes(i):\n        return sum(0 if _same_value(rows[i][c], base[c]) else 1 for c in inputs)\n\n    good_eligible = [i for i in eligible if i in good]\n    if good_eligible:\n        # Fewest changed settings first, then the best combined score.\n        pick = min(good_eligible, key=lambda i: (changes(i), -score[i], i))\n    else:\n        pick = max(eligible, key=lambda i: (score[i], -changes(i), -i))\n\n    out = {}\n    for c in inputs:\n        if _same_value(rows[pick][c], base[c]):\n            out[c] = base[c]\n        else:\n            out[c] = rows[pick][c]\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1beb8c29-cd99-4a57-814f-d35abee0b2f9",
+ "total_cost_usd": 0.003146775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 9119,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4013,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 9119,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4013,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 9119,
+   "webSearchRequests": 0,
+   "costUSD": 0.003146775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "dd54744a-7ae0-4525-8478-b944bd991f3e"
+}
