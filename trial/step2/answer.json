@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 38917,
+ "stop_reason": "end_turn",
+ "session_id": "58f7e426-3356-408e-a61a-fd77824285a3",
+ "total_cost_usd": 0.00845,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 3284,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8994,
+  "output_tokens_details": {
+   "thinking_tokens": 7383
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 3284,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8994,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3284,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 3284
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 3221,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.003296,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8994,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 3284,
+   "webSearchRequests": 0,
+   "costUSD": 0.005154,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 2: guess the goal values of an unseen flag set.\n\nStandard library only. Loading, column splitting, input encoding and the\nsquared-distance helper are reused from step1.\n\nMethod: inverse-distance-weighted k-nearest-neighbour regression on the\ninput columns. Each interval is the estimate shifted by the 5th and 95th\npercentiles of leave-one-out residuals measured on the training data, so\nthe band reflects the error the model actually makes on this data.\n\"\"\"\n\nimport heapq\nimport math\n\nfrom step1 import _load, _columns, _input_matrix, _sqdist\n\n\nK_NEIGHBOURS = 7\nCALIB_SAMPLE = 200      # training rows used for leave-one-out calibration\nBAND_LO = 0.05          # lower residual quantile for the interval\nBAND_HI = 0.95          # upper residual quantile for the interval\n\n_cache = {}\n\n\ndef _quantile(sorted_vals, q):\n    \"\"\"Linear-interpolated quantile of a non-empty sorted list.\"\"\"\n    pos = q * (len(sorted_vals) - 1)\n    lo = math.floor(pos)\n    hi = min(lo + 1, len(sorted_vals) - 1)\n    frac = pos - lo\n    return sorted_vals[lo] * (1.0 - frac) + sorted_vals[hi] * frac\n\n\ndef _predict(query, points, targets, exclude=None):\n    \"\"\"Inverse-distance-weighted mean of the nearest neighbours' goal values.\n\n    Returns None when there is no neighbour to average over.\"\"\"\n    nearest = heapq.nsmallest(\n        K_NEIGHBOURS,\n        ((_sqdist(query, p), i) for i, p in enumerate(points) if i != exclude),\n    )\n    if not nearest:\n        return None\n    m = len(targets[0])\n    est = [0.0] * m\n    wsum = 0.0\n    for d, i in nearest:\n        w = 1.0 / (1.0 + d)\n        wsum += w\n        for g in range(m):\n            est[g] += w * targets[i][g]\n    return [v / wsum for v in est]\n\n\ndef _calibrate(points, targets, n_goals):\n    \"\"\"Per goal, the (lo, hi) residual quantiles of leave-one-out predictions.\"\"\"\n    n = len(points)\n    step = max(1, n // CALIB_SAMPLE)\n    resid = [[] for _ in range(n_goals)]\n    for i in range(0, n, step):\n        pred = _predict(points[i], points, targets, exclude=i)\n        if pred is None:\n            continue\n        for g in range(n_goals):\n            resid[g].append(targets[i][g] - pred[g])\n    bands = []\n    for vals in resid:\n        if not vals:\n            bands.append((-math.inf, math.inf))\n            continue\n        vals.sort()\n        bands.append((_quantile(vals, BAND_LO), _quantile(vals, BAND_HI)))\n    return bands\n\n\ndef _model(train_csv):\n    \"\"\"Load and cache the training data, its encoding and its calibration.\"\"\"\n    if train_csv in _cache:\n        return _cache[train_csv]\n    header, rows = _load(train_csv)\n    inputs, goals = _columns(header)\n    points = _input_matrix(rows, inputs)\n    targets = [[float(r[name]) for name, _ in goals] for r in rows]\n    bands = _calibrate(points, targets, len(goals))\n    model = {\n        \"rows\": rows,\n        \"inputs\": inputs,\n        \"goals\": goals,\n        \"points\": points,\n        \"targets\": targets,\n        \"bands\": bands,\n    }\n    _cache[train_csv] = model\n    return model\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for an unseen flag set.\n\n    `row` holds the input columns only (goal columns removed). Returns\n    {goal: (estimate, low, high)} where low..high is the calibrated range\n    the true value should fall in.\n    \"\"\"\n    model = _model(train_csv)\n    goals = model[\"goals\"]\n    targets = model[\"targets\"]\n\n    if not targets:\n        return {name: (0.0, -math.inf, math.inf) for name, _ in goals}\n\n    # Encode the query together with the training rows so that categorical\n    # codes match the ones used for the training points.\n    probe = {c: row.get(c, 0.0) for c in model[\"inputs\"]}\n    qpoint = _input_matrix(model[\"rows\"] + [probe], model[\"inputs\"])[-1]\n\n    pred = _predict(qpoint, model[\"points\"], targets)\n\n    out = {}\n    for g, (name, _) in enumerate(goals):\n        est = pred[g]\n        rlo, rhi = model[\"bands\"][g]\n        out[name] = (est, min(est, est + rlo), max(est, est + rhi))\n    return out\n```",
+ "ttft_ms": 33650,
+ "type": "result",
+ "duration_ms": 38157,
+ "uuid": "17fb622c-843d-4f45-865b-eb4959f68538",
+ "ttft_stream_ms": 1483,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
