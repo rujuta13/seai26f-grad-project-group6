@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 9570,
+ "stop_reason": "end_turn",
+ "session_id": "1c7a6f10-90da-408e-b295-7a4189ef5bbe",
+ "total_cost_usd": 0.030187800000000004,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 28853,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1330,
+  "output_tokens_details": {
+   "thinking_tokens": 898
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28853,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1330,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 28853,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 28853
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 23667,
+   "outputTokens": 17,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.023752000000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1330,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28853,
+   "webSearchRequests": 0,
+   "costUSD": 0.006435800000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step22.py - client question 22: guess.\n\nguess(train_csv, row) estimates every goal of a customer (flag set) that has\nnot been seen, with a range the true value should fall in. The client's two\nquestions map onto goals in the training file:\n  - online versus in-store purchases: NUMWEBPURCHASES+ and NUMSTOREPURCHASES+;\n  - answering the next campaign: RESPONSE+.\n\nThe work is done by step12.guess, which gives a median estimate from the\nnearest training flag sets and a range calibrated on leave-one-out errors.\nThis module only reshapes its output so every value is a plain float.\n\nReused from earlier steps:\n  step12: guess (estimate and calibrated low..high range for every goal)\n\"\"\"\nfrom step12 import guess as _guess\n\n__all__ = [\"guess\"]\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of a customer and a range the true value should\n    fall in. `row` maps input column names to values (goal columns removed).\n    Returns {goal: (estimate, low, high)} for every goal column.\"\"\"\n    result = _guess(train_csv, row)\n    return {goal: (float(est), float(low), float(high))\n            for goal, (est, low, high) in result.items()}\n```",
+ "ttft_ms": 5827,
+ "type": "result",
+ "duration_ms": 7356,
+ "uuid": "b9c98394-f938-409f-8192-17fe124c0ad5",
+ "ttft_stream_ms": 1747,
+ "time_to_request_ms": 85,
+ "queued_turn_count": 0
+}
