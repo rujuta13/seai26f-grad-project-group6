@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 41093,
+ "stop_reason": "end_turn",
+ "session_id": "a1e01c71-ecfe-4b5b-a6f2-eb4149a48d28",
+ "total_cost_usd": 0.0106575,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 5569,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8857,
+  "output_tokens_details": {
+   "thinking_tokens": 7201
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 5569,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8857,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5569,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 5569
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 5035,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.005115000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8857,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 5569,
+   "webSearchRequests": 0,
+   "costUSD": 0.0055425,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 4: streaming keep/drift decisions for nightly benchmark results.\n\nStandard library only. Reuses the Pareto dominance and encoding helpers from\nstep1, the cached training model from step2, and the permutation test from\nstep3.\n\nstream: a new row is kept when no training row and no earlier row of the\nstream is at least as good on every goal, with one strictly better (or\nidentical). Goals are normalised with the bounds of train_csv, so the verdict\ndepends only on the training data and the rows already seen.\n\ndrift: each incoming row is summarised by its Euclidean distance to the\nnearest training row in input space. Those distances are compared, in\nnon-overlapping blocks of DRIFT_BLOCK rows, with the leave-one-out nearest\nneighbour distances of the training data, using step3.same. The index\nreturned is the last row of the first block that differs.\n\"\"\"\n\nimport math\n\nfrom step1 import _dominates, _input_matrix, _sqdist\nfrom step2 import _model\nfrom step3 import same\n\n\nDRIFT_BLOCK = 30      # rows per non-overlapping drift check\nCALIB_SAMPLE = 200    # training rows used for the reference distances\n\n_ref_cache = {}\n\n\ndef _goal_bounds(model):\n    \"\"\"Per goal, the (lo, hi) of the signed training values (higher is better).\"\"\"\n    bounds = []\n    for g, (_, sign) in enumerate(model[\"goals\"]):\n        vals = [sign * t[g] for t in model[\"targets\"]]\n        if not vals:\n            bounds.append((0.0, 0.0))\n        else:\n            bounds.append((min(vals), max(vals)))\n    return bounds\n\n\ndef _goal_vector(values, goals, bounds):\n    \"\"\"Goal values of one row, scaled by the training bounds (higher is better).\n\n    A goal with zero training span keeps its raw offset from the training\n    value, so a different result on that goal is still visible.\"\"\"\n    vec = []\n    for (name, sign), (lo, hi) in zip(goals, bounds):\n        span = hi - lo\n        scale = span if span > 0 else 1.0\n        vec.append((sign * float(values[name]) - lo) / scale)\n    return vec\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) a row if no training row and no earlier stream row is at\n    least as good on every goal with a strict gain on one (or an exact tie).\n    Each decision uses only train_csv and the rows before it.\"\"\"\n    model = _model(train_csv)\n    goals = model[\"goals\"]\n    if not goals:\n        return [False for _ in rows]\n\n    bounds = _goal_bounds(model)\n    seen = [_goal_vector(r, goals, bounds) for r in model[\"rows\"]]\n\n    decisions = []\n    for row in rows:\n        vec = _goal_vector(row, goals, bounds)\n        keep = not any(p == vec or _dominates(p, vec) for p in seen)\n        decisions.append(keep)\n        seen.append(vec)\n    return decisions\n\n\ndef _nearest_sq(query, points, exclude=None):\n    \"\"\"Squared distance from query to its nearest point, skipping index exclude.\"\"\"\n    best = math.inf\n    for i, p in enumerate(points):\n        if i == exclude:\n            continue\n        d = _sqdist(query, p)\n        if d < best:\n            best = d\n    return best\n\n\ndef _reference(train_csv, model):\n    \"\"\"Leave-one-out nearest-neighbour distances of a sample of training rows.\"\"\"\n    if train_csv in _ref_cache:\n        return _ref_cache[train_csv]\n    points = model[\"points\"]\n    n = len(points)\n    step = max(1, n // CALIB_SAMPLE)\n    ref = []\n    for i in range(0, n, step):\n        d = _nearest_sq(points[i], points, exclude=i)\n        if d != math.inf:\n            ref.append(math.sqrt(d))\n    _ref_cache[train_csv] = ref\n    return ref\n\n\ndef _encode(model, row):\n    \"\"\"Encode one row with the training codes, as step2.guess does.\"\"\"\n    probe = {c: row.get(c, 0.0) for c in model[\"inputs\"]}\n    return _input_matrix(model[\"rows\"] + [probe], model[\"inputs\"])[-1]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows where new results first stop looking like train_csv,\n    judged on input-space nearest-neighbour distances in blocks of\n    DRIFT_BLOCK rows. Returns None if no block differs.\"\"\"\n    model = _model(train_csv)\n    points = model[\"points\"]\n    if not points:\n        return None\n    ref = _reference(train_csv, model)\n    if not ref:\n        return None\n\n    block = []\n    for i, row in enumerate(rows):\n        q = _encode(model, row)\n        d = _nearest_sq(q, points)\n        block.append(math.sqrt(d))\n        if len(block) == DRIFT_BLOCK:\n            if not same(block, ref):\n                return i\n            block = []\n    return None\n```",
+ "ttft_ms": 35208,
+ "type": "result",
+ "duration_ms": 40319,
+ "uuid": "9f34ede6-7368-454b-a9fa-ee090dd5b4c9",
+ "ttft_stream_ms": 1189,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
