@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 21492,
+ "duration_api_ms": 21481,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step2.py: predict each goal for an unseen flag set, with an uncertainty range.\"\"\"\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _load, _encode\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal of train_csv.\n\n    `row` maps input column names to values (goal columns removed). The range\n    low..high is the 5th to 95th percentile of out-of-bag prediction errors,\n    added around the point estimate.\n    \"\"\"\n    rows, inputs, goals = _load(train_csv)\n    if not goals:\n        return {}\n\n    n = len(rows)\n    if n == 0:\n        return {name: (float(\"nan\"), float(\"nan\"), float(\"nan\")) for name, _ in goals}\n\n    # Encode training rows and the query together so categorical codes agree.\n    query = {c: row.get(c, \"\") for c in inputs}\n    X_all = _encode(rows + [query], inputs)\n    X, x_new = X_all[:-1], X_all[-1:]\n\n    out: dict[str, tuple[float, float, float]] = {}\n    for name, _sign in goals:\n        y = np.array([float(r[name]) for r in rows], dtype=float)\n\n        # Too little data for a meaningful model: fall back to the observed spread.\n        if n < 10:\n            est = float(y.mean())\n            lo = float(y.min())\n            hi = float(y.max())\n            out[name] = (est, min(lo, est), max(hi, est))\n            continue\n\n        model = RandomForestRegressor(\n            n_estimators=300,\n            min_samples_leaf=2,\n            bootstrap=True,\n            oob_score=True,\n            random_state=0,\n            n_jobs=1,\n        )\n        model.fit(X, y)\n        est = float(model.predict(x_new)[0])\n\n        # Out-of-bag errors estimate how wrong the model is on unseen rows.\n        oob = np.asarray(model.oob_prediction_, dtype=float)\n        resid = y - oob\n        resid = resid[np.isfinite(resid)]\n        if resid.size >= 2:\n            q_lo = float(np.quantile(resid, 0.05))\n            q_hi = float(np.quantile(resid, 0.95))\n        else:\n            q_lo = q_hi = 0.0\n\n        lo = min(est + q_lo, est)\n        hi = max(est + q_hi, est)\n        out[name] = (est, lo, hi)\n\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "f419d1e9-c42f-4312-b2d8-f2b022740890",
+ "total_cost_usd": 0.0016400249999999998,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 2365,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2688,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 2365,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2688,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 2365,
+   "webSearchRequests": 0,
+   "costUSD": 0.0016400249999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "98cf51b5-41a4-4d79-92c5-8d4c7e783702"
+}
