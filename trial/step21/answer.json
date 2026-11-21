@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 4313,
+ "stop_reason": "end_turn",
+ "session_id": "a72abc38-0f32-4701-b50d-efae05c0deb3",
+ "total_cost_usd": 0.0241375,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 23034,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 385,
+  "output_tokens_details": {
+   "thinking_tokens": 154
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23034,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 385,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 23034,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 23034
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19278,
+   "outputTokens": 12,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019338,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 385,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23034,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step21.py\n\"\"\"\nstep21: remember, for the client.  Two asks: group the 2,200 customers\ninto the kinds of shopper they really are, and find the best customers\n(busy across channels, loyal, no complaints).  Both are already built in\nstep1, so this file reuses them unchanged.\n\"\"\"\nimport step1\n\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  return step1.families(train_csv)\n\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  return step1.best(train_csv)\n```",
+ "ttft_ms": 2415,
+ "type": "result",
+ "duration_ms": 3124,
+ "uuid": "fd4ddf51-5326-4acc-b884-b84a3b6e4304",
+ "ttft_stream_ms": 1758,
+ "time_to_request_ms": 91,
+ "queued_turn_count": 0
+}
