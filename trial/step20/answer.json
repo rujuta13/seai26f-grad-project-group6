@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 45973,
+ "stop_reason": "end_turn",
+ "session_id": "9b729acc-ca03-471a-9eaf-fc559c9de09f",
+ "total_cost_usd": 0.0314272,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25215,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10428,
+  "output_tokens_details": {
+   "thinking_tokens": 8824
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25215,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10428,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25215,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25215
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21100,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02117,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10428,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25215,
+   "webSearchRequests": 0,
+   "costUSD": 0.010257200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step20.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep20.py: race.  Our shortlist and our penalty guesser against the rivals\nthe client named, on test_csv.\n\n  \"Does our shortlist beat a simple top overall rating list?\"\n      ours      step7.choose (ezr.acquire under a label budget).\n      top_ovr   the BUDGET rows with the highest OVR, labelled, best one picked.\n      random    a random sample of BUDGET rows, best one picked (step10).\n      ols       the ridge model's ranking, shortlist of BUDGET (step10).\n\n  \"Does our penalty guesser beat an off-the-shelf model?\"\n      penalty_ours  step2.guess's median estimate of Penalties+.\n      penalty_ols   the ridge model's predicted Penalties+ (step10).\n\nEvery score is lower-is-better.  Shortlist scores are the true ydist of the\nchosen build (0 is ideal).  Penalty scores are the mean |guess - truth| for\nPenalties+, in training standard-deviation units.\nReuses step2 (guess), step7 (choose), step10 (race, ridge model) and ezr.\n\"\"\"\nimport ezr\nimport step2, step7, step10\n\nOVR = \"OVR\"          # the simple rival's rating column (an input)\nPEN = \"Penalties+\"   # the goal the penalty guesser is judged on\n\ndef _goal(tbl, name: str):\n  \"The goal column of TBL named NAME, or raise.\"\n  for c in tbl.y:\n    if c.txt == name: return c\n  raise ValueError(f\"no goal named {name!r} in {[c.txt for c in tbl.y]}\")\n\ndef _ovr_at(tbl) -> int:\n  \"Column index of the OVR input, or raise.\"\n  for c in tbl.x:\n    if c.txt == OVR: return c.at\n  raise ValueError(f\"no input column named {OVR!r} in {tbl.names}\")\n\ndef _top_ovr(full, budget: int) -> list[int]:\n  \"Indices of the BUDGET rows with the highest OVR: the simple rating list.\"\n  at = _ovr_at(full)\n  def rating(i):\n    v = full.rows[i][at]\n    return v if v != \"?\" else float(\"-inf\")\n  return sorted(range(len(full.rows)), key=rating, reverse=True)[:budget]\n\ndef _pick(full, idx: list[int]) -> int:\n  \"The best of the labelled rows IDX, judged on those labels alone (as step7 does).\"\n  scorer = ezr.clone(full, [full.rows[i] for i in idx])\n  return min(idx, key=lambda i: ezr.ydist(scorer, full.rows[i]))\n\ndef _score(full, i: int) -> float:\n  \"The real score of test row I (all goals known here): lower is better.\"\n  return ezr.ydist(full, full.rows[i])\n\ndef _pen_error(train, full, guesses: list[float]) -> float:\n  \"Mean |guess - truth| for Penalties+, in training sd units.\"\n  truth = _goal(full, PEN)\n  sd    = _goal(train, PEN).sd or 1\n  errs  = [abs(g - r[truth.at]) / sd\n           for r, g in zip(full.rows, guesses) if r[truth.at] != \"?\"]\n  return sum(errs)/len(errs) if errs else 0.0\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Shortlist and penalty scores on test_csv, one entry per method; lower is better.\"\n  base   = step10.race(train_csv, test_csv)   # raises on an empty test_csv\n  train  = ezr.Tbl(ezr.csv(train_csv))\n  full   = ezr.Tbl(ezr.csv(test_csv))\n  budget = min(ezr.the.Stop, len(full.rows))\n\n  out = {\"ours\":   base[\"ours\"],\n         \"random\": base[\"random\"],\n         \"ols\":    base[\"ols\"]}\n  out[\"top_ovr\"] = _score(full, _pick(full, _top_ovr(full, budget)))\n\n  names   = full.names\n  goal_nm = {names[c.at] for c in full.y}\n  inputs  = [{names[at]: v for at, v in enumerate(r) if names[at] not in goal_nm}\n             for r in full.rows]\n\n  ours_pen = [step2.guess(train_csv, inp)[PEN][0] for inp in inputs]\n  feats, betas = step10._ols(train)\n  ols_pen = [step10._predict(feats, betas, r)[PEN] for r in full.rows]\n\n  out[\"penalty_ours\"] = _pen_error(train, full, ours_pen)\n  out[\"penalty_ols\"]  = _pen_error(train, full, ols_pen)\n  return out\n```",
+ "ttft_ms": 40330,
+ "type": "result",
+ "duration_ms": 44698,
+ "uuid": "151f9f18-0061-4e58-abd9-3e5477d145f0",
+ "ttft_stream_ms": 1275,
+ "time_to_request_ms": 16,
+ "queued_turn_count": 0
+}
