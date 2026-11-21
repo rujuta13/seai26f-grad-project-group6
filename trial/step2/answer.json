@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 21484,
+ "stop_reason": "end_turn",
+ "session_id": "2bdd0246-fdd1-43cb-8271-5654338adba5",
+ "total_cost_usd": 0.0117354,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 8791,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4546,
+  "output_tokens_details": {
+   "thinking_tokens": 3523
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 8791,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4546,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 8791,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 8791
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7634,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007704,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4546,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 8791,
+   "webSearchRequests": 0,
+   "costUSD": 0.0040314,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step2.py\n\"Step 2: guess each goal of a flag set from its nearest training rows.\"\nimport ezr\n\nK  = 20     # nearest training rows to consult\nLO = 0.10   # low end of the \"fairly sure\" range\nHI = 0.90   # high end of the \"fairly sure\" range\n\n_CACHE: dict = {}\n\ndef _load(train_csv: str):\n  \"Table of TRAIN_CSV, cached so repeated guesses are cheap.\"\n  if train_csv not in _CACHE:\n    _CACHE[train_csv] = ezr.Tbl(ezr.csv(train_csv))\n  return _CACHE[train_csv]\n\ndef _pct(xs: list, p: float) -> float:\n  \"Percentile P (0..1) of sorted XS, by linear interpolation.\"\n  i  = p * (len(xs) - 1)\n  lo = int(i)\n  hi = min(lo + 1, len(xs) - 1)\n  return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW (goal columns removed) into a full-width row.\n  Goal cells, and any cells not given, are '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):                  # {column name: value}\n    for c in tbl.x:\n      if c.txt in row: out[c.at] = _coerce(row[c.txt])\n  else:                                      # list, in header order, goals removed\n    keep = [i for i, n in enumerate(names) if n[-1] not in \"+-!\"]\n    for i, v in zip(keep, row): out[i] = _coerce(v)\n  return out\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n  \"\"\"Return {goal: (estimate, low, high)} for every goal.\n  The estimate is the median goal value of the K training rows\n  nearest to ROW over the input columns; low..high is the\n  LO..HI percentile band of those same neighbours.\"\"\"\n  tbl  = _load(train_csv)\n  q    = _full(tbl, row)\n  rows = tbl.rows\n  near = sorted(rows, key=lambda r: ezr.xdist(tbl, q, r))[:K]\n  out  = {}\n  for c in tbl.y:\n    xs = sorted(r[c.at] for r in near if r[c.at] != \"?\")\n    if not xs:                               # no neighbour has this goal\n      xs = sorted(r[c.at] for r in rows if r[c.at] != \"?\")\n    if not xs:\n      out[c.txt] = (0.0, 0.0, 0.0)\n      continue\n    lo, est, hi = _pct(xs, LO), _pct(xs, 0.5), _pct(xs, HI)\n    out[c.txt] = (float(est), float(lo), float(hi))\n  return out\n```",
+ "ttft_ms": 17653,
+ "type": "result",
+ "duration_ms": 20653,
+ "uuid": "781ed5ee-4950-4c99-8349-604e15695055",
+ "ttft_stream_ms": 1362,
+ "time_to_request_ms": 23,
+ "queued_turn_count": 0
+}
