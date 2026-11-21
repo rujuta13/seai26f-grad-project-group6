@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 29233,
+ "stop_reason": "end_turn",
+ "session_id": "23144dce-39ee-4949-85cf-390193df7d09",
+ "total_cost_usd": 0.047610900000000005,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 42656,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6899,
+  "output_tokens_details": {
+   "thinking_tokens": 4884
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 42656,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6899,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 42656,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 42656
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 35560,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.03563,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6899,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 42656,
+   "webSearchRequests": 0,
+   "costUSD": 0.011980900000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step21.py\n\"Step 21: remember. Group customers into families (kinds of shopper), and find the unusually good customers (best on all goals together). Results are remembered per file.\"\nimport math\nimport os\nimport random\nimport ezr\n\nK     = 5             # number of families to find\nITERS = 20            # cap on k-modes iterations\nSEED  = 1234567891    # fixed seed, so results repeat\nFRAC  = 0.05          # \"best\" is at most this fraction of rows\n\n_CACHE: dict = {}     # (path, mtime) -> (families, best), remembered per file\n\ndef _key(train_csv: str) -> tuple:\n  \"Identity of TRAIN_CSV: its absolute path and when it last changed.\"\n  path = os.path.abspath(os.path.expanduser(train_csv))\n  return (path, os.path.getmtime(path))\n\ndef _load(train_csv: str):\n  \"Table of TRAIN_CSV, with columns and goals from its header.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\ndef _isnum(v) -> bool:\n  \"True for a usable finite number.\"\n  return (isinstance(v, (int, float)) and not isinstance(v, bool)\n          and math.isfinite(v))\n\ndef _inputs(tbl) -> list:\n  \"\"\"Input columns that carry family information: all numbers, and symbols\n  that repeat. A symbol where every value is distinct is an identifier, so\n  it says nothing about families.\"\"\"\n  return [c for c in tbl.x\n          if type(c) is ezr.Num or len(c.has) < c.n]\n\ndef _x(c, v):\n  \"One input cell as a feature: numbers become 0..1 (None if unknown); symbols stay as they are.\"\n  if type(c) is ezr.Num:\n    return ezr.norm(c, v) if _isnum(v) else None\n  return None if v == \"?\" else v\n\ndef _gap2(cols: list, f: list, g: list) -> float:\n  \"Squared distance between feature vectors F and G, one gap per input column. Unknown = far.\"\n  total = 0.0\n  for c, a, b in zip(cols, f, g):\n    if a is None or b is None: d = 1.0\n    elif type(c) is ezr.Num:   d = abs(a - b)\n    else:                      d = 0.0 if a == b else 1.0\n    total += d * d\n  return total\n\ndef _centre(cols: list, members: list) -> list:\n  \"Middle of MEMBERS: the mean for numbers, the most common value for symbols; None if unknown.\"\n  out = []\n  for i, c in enumerate(cols):\n    vals = [f[i] for f in members if f[i] is not None]\n    if not vals:\n      out.append(None)\n    elif type(c) is ezr.Num:\n      out.append(sum(vals) / len(vals))\n    else:\n      count: dict = {}\n      for v in vals: count[v] = count.get(v, 0) + 1\n      out.append(max(sorted(count, key=str), key=lambda v: count[v]))\n  return out\n\ndef _families(tbl) -> list[int]:\n  \"One family label per row of TBL, in row order: k-modes over the input columns.\"\n  rows = tbl.rows\n  n    = len(rows)\n  if not n: return []\n  cols   = _inputs(tbl)\n  feats  = [[_x(c, r[c.at]) for c in cols] for r in rows]\n  k      = min(K, n)\n  rng    = random.Random(SEED)\n  cents  = [feats[i] for i in rng.sample(range(n), k)]   # seed with rows\n  labels = [-1] * n\n  for _ in range(ITERS):\n    # assign each row to its nearest centroid, over the input columns\n    new = [min(range(k), key=lambda j, f=f: _gap2(cols, f, cents[j]))\n           for f in feats]\n    if new == labels: break\n    labels = new\n    # move each centroid to the middle of its members (empty ones stay put)\n    for j in range(k):\n      members = [f for f, lab in zip(feats, labels) if lab == j]\n      if members: cents[j] = _centre(cols, members)\n  return labels\n\ndef _score(goals: list, r: list) -> float:\n  \"Distance of ROW R from the ideal over the numeric goals GOALS; infinity if no goal is known.\"\n  sq, k = 0.0, 0\n  for c in goals:\n    v = r[c.at]\n    if _isnum(v):\n      sq += (ezr.norm(c, v) - c.goal) ** 2\n      k  += 1\n  return math.sqrt(sq / k) if k else math.inf\n\ndef _best(tbl) -> list[int]:\n  \"\"\"Row indices of TBL's unusually good rows: closest to the ideal on all\n  numeric goals together, at most FRAC of rows, best first. Rows with no\n  known goal value are never included.\"\"\"\n  goals = [c for c in tbl.y if type(c) is ezr.Num]\n  if not goals: return []\n  ds    = [_score(goals, r) for r in tbl.rows]\n  n     = int(FRAC * len(tbl.rows))\n  order = sorted(range(len(ds)), key=lambda i: (ds[i], i))\n  return [i for i in order[:n] if math.isfinite(ds[i])]\n\ndef _remember(train_csv: str) -> tuple:\n  \"Families and best for TRAIN_CSV, computed once per file version, then reused.\"\n  key = _key(train_csv)\n  if key not in _CACHE:\n    tbl = _load(train_csv)\n    _CACHE[key] = (_families(tbl), _best(tbl))\n  fam, bst = _CACHE[key]\n  return list(fam), list(bst)\n\ndef families(train_csv) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  return _remember(train_csv)[0]\n\ndef best(train_csv) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows, best first.\"\n  return _remember(train_csv)[1]\n```",
+ "ttft_ms": 22422,
+ "type": "result",
+ "duration_ms": 27791,
+ "uuid": "6deb41bc-58c9-4fd3-90f8-6aa9efd45bf9",
+ "ttft_stream_ms": 1767,
+ "time_to_request_ms": 113,
+ "queued_turn_count": 0
+}
