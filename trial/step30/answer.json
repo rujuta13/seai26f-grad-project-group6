@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 31463,
+ "stop_reason": "end_turn",
+ "session_id": "653df07d-a0d5-4eda-8700-e11979a30c15",
+ "total_cost_usd": 0.0354181,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 30787,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7461,
+  "output_tokens_details": {
+   "thinking_tokens": 5998
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30787,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 7461,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 30787,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 30787
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25435,
+   "outputTokens": 19,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.02553,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 7461,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30787,
+   "webSearchRequests": 0,
+   "costUSD": 0.0098881,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step30.py\n\"\"\"Race for the client: does our targeting beat simply mailing the highest-income\ncustomers, and does our response guesser beat an off-the-shelf model?\n\nTargeting scores (higher is better) use wins: 100 at the best customer in\ntest_csv, 0 at an average one, on goals only. Rivals are step10's random\nsearch and stdlib hill climber, plus \"top_income\", which labels the BUDGET\ncustomers with the highest INCOME and keeps the best of them.\n\nResponse scores (higher is better) use skill: 100 when the guesses have zero\nmean absolute error on RESPONSE, 0 when they are no better than always\nguessing the training response rate. \"response_ours\" is step22.guess, and\n\"response_linear\" is ridge regression on the numeric inputs, from step20.\n\"\"\"\nimport ezr\nimport step2\nimport step4\nimport step7\nimport step10\nimport step20\nimport step22\n\nINCOME = \"INCOME\"\n\n\ndef _at(tbl, name: str) -> int:\n  \"Column position of NAME in TBL's header.\"\n  names = list(tbl.names)\n  if name not in names:\n    raise ValueError(f\"race: no {name} column; have {names}\")\n  return names.index(name)\n\n\ndef _response_goal(tbl):\n  \"The RESPONSE goal column of TBL.\"\n  hits = [g for g in step4._goals(tbl)\n          if g.txt.rstrip(\"+-\").upper() == \"RESPONSE\"]\n  if not hits:\n    raise ValueError(f\"race: no RESPONSE goal in \"\n                     f\"{[g.txt for g in step4._goals(tbl)]}\")\n  return hits[0]\n\n\ndef _top_income(tbl, cap: int) -> int:\n  \"The row a highest-income mailing picks: the CAP highest INCOME rows, best one kept.\"\n  at = _at(tbl, INCOME)\n\n  def key(i: int) -> float:\n    v = tbl.rows[i][at]\n    return -v if step2._known(v) else 1e30\n\n  picks = sorted(range(len(tbl.rows)), key=key)[:cap]\n  lab   = ezr.clone(tbl)\n  for i in picks: ezr.addRow(lab, tbl.rows[i])\n  goals = step4._goals(lab)            # goal stats learnt from the labels only\n  return min(picks, key=lambda i: step7._cost(lab, tbl.rows[i], goals))\n\n\ndef _response(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Response guessers, scored by skill on the known RESPONSE cells of test_csv.\"\n  ttbl = step2._load(train_csv)\n  tbl  = step2._load(test_csv)\n  resp = _response_goal(ttbl)\n  goal_names = {g.txt for g in step4._goals(tbl)}\n\n  known = [r[resp.at] for r in ttbl.rows if step2._known(r[resp.at])]\n  base  = sum(known) / len(known)     # always guess the training rate\n\n  lin   = step20._ridge(ttbl, resp)\n  idx   = [i for i, r in enumerate(tbl.rows) if step2._known(r[resp.at])]\n  truth = [tbl.rows[i][resp.at] for i in idx]\n  ours, linear = [], []\n  for i in idx:\n    row = tbl.rows[i]\n    q   = {name: row[at] for at, name in enumerate(tbl.names)\n           if name not in goal_names}      # inputs only, goals hidden\n    ours.append(step22.guess(train_csv, q)[resp.txt][0])\n    linear.append(lin(row))\n  return {\"response_ours\":   step20._skill(truth, ours, base),\n          \"response_linear\": step20._skill(truth, linear, base)}\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n  \"Scores on test_csv for ours and the rivals; higher is better for every key.\"\n  out  = dict(step10.race(train_csv, test_csv))   # ours, random, stdlib_hillclimb\n  tbl  = step2._load(test_csv)\n  wins = step20._wins(tbl)\n  cap  = min(step10.BUDGET, len(tbl.rows))\n  out[\"top_income\"] = wins(_top_income(tbl, cap))\n  out.update(_response(train_csv, test_csv))\n  return {k: float(v) for k, v in out.items()}\n```",
+ "ttft_ms": 26217,
+ "type": "result",
+ "duration_ms": 30092,
+ "uuid": "c32c6ec2-2a61-44f6-88b1-f9e74bf510b9",
+ "ttft_stream_ms": 1233,
+ "time_to_request_ms": 15,
+ "queued_turn_count": 0
+}
