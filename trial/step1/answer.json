@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 22692,
+ "stop_reason": "end_turn",
+ "session_id": "75cf9d95-87cc-4d2b-bc22-1af437686b6a",
+ "total_cost_usd": 0.00959576,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 201,
+  "cache_read_input_tokens": 7886,
+  "output_tokens": 4671,
+  "output_tokens_details": {
+   "thinking_tokens": 3968
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 201,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 4671,
+    "cache_read_input_tokens": 7886,
+    "cache_creation_input_tokens": 201,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 201
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7061,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007141,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 4671,
+   "cacheReadInputTokens": 7886,
+   "cacheCreationInputTokens": 201,
+   "webSearchRequests": 0,
+   "costUSD": 0.0024547600000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step1.py: families of flag sets, and the best flag sets.\"\nfrom ezr import Tbl, csv, xdist, ydist\n\nK   = 5      # a handful of families\nTOP = 0.05   # best rows: at most this fraction of the data\n\ndef medoid(tbl, members: list) -> list:\n  \"The member closest, on average, to the others (sampled if big).\"\n  step = max(1, len(members) // 60)\n  pool = members[::step]\n  return min(pool, key=lambda r: sum(xdist(tbl, r, z) for z in pool))\n\ndef families(train_csv: str) -> list[int]:\n  \"One family (cluster) label per data row, in file order.\"\n  tbl  = Tbl(csv(train_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  if n == 0: return []\n  k = min(K, n)\n  # farthest-first seeds: deterministic, so no random draws\n  seeds = [0]\n  while len(seeds) < k:\n    far = max(range(n),\n              key=lambda i: min(xdist(tbl, rows[i], rows[j]) for j in seeds))\n    seeds.append(far)\n  medoids = [rows[i] for i in seeds]\n  labels  = [-1] * n\n  for _ in range(20):\n    new = [min(range(k), key=lambda c: xdist(tbl, r, medoids[c]))\n           for r in rows]\n    if new == labels: break\n    labels = new\n    for c in range(k):\n      members = [rows[i] for i in range(n) if labels[i] == c]\n      if members: medoids[c] = medoid(tbl, members)\n  return labels\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl    = Tbl(csv(train_csv))\n  n      = len(tbl.rows)\n  ranked = sorted(range(n), key=lambda i: ydist(tbl, tbl.rows[i]))\n  return ranked[:int(TOP * n)]\n```",
+ "ttft_ms": 19903,
+ "type": "result",
+ "duration_ms": 21862,
+ "uuid": "3785640e-6aa8-476f-9926-c5cd0e02b6e2",
+ "ttft_stream_ms": 1186,
+ "time_to_request_ms": 39,
+ "queued_turn_count": 0
+}
