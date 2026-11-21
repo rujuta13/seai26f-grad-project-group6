@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 12392,
+ "duration_api_ms": 12380,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step3.py: certify whether two sets of measurements really differ.\n\nNothing in step1 or step2 computes a significance test, so this module is\nself-contained and uses only the standard library and numpy 1.26.\n\nsame() runs a two-sided permutation test on the difference of means. Shuffling\nthe pooled values breaks any real link between a value and its group, so the\np-value is the share of shuffles that produce a gap at least as large as the\nobserved one. A permutation test makes no normality assumption, which suits\nnoisy run times.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\n\n_ALPHA = 0.05       # significance level: gaps with p <= _ALPHA count as real\n_N_PERM = 10000     # number of random re-labellings\n_CHUNK = 1000       # permutations generated per batch, to bound memory\n_SEED = 0           # fixed seed so repeated calls give the same answer\n\n\ndef _as_sample(values, name):\n    arr = np.asarray(list(values), dtype=float).ravel()\n    if arr.size == 0:\n        raise ValueError(f\"{name} is empty\")\n    if not np.all(np.isfinite(arr)):\n        raise ValueError(f\"{name} contains non-finite values\")\n    return arr\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the two samples do NOT differ beyond noise, False if the gap is real.\n\n    xs, ys: lists of numbers (e.g. run times). The test is two-sided at the\n    5% level on the difference of means.\n    \"\"\"\n    x = _as_sample(xs, \"xs\")\n    y = _as_sample(ys, \"ys\")\n    n = x.size\n    pooled = np.concatenate([x, y])\n    total = pooled.size\n\n    observed = abs(x.mean() - y.mean())\n    if observed == 0.0:\n        return True\n\n    rng = np.random.default_rng(_SEED)\n    exceed = 0\n    done = 0\n    while done < _N_PERM:\n        c = min(_CHUNK, _N_PERM - done)\n        perms = rng.permuted(np.tile(pooled, (c, 1)), axis=1)\n        diffs = np.abs(perms[:, :n].mean(axis=1) - perms[:, n:].mean(axis=1))\n        exceed += int(np.count_nonzero(diffs >= observed - 1e-12))\n        done += c\n\n    # Add-one correction keeps the p-value away from an impossible exact zero.\n    p_value = (exceed + 1) / (_N_PERM + 1)\n    return p_value > _ALPHA\n```",
+ "stop_reason": "end_turn",
+ "session_id": "0787dd96-21a8-4f99-a68d-18a9d5215337",
+ "total_cost_usd": 0.001283775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 4211,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1514,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 4211,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1514,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 4211,
+   "webSearchRequests": 0,
+   "costUSD": 0.001283775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "56db7646-3bb8-47a1-b85f-7123bd77f515"
+}
