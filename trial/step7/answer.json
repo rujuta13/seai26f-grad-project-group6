@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 59751,
+ "stop_reason": "end_turn",
+ "session_id": "ab1036df-c1d9-423b-bc7c-6f5fce839749",
+ "total_cost_usd": 0.0207646,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 13292,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 13234,
+  "output_tokens_details": {
+   "thinking_tokens": 12387
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 13292,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 13234,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 13292,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 13292
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 11409,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.011489000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 13234,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 13292,
+   "webSearchRequests": 0,
+   "costUSD": 0.009275599999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step7.py\nimport random\nimport ezr\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"Index of the best row, labelling at most BUDGET rows with LABEL. GOAL names one goal to optimise.\"\n  if budget < 1: raise ValueError(\"choose: budget must be at least 1\")\n  src     = list(ezr.csv(blind_csv))\n  headers = list(src[0])\n  names   = list(headers)\n  rows    = [list(r) for r in src[1:]]\n  if not rows: raise ValueError(f\"no rows in {blind_csv}\")\n\n  goals = [at for at, s in enumerate(headers) if str(s)[-1] in \"+-\"]\n  if goal is not None:                       # one goal: the others become ignored\n    hit = [at for at in goals\n           if headers[at] == goal or headers[at].rstrip(\"+-\") == goal]\n    if len(hit) != 1: raise ValueError(f\"choose: no single goal named {goal!r}\")\n    for at in goals:\n      if at != hit[0]: names[at] = headers[at][:-1] + \"X\"\n\n  tbl   = ezr.Tbl([names] + rows)\n  at_of = {id(r): i for i, r in enumerate(rows)}   # row object -> row index\n  spent = [0]\n\n  def oracle(row):                           # fills the goal cells of ROW, in place\n    if spent[0] >= budget:\n      raise RuntimeError(f\"choose: label budget of {budget} exceeded\")\n    spent[0] += 1\n    got = label(at_of[id(row)])\n    for c in tbl.y:\n      key = headers[c.at]\n      if key not in got: raise ValueError(f\"label gave no value for {key!r}\")\n      v = got[key]\n      row[c.at] = ezr.atom(v) if isinstance(v, str) else v\n    return row\n\n  random.seed(ezr.the.Seed)                  # reproducible picks\n  keep = ezr.the.Start, ezr.the.Few\n  ezr.the.Start = min(ezr.the.Start, budget, len(rows))\n  ezr.the.Few   = len(rows)                  # every row is a candidate\n  try:\n    labelled = ezr.acquire(tbl, budget, oracle)\n  finally:\n    ezr.the.Start, ezr.the.Few = keep\n\n  done = ezr.clone(tbl, labelled)\n  best = min(labelled, key=lambda r: ezr.ydist(done, r))\n  return at_of[id(best)]\n```",
+ "ttft_ms": 56595,
+ "type": "result",
+ "duration_ms": 58819,
+ "uuid": "abe61bac-4bf3-4526-b782-c9ca355078d1",
+ "ttft_stream_ms": 1063,
+ "time_to_request_ms": 28,
+ "queued_turn_count": 0
+}
