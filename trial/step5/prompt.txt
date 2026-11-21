@@ -1,0 +1,470 @@
+Use the Python 3.13 standard library plus scikit-learn 1.7 and numpy 1.26. No other third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+ee_instrument,simplifycfg,ipsccp,called_value_propagation,basicaa,instcombine,inline,mergereturn,jump_threading,pgo_memop_opt,tailcallelim,licm,sink,gvn,sccp,adce,Performance-,Cpu-
+0,0,1,1,1,0,0,1,0,0,1,1,1,1,1,0,83410.8,25.99058
+0,0,1,0,0,1,0,0,1,0,1,1,0,0,0,0,68394.6,26.097711
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+"""step1.py: flag-combination families and best-row detection for the MOOT data.
+
+Note: no earlier step modules were available to import from, so this file is
+self-contained. It uses only the standard library, numpy 1.26 and scikit-learn 1.7.
+"""
+from __future__ import annotations
+
+import csv
+import math
+
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
+
+_BUDGET_FRACTION = 0.05   # "best" rows may be at most 5% of the data
+_KMAX = 8                 # largest number of families considered
+_SEED = 0
+_CHUNK = 512              # chunk size for the O(n^2) dominance test
+
+
+def _load(path):
+    """Return (header, rows) where rows are lists of raw string cells."""
+    with open(path, newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = [r for r in reader if r]
+    return header, rows
+
+
+def _to_value(cell):
+    try:
+        return float(cell)
+    except ValueError:
+        return cell
+
+
+def _classify(header):
+    """Split column indices into (maximise, minimise, inputs). 'X' columns are dropped."""
+    maximise, minimise, inputs = [], [], []
+    for i, name in enumerate(header):
+        if name.endswith("+"):
+            maximise.append(i)
+        elif name.endswith("-"):
+            minimise.append(i)
+        elif name.endswith("X"):
+            continue
+        else:
+            inputs.append(i)
+    return maximise, minimise, inputs
+
+
+def _input_matrix(rows, inputs):
+    """Numeric matrix of the input columns; non-numeric columns are category-coded."""
+    n = len(rows)
+    X = np.zeros((n, len(inputs)), dtype=float)
+    for j, col in enumerate(inputs):
+        vals = [_to_value(r[col]) for r in rows]
+        if all(isinstance(v, float) for v in vals):
+            X[:, j] = vals
+        else:
+            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}
+            X[:, j] = [codes[str(v)] for v in vals]
+    return X
+
+
+def _goal_matrix(rows, maximise, minimise):
+    """Goals as a minimisation matrix: maximised columns are negated."""
+    cols = []
+    for col in minimise:
+        cols.append([float(r[col]) for r in rows])
+    for col in maximise:
+        cols.append([-float(r[col]) for r in rows])
+    if not cols:
+        return np.zeros((len(rows), 0), dtype=float)
+    return np.array(cols, dtype=float).T
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    header, rows = _load(train_csv)
+    n = len(rows)
+    if n == 0:
+        return []
+    _, _, inputs = _classify(header)
+    if not inputs:
+        return [0] * n
+
+    X = StandardScaler().fit_transform(_input_matrix(rows, inputs))
+    distinct = len(np.unique(X, axis=0))
+    if distinct < 2:
+        return [0] * n
+
+    # Choose k in [2, _KMAX] by silhouette score.
+    best_labels, best_score = None, -math.inf
+    k_max = min(_KMAX, distinct - 1, n - 1)
+    for k in range(2, k_max + 1):
+        km = KMeans(n_clusters=k, n_init=10, random_state=_SEED)
+        labels = km.fit_predict(X)
+        if len(set(labels.tolist())) < 2:
+            continue
+        score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score, best_labels = score, labels
+
+    if best_labels is None:
+        # Too few distinct points for the search range; fall back to two clusters.
+        best_labels = KMeans(n_clusters=2, n_init=10, random_state=_SEED).fit_predict(X)
+
+    return [int(v) for v in best_labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together).
+
+    A row is kept if no other row is at least as good on every goal and strictly
+    better on one (the Pareto front). If the front holds more rows than 5% of the
+    data, the rows with the best mean goal rank are kept. Returned indices are sorted.
+    """
+    header, rows = _load(train_csv)
+    n = len(rows)
+    maximise, minimise, _ = _classify(header)
+    G = _goal_matrix(rows, maximise, minimise)
+    if n == 0 or G.shape[1] == 0:
+        return []
+
+    # Pareto front (all goals are minimised in G). Chunked to bound memory.
+    dominated = np.zeros(n, dtype=bool)
+    for start in range(0, n, _CHUNK):
+        stop = min(start + _CHUNK, n)
+        Gi = G[start:stop, None, :]   # (c, 1, m)
+        Gj = G[None, :, :]            # (1, n, m)
+        le = (Gj <= Gi).all(axis=2)   # row j is no worse than row i on every goal
+        lt = (Gj < Gi).any(axis=2)    # row j is strictly better on some goal
+        dominated[start:stop] = (le & lt).any(axis=1)
+    front = np.flatnonzero(~dominated)
+
+    # Mean rank across goals (lower is better), used to order and cap the front.
+    ranks = np.empty_like(G)
+    for k in range(G.shape[1]):
+        order = np.argsort(G[:, k], kind="stable")
+        r = np.empty(n, dtype=float)
+        r[order] = np.arange(n, dtype=float)
+        ranks[:, k] = r
+    score = ranks.mean(axis=1)
+
+    cap = int(math.floor(_BUDGET_FRACTION * n))
+    if cap < 1:
+        return []
+    ordered = front[np.argsort(score[front], kind="stable")]
+    chosen = ordered[:cap]
+    return sorted(int(i) for i in chosen)
+```
+
+### step2.py
+```python
+"""step2.py: guess the goal values of an unseen flag set from the training data.
+
+Reuses the loading and column-classification helpers from step1. The guess is a
+k-nearest-neighbour estimate in standardised input space: the estimate is the
+median goal value of the nearest training rows, and the range is their 10th to
+90th percentile.
+"""
+from __future__ import annotations
+
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+from step1 import _classify, _load, _to_value
+
+_K = 15          # number of neighbours used for the guess
+_LOW_Q = 0.10    # lower bound of the stated range
+_HIGH_Q = 0.90   # upper bound of the stated range
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate every goal of `row` as (estimate, low, high).
+
+    `row` is a dict {input column name: value} with the goal columns removed.
+    Returns {goal column name: (estimate, low, high)} for every goal in the
+    training file, in header order.
+    """
+    header, rows = _load(train_csv)
+    if not rows:
+        raise ValueError("train_csv contains no data rows")
+
+    _, _, inputs = _classify(header)
+    goal_cols = [i for i, name in enumerate(header) if name.endswith(("+", "-"))]
+    n = len(rows)
+
+    # Encode training inputs, keeping the mappings needed to encode the query row.
+    X = np.zeros((n, len(inputs)), dtype=float)
+    specs = []
+    for j, col in enumerate(inputs):
+        vals = [_to_value(r[col]) for r in rows]
+        if all(isinstance(v, float) for v in vals):
+            X[:, j] = vals
+            specs.append(("num", float(np.median(vals))))
+        else:
+            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}
+            X[:, j] = [codes[str(v)] for v in vals]
+            specs.append(("cat", codes))
+
+    # Encode the query row with the same mappings.
+    q = np.zeros(len(inputs), dtype=float)
+    for j, col in enumerate(inputs):
+        raw = row.get(header[col])
+        kind, info = specs[j]
+        if kind == "num":
+            v = _to_value(raw) if raw is not None else None
+            q[j] = v if isinstance(v, float) else info
+        else:
+            q[j] = info.get(str(raw), -1) if raw is not None else -1
+
+    # Standardise, then find the nearest training rows to the query.
+    if len(inputs) > 0:
+        scaler = StandardScaler().fit(X)
+        Z = scaler.transform(X)
+        zq = scaler.transform(q.reshape(1, -1))[0]
+        dist = np.sqrt(((Z - zq) ** 2).sum(axis=1))
+    else:
+        dist = np.zeros(n, dtype=float)
+    k = min(_K, n)
+    idx = np.argsort(dist, kind="stable")[:k]
+
+    # Per goal: median of neighbours as the estimate, quantiles as the range.
+    result: dict[str, tuple[float, float, float]] = {}
+    for col in goal_cols:
+        y = np.array([float(r[col]) for r in rows], dtype=float)
+        neigh = y[idx]
+        estimate = float(np.median(neigh))
+        low = float(np.quantile(neigh, _LOW_Q))
+        high = float(np.quantile(neigh, _HIGH_Q))
+        result[header[col]] = (estimate, low, high)
+    return result
+```
+
+### step3.py
+```python
+"""step3.py: certify whether two sets of measurements really differ.
+
+Nothing in step1 or step2 computes a significance test, so this module is
+self-contained and uses only the standard library and numpy 1.26.
+
+same() runs a two-sided permutation test on the difference of means. Shuffling
+the pooled values breaks any real link between a value and its group, so the
+p-value is the share of shuffles that produce a gap at least as large as the
+observed one. A permutation test makes no normality assumption, which suits
+noisy run times.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+_ALPHA = 0.05       # significance level: gaps with p <= _ALPHA count as real
+_N_PERM = 10000     # number of random re-labellings
+_CHUNK = 1000       # permutations generated per batch, to bound memory
+_SEED = 0           # fixed seed so repeated calls give the same answer
+
+
+def _as_sample(values, name):
+    arr = np.asarray(list(values), dtype=float).ravel()
+    if arr.size == 0:
+        raise ValueError(f"{name} is empty")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} contains non-finite values")
+    return arr
+
+
+def same(xs, ys) -> bool:
+    """True if the two samples do NOT differ beyond noise, False if the gap is real.
+
+    xs, ys: lists of numbers (e.g. run times). The test is two-sided at the
+    5% level on the difference of means.
+    """
+    x = _as_sample(xs, "xs")
+    y = _as_sample(ys, "ys")
+    n = x.size
+    pooled = np.concatenate([x, y])
+    total = pooled.size
+
+    observed = abs(x.mean() - y.mean())
+    if observed == 0.0:
+        return True
+
+    rng = np.random.default_rng(_SEED)
+    exceed = 0
+    done = 0
+    while done < _N_PERM:
+        c = min(_CHUNK, _N_PERM - done)
+        perms = rng.permuted(np.tile(pooled, (c, 1)), axis=1)
+        diffs = np.abs(perms[:, :n].mean(axis=1) - perms[:, n:].mean(axis=1))
+        exceed += int(np.count_nonzero(diffs >= observed - 1e-12))
+        done += c
+
+    # Add-one correction keeps the p-value away from an impossible exact zero.
+    p_value = (exceed + 1) / (_N_PERM + 1)
+    return p_value > _ALPHA
+```
+
+### step4.py
+```python
+"""step4.py: streaming keep/discard decisions and drift warnings for nightly benchmarks.
+
+stream() keeps a row when no earlier row (training or streamed) is at least as good
+on every goal and strictly better on one, i.e. the row is on the Pareto front of
+everything seen so far.
+
+drift() warns at the first row where the last _WINDOW new rows sit significantly
+further from the training inputs than training rows sit from each other. The
+distance is the nearest-neighbour distance in standardised input space, and the
+significance test is step3.same().
+"""
+from __future__ import annotations
+
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+from step1 import _classify, _goal_matrix, _load, _to_value
+from step3 import same
+
+_WINDOW = 30      # number of recent streamed rows tested together for drift
+_CHUNK_D = 256    # chunk size for the pairwise distance computation
+
+
+def _goal_vector(row, header, maximise, minimise):
+    """Goal values of one row as a minimisation vector, in the same order as step1."""
+    vals = [float(row[header[i]]) for i in minimise]
+    vals += [-float(row[header[i]]) for i in maximise]
+    return np.array(vals, dtype=float)
+
+
+def _encode_train(rows, inputs):
+    """Numeric encoding of training inputs plus the mappings needed to encode new rows."""
+    n = len(rows)
+    X = np.zeros((n, len(inputs)), dtype=float)
+    specs = []
+    for j, col in enumerate(inputs):
+        vals = [_to_value(r[col]) for r in rows]
+        if all(isinstance(v, float) for v in vals):
+            X[:, j] = vals
+            specs.append(("num", float(np.median(vals))))
+        else:
+            codes = {v: k for k, v in enumerate(sorted({str(v) for v in vals}))}
+            X[:, j] = [codes[str(v)] for v in vals]
+            specs.append(("cat", codes))
+    return X, specs
+
+
+def _encode_row(row, header, inputs, specs):
+    """Encode one new row with the mappings learned from the training data."""
+    q = np.zeros(len(inputs), dtype=float)
+    for j, col in enumerate(inputs):
+        raw = row.get(header[col])
+        kind, info = specs[j]
+        if kind == "num":
+            v = _to_value(raw) if raw is not None else None
+            q[j] = v if isinstance(v, float) else info
+        else:
+            q[j] = info.get(str(raw), -1) if raw is not None else -1
+    return q
+
+
+def _loo_nearest(Z):
+    """Distance from each training row to its nearest other training row."""
+    n = Z.shape[0]
+    out = np.empty(n, dtype=float)
+    for s in range(0, n, _CHUNK_D):
+        e = min(s + _CHUNK_D, n)
+        diff = Z[s:e, None, :] - Z[None, :, :]
+        d = np.sqrt((diff ** 2).sum(axis=2))
+        d[np.arange(e - s), np.arange(s, e)] = np.inf
+        out[s:e] = d.min(axis=1)
+    return out.tolist()
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Keep (True) or discard (False) each row, in arrival order.
+
+    A row is kept if no training row and no earlier streamed row is at least as
+    good on every goal and strictly better on at least one.
+    """
+    header, train_rows = _load(train_csv)
+    maximise, minimise, _ = _classify(header)
+    known = _goal_matrix(train_rows, maximise, minimise)
+    if known.shape[1] == 0:
+        return [False] * len(rows)
+
+    decisions: list[bool] = []
+    for row in rows:
+        g = _goal_vector(row, header, maximise, minimise)
+        if known.shape[0] == 0:
+            dominated = False
+        else:
+            le = (known <= g).all(axis=1)   # known row is no worse on every goal
+            lt = (known < g).any(axis=1)    # and strictly better on some goal
+            dominated = bool((le & lt).any())
+        decisions.append(not dominated)
+        known = np.vstack([known, g[None, :]])
+    return decisions
+
+
+def drift(train_csv, rows) -> int | None:
+    """Index of the first streamed row at which the new rows stop resembling train_csv.
+
+    Warns when the last _WINDOW new rows are significantly further from the
+    training inputs than training rows are from each other. Returns None if
+    no such warning is raised.
+    """
+    header, train_rows = _load(train_csv)
+    _, _, inputs = _classify(header)
+    n = len(train_rows)
+    if n < 2 or not rows:
+        return None
+
+    X, specs = _encode_train(train_rows, inputs)
+    if inputs:
+        scaler = StandardScaler().fit(X)
+        Z = scaler.transform(X)
+    else:
+        scaler = None
+        Z = np.zeros((n, 0), dtype=float)
+    ref = _loo_nearest(Z)
+
+    new_dist: list[float] = []
+    for i, row in enumerate(rows):
+        if inputs:
+            q = _encode_row(row, header, inputs, specs)
+            zq = scaler.transform(q.reshape(1, -1))[0]
+        else:
+            zq = np.zeros(0, dtype=float)
+        d = float(np.sqrt(((Z - zq) ** 2).sum(axis=1)).min())
+        new_dist.append(d)
+        if len(new_dist) >= _WINDOW and not same(ref, new_dist[-_WINDOW:]):
+            return i
+    return None
+```
+
+Step 5: blame.
+The client asks:
+  - "Why are the slow builds slow? Which passes are to blame?"
+  - "Why do some fast builds still eat so much CPU?"
+
+Write step5.py defining exactly these functions:
+def blame(train_csv) -> list[str]
+    Input column names, most to blame for bad rows (bad on the goals) first.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step5.py in one ```python block.

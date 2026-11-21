@@ -1,0 +1,16 @@
+{
+ "domain": "ssw",
+ "step": 5,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.08539114318931625,
+ "baseline": 0.03650847748636027,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "called_value_propagation",
+   "ipsccp",
+   "simplifycfg"
+  ]
+ }
+}
