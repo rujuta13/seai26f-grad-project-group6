@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 54514,
+ "stop_reason": "end_turn",
+ "session_id": "396b3bc9-9427-44b8-933c-fb02b40877a9",
+ "total_cost_usd": 0.0193778,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 12263,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 12700,
+  "output_tokens_details": {
+   "thinking_tokens": 10189
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 12263,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 12700,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 12263,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 12263
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 10510,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.010575000000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 12700,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 12263,
+   "webSearchRequests": 0,
+   "costUSD": 0.0088028,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step6.py\n\"Step 6: justify. Plain reasons for good builds, and a one-sentence verdict per build.\"\nimport ezr\n\nQUANTILE = 0.25   # a build is \"good\" if its goals are in the best 25% of train\nTOP      = 5      # flag settings to report in explain\nMINSUP   = 5      # a flag setting must occur in at least this many builds\nLIFT     = 1.2    # ...and be this much more common among good builds\n\ndef _load(train_csv: str):\n  \"Table of TRAIN_CSV, with columns and goals from its header.\"\n  return ezr.Tbl(ezr.csv(train_csv))\n\ndef _coerce(v):\n  \"Strings become atoms; other values pass through.\"\n  return ezr.atom(v) if isinstance(v, str) else v\n\ndef _full(tbl, row) -> list:\n  \"\"\"Lift ROW into a full-width row. Accepts a {column name: value} dict,\n  a full-width list, or a list with goal columns removed (header order).\n  Any cell not given is '?'.\"\"\"\n  names = tbl.names\n  out   = [\"?\"] * len(names)\n  if isinstance(row, dict):\n    for at, n in enumerate(names):\n      if n in row: out[at] = _coerce(row[n])\n    return out\n  row = list(row)\n  if len(row) == len(names):\n    return [_coerce(v) for v in row]\n  keep = [i for i, n in enumerate(names) if n[-1] not in \"+-!\"]\n  for i, v in zip(keep, row): out[i] = _coerce(v)\n  return out\n\ndef _ydist(tbl, row) -> float | None:\n  \"Distance of ROW's numeric goals from their best; None if no goal is known.\"\n  sq, n = 0.0, 0\n  for c in tbl.y:\n    if type(c) is not ezr.Num: continue\n    v = row[c.at]\n    if v == \"?\": continue\n    sq += (ezr.norm(c, v) - c.goal) ** 2\n    n  += 1\n  return (sq / n) ** .5 if n else None\n\ndef _cut(tbl):\n  \"Sorted known goal distances of TBL's rows, and the distance cutoff for good.\"\n  ys  = sorted(d for d in (_ydist(tbl, r) for r in tbl.rows) if d is not None)\n  thr = ys[int(QUANTILE * (len(ys) - 1))] if ys else float(\"inf\")\n  return ys, thr\n\ndef _goal_text(c) -> str:\n  \"Goal name without its suffix, and its direction.\"\n  return f\"{c.txt[:-1]} ({'maximise' if c.goal else 'minimise'})\"\n\ndef _paths(tbl, node, conds: tuple = ()):\n  \"Yield (leaf, conditions) for every leaf under NODE, conditions in words.\"\n  if not node.kids:\n    yield node, conds\n    return\n  name    = tbl.names[node.at]\n  is_sym  = type(tbl.cols[node.at]) is ezr.Sym\n  yes     = f\"{name} {'=' if is_sym else '<='} {ezr.say(node.v)}\"\n  no      = f\"{name} {'!=' if is_sym else '>'} {ezr.say(node.v)}\"\n  yield from _paths(tbl, node.kids[0], conds + (yes,))\n  yield from _paths(tbl, node.kids[1], conds + (no,))\n\ndef explain(train_csv) -> str:\n  \"Plain reasons for what makes builds good; each can be checked by counting.\"\n  tbl     = _load(train_csv)\n  ys, thr = _cut(tbl)\n  if not ys:\n    return \"No training build has known goal values, so nothing can be explained.\"\n  n    = len(tbl.rows)\n  good = [d is not None and d <= thr\n          for d in (_ydist(tbl, r) for r in tbl.rows)]\n  base = sum(good) / n\n  goals = \", \".join(_goal_text(c) for c in tbl.y)\n  out  = [f\"A build is good when its goals ({goals}) are in the best \"\n          f\"{round(100 * QUANTILE)}% of the {n} training builds. Distance 0 is \"\n          f\"ideal; good means distance at or below {ezr.say(thr)}, and the mean \"\n          f\"over all builds is {ezr.say(sum(ys) / len(ys))}.\"]\n\n  complete = [r for r in tbl.rows if all(r[c.at] != \"?\" for c in tbl.y)]\n  conds: tuple = ()\n  leaf = None\n  if complete:\n    ls   = list(_paths(tbl, ezr.tree(tbl, complete)))\n    pool = [p for p in ls if len(p[0].rows) >= ezr.the.Leaf] or ls\n    leaf, conds = min(pool, key=lambda p: p[0].mu)\n  if conds:\n    out.append(f\"The clearest group is where {' and '.join(conds)}: \"\n               f\"{len(leaf.rows)} of {len(complete)} builds, with mean \"\n               f\"distance {ezr.say(leaf.mu)}.\")\n  else:\n    out.append(\"No single input setting splits the builds into a clearly \"\n               \"better group, so no rule is claimed.\")\n\n  hits = []\n  for col in tbl.x:\n    for v in sorted({r[col.at] for r in tbl.rows if r[col.at] != \"?\"}, key=str):\n      seen = [g for r, g in zip(tbl.rows, good) if r[col.at] == v]\n      if len(seen) < MINSUP or base == 0: continue\n      rate = sum(seen) / len(seen)\n      if rate / base >= LIFT:\n        hits.append((rate / base, len(seen), col.txt, v, rate))\n  hits.sort(key=lambda h: (-h[0], -h[1]))\n  if hits:\n    out.append(\"Input settings more common in good builds (checkable by counting):\")\n    for _, k, name, v, rate in hits[:TOP]:\n      out.append(f\"  {name} = {v}: {rate:.0%} of the {k} builds with it are \"\n                 f\"good, versus {base:.0%} overall.\")\n  out.append(\"These are associations in the training data, not proof that \"\n             \"a setting causes the goals.\")\n  return \"\\n\".join(out)\n\ndef why(train_csv, row) -> str:\n  \"One sentence: is this build good or bad, and why, judged by its goals.\"\n  tbl     = _load(train_csv)\n  ys, thr = _cut(tbl)\n  if not ys:\n    return (\"This build cannot be rated: the training file has no known \"\n            \"goal values.\")\n  full  = _full(tbl, row)\n  known = [(c, full[c.at]) for c in tbl.y if full[c.at] != \"?\"]\n  if not known:\n    return \"This build cannot be rated: it gives no goal values.\"\n  d = _ydist(tbl, full)\n  if d is None:\n    return \"This build cannot be rated: its goal values are not numeric.\"\n  verdict = \"good\" if d <= thr else \"bad\"\n  beat    = sum(1 for y in ys if y > d) / len(ys)\n  vals    = \", \".join(f\"{c.txt[:-1]}={ezr.say(v)}\" for c, v in known)\n  return (f\"This build is {verdict}: its goals ({vals}) sit closer to the ideal \"\n          f\"than {beat:.0%} of the {len(ys)} training builds (distance \"\n          f\"{ezr.say(d)}, good means at or below {ezr.say(thr)}).\")\n```",
+ "ttft_ms": 46598,
+ "type": "result",
+ "duration_ms": 53603,
+ "uuid": "d0cd1d4a-a7d8-4c34-aaf5-746c6c138495",
+ "ttft_stream_ms": 1533,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
