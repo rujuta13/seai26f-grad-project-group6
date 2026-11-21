@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 33136,
+ "stop_reason": "end_turn",
+ "session_id": "2b8dc2f9-17a5-4489-a489-ab0347025719",
+ "total_cost_usd": 0.0384112,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 33165,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8238,
+  "output_tokens_details": {
+   "thinking_tokens": 6552
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33165,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 8238,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 33165,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 33165
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 27579,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.027659,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 8238,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33165,
+   "webSearchRequests": 0,
+   "costUSD": 0.0107522,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step17.py\n#!/usr/bin/env python3 -B\n\"Pick the best build from a blind table, labelling at most BUDGET rows, optionally for one goal only, via ezr.\"\nimport math\nimport random\nimport ezr\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n  \"\"\"Index of the best build found, labelling at most BUDGET rows of BLIND_CSV.\n  BLIND_CSV has every goal cell '?'. LABEL(i) returns the goals of row i as a\n  {goal name: value} dict and may be called at most BUDGET times; a call past\n  that raises RuntimeError. If GOAL names one goal (with or without its +/-\n  suffix, ignoring case), only that goal counts; otherwise all goals count.\"\"\"\n  tbl  = ezr.Tbl(ezr.csv(blind_csv))\n  rows = tbl.rows\n  if not rows: raise ValueError(\"no rows to choose from\")\n  all_goals = [c for c in tbl.y if c.txt[-1] in \"+-\"]\n  if not all_goals: raise ValueError(\"the table has no goal columns\")\n  if goal is None:\n    goals = all_goals\n  else:\n    hits = [c for c in all_goals if c.txt == goal]\n    if not hits:\n      stem = goal.rstrip(\"+-\").lower()\n      hits = [c for c in all_goals if c.txt[:-1].lower() == stem]\n    if len(hits) != 1:\n      names = \", \".join(c.txt for c in all_goals)\n      raise ValueError(f\"goal {goal!r} must name exactly one of: {names}\")\n    goals = hits\n  if int(budget) < 1: raise ValueError(\"budget must be at least 1\")\n  budget = min(int(budget), len(rows))\n\n  def value(v):\n    \"One goal cell as a finite number, or '?' if unknown.\"\n    if isinstance(v, str): v = ezr.atom(v.strip() or \"?\")\n    if v is None or v == \"?\": return \"?\"\n    if isinstance(v, bool) or not isinstance(v, (int, float)):\n      raise ValueError(f\"goal value {v!r} is not a number\")\n    if isinstance(v, float) and not math.isfinite(v): return \"?\"\n    return v\n\n  known = {}     # row index -> {column at: goal cell}\n  asked = [0]    # labels taken so far, counted before each call\n\n  def ask(i):\n    \"Label row I, counting every call; never more than BUDGET.\"\n    if asked[0] >= budget: raise RuntimeError(\"label budget exhausted\")\n    asked[0] += 1\n    got = label(i)\n    cells = {}\n    for c in goals:\n      if c.txt not in got:\n        raise KeyError(f\"label({i}) gave no value for {c.txt!r}\")\n      cells[c.at] = value(got[c.txt])\n    known[i] = cells\n\n  def scores() -> dict:\n    \"Each labelled row's goal distance from the ideal; inf if a goal is unknown.\"\n    cols = {c.at: ezr.Num(c.txt, c.at) for c in goals}   # stats of labels only\n    for cells in known.values():\n      for c in goals: ezr.add(cols[c.at], cells[c.at])\n    out = {}\n    for i, cells in known.items():\n      if any(cells[c.at] == \"?\" for c in goals):\n        out[i] = math.inf\n      else:\n        out[i] = ezr.dist((abs(ezr.norm(cols[c.at], cells[c.at])\n                               - cols[c.at].goal) for c in goals),\n                          len(goals))\n    return out\n\n  rng   = random.Random(ezr.the.Seed)\n  order = rng.sample(range(len(rows)), len(rows))\n  start = min(budget, max(1, int(ezr.the.Start)))\n  for i in order[:start]: ask(i)\n  todo = order[start:]\n\n  while asked[0] < budget and todo:\n    sc     = scores()\n    ranked = sorted(known, key=lambda i: (sc[i], i))\n    k      = max(1, int(len(ranked) ** 0.5))     # the best, about sqrt(n)\n    cb     = ezr.mids(ezr.clone(tbl, [rows[i] for i in ranked[:k]]))\n    rest   = [rows[i] for i in ranked[k:]]\n    if not tbl.x:\n      pick = todo[0]\n    elif rest:\n      cr   = ezr.mids(ezr.clone(tbl, rest))\n      # near the best labelled rows, far from the rest (as in acquire)\n      pick = max(todo, key=lambda i: ezr.xdist(tbl, rows[i], cr)\n                                     - ezr.xdist(tbl, rows[i], cb))\n    else:\n      pick = min(todo, key=lambda i: ezr.xdist(tbl, rows[i], cb))\n    todo.remove(pick)\n    ask(pick)\n\n  sc = scores()\n  return min(known, key=lambda i: (sc[i], i))\n```",
+ "ttft_ms": 27456,
+ "type": "result",
+ "duration_ms": 31924,
+ "uuid": "b850b59c-a313-41d1-8293-b75fb1ca3cd1",
+ "ttft_stream_ms": 1318,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
