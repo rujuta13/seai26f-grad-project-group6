@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 35457,
+ "duration_api_ms": 35446,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _load(blind_csv):\n    with open(blind_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _average_ranks(values):\n    \"\"\"Ranks 1..N with ties replaced by their average rank.\"\"\"\n    values = np.asarray(values, dtype=float)\n    _, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)\n    starts = np.cumsum(counts) - counts\n    avg = starts + (counts + 1) / 2.0\n    return avg[inverse]\n\n\ndef _min_value(raw, sign):\n    \"\"\"Minimisation value: sign is +1 for '-' goals and -1 for '+' goals.\n    Missing or non-finite values count as worst (+inf).\"\"\"\n    v = _to_float(raw)\n    if not math.isfinite(v):\n        return math.inf\n    return sign * v\n\n\ndef _composite(M):\n    \"\"\"Mean normalised rank per row of a minimisation matrix (0 = best, 1 = worst).\"\"\"\n    m = M.shape[0]\n    b = np.zeros(m, dtype=float)\n    for j in range(M.shape[1]):\n        b += (_average_ranks(M[:, j]) - 1.0) / max(m - 1, 1)\n    return b / M.shape[1]\n\n\ndef _pick_next(X, labels, unlabeled, n_goals, rng):\n    \"\"\"Choose the next unlabeled row to benchmark, using a random-forest surrogate\n    per goal (lower confidence bound on the normalised goal mean).\"\"\"\n    idx = np.array(sorted(labels), dtype=int)\n    if len(idx) < 4 or len(unlabeled) == 0:\n        return int(rng.choice(unlabeled))\n\n    Y = np.array([labels[i] for i in idx], dtype=float)\n    Xl = X[idx]\n    Xu = X[unlabeled]\n\n    mean_acc = np.zeros(len(unlabeled), dtype=float)\n    std_acc = np.zeros(len(unlabeled), dtype=float)\n    used = 0\n    for j in range(n_goals):\n        y = Y[:, j]\n        ok = np.isfinite(y)\n        if int(ok.sum()) < 4:\n            continue\n        lo = float(y[ok].min())\n        hi = float(y[ok].max())\n        span = hi - lo if hi > lo else 1.0\n        model = RandomForestRegressor(\n            n_estimators=100,\n            min_samples_leaf=1,\n            random_state=int(rng.integers(1 << 31)),\n        )\n        model.fit(Xl[ok], y[ok])\n        preds = np.stack([t.predict(Xu) for t in model.estimators_])\n        mean_acc += (preds.mean(axis=0) - lo) / span\n        std_acc += preds.std(axis=0) / span\n        used += 1\n\n    if used == 0:\n        return int(rng.choice(unlabeled))\n\n    mean_acc /= used\n    std_acc /= used\n    score = mean_acc - 1.0 * std_acc\n    return int(unlabeled[int(np.argmin(score))])\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Return the index of the best row found, calling label(i) at most `budget` times.\n\n    blind_csv has every goal cell set to '?'. label(i) returns {goal: value} for\n    row i. If `goal` names one goal, only that goal is optimised; otherwise all\n    goals are optimised together (mean normalised rank, lower is better).\n    \"\"\"\n    cols, rows = _load(blind_csv)\n    n = len(rows)\n    if n == 0:\n        raise ValueError(\"blind_csv has no data rows\")\n    if budget < 1:\n        raise ValueError(\"budget must be at least 1\")\n\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    goals_all = goal_min + goal_max\n    if goal is None:\n        goals = goals_all\n    else:\n        if goal not in goals_all:\n            raise ValueError(f\"unknown goal {goal!r}\")\n        goals = [goal]\n    if not goals:\n        raise ValueError(\"no goal columns in blind_csv\")\n    signs = [1.0 if g.endswith(\"-\") else -1.0 for g in goals]\n\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    if inputs:\n        X = np.array(\n            [[_to_float(r.get(c)) for c in inputs] for r in rows], dtype=float\n        ).reshape(n, len(inputs))\n        X = np.where(np.isnan(X), 0.0, X)\n    else:\n        X = np.zeros((n, 1), dtype=float)\n\n    labels = {}  # row index -> list of minimisation values, one per optimised goal\n    calls = 0\n\n    def evaluate(i):\n        nonlocal calls\n        if i in labels:\n            return\n        if calls >= budget:\n            raise RuntimeError(\"label budget exhausted\")\n        calls += 1\n        result = label(i)\n        if result is None:\n            result = {}\n        labels[i] = [_min_value(result.get(g), s) for g, s in zip(goals, signs)]\n\n    rng = np.random.default_rng(0)\n\n    # Initial design: a random sample of rows.\n    order = rng.permutation(n)\n    n_init = min(budget, n, max(5, budget // 3))\n    for i in order[:n_init]:\n        evaluate(int(i))\n\n    # Sequential model-guided search with the remaining budget.\n    while calls < budget and len(labels) < n:\n        unlabeled = np.array([i for i in range(n) if i not in labels], dtype=int)\n        nxt = _pick_next(X, labels, unlabeled, len(goals), rng)\n        evaluate(nxt)\n\n    idx = np.array(sorted(labels), dtype=int)\n    Y = np.array([labels[i] for i in idx], dtype=float)\n    comp = _composite(Y)\n    best_pos = int(np.argmin(comp))  # ties resolve to the lowest row index\n    return int(idx[best_pos])\n```",
+ "stop_reason": "end_turn",
+ "session_id": "e16ea1e0-91c9-4202-aee9-b56b8b3e05e4",
+ "total_cost_usd": 0.0049752749999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 11491,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7077,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 11491,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7077,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 11491,
+   "webSearchRequests": 0,
+   "costUSD": 0.0049752749999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "9a1b1776-c817-481c-8c3c-4e52ea9bd7bf"
+}
