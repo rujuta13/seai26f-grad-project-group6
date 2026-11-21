@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11605,
+ "stop_reason": "end_turn",
+ "session_id": "a854c03a-05df-44eb-8aa6-a3055eb0b821",
+ "total_cost_usd": 0.0267132,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 24870,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2274,
+  "output_tokens_details": {
+   "thinking_tokens": 1640
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24870,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2274,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 24870,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 24870
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 20537,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.020602,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2274,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24870,
+   "webSearchRequests": 0,
+   "costUSD": 0.0061112,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 18: fix. The fewest input changes that make a bad flag set good.\n\nStandard library only. The search, the good/bad rule (predicted 0-to-1 score\nat or above the training median) and the handling of frozen columns are\nreused from step8.fix. This module adds argument checks and a guarantee the\nclient needs: frozen columns come back unchanged, and goal cells are never\nread or returned.\n\"\"\"\n\nfrom step2 import _model\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row` with as few values changed as possible so the build is\n    predicted good. Columns named in `frozen` keep their values.\n\n    `row` holds the input columns (goal columns are ignored). Returns a dict\n    of input column names to values. Raises ValueError if a name in `frozen`\n    is not an input column of train_csv, or if a frozen column is absent\n    from `row`.\n    \"\"\"\n    model = _model(train_csv)\n    inputs = model[\"inputs\"]\n\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    frozen = tuple(frozen)\n\n    unknown = [c for c in frozen if c not in inputs]\n    if unknown:\n        raise ValueError(\n            \"frozen names are not input columns: \" + \", \".join(map(str, unknown))\n        )\n    absent = [c for c in frozen if c not in row]\n    if absent:\n        raise ValueError(\n            \"frozen columns are missing from row: \" + \", \".join(map(str, absent))\n        )\n\n    base = {c: row[c] if c in row else 0.0 for c in inputs}\n    result = dict(_fix(train_csv, row, frozen=frozen))\n\n    for c in frozen:\n        if result[c] != base[c]:\n            raise RuntimeError(f\"frozen column {c!r} was changed\")\n\n    return {c: result[c] for c in inputs}\n```",
+ "ttft_ms": 8350,
+ "type": "result",
+ "duration_ms": 10240,
+ "uuid": "80a5f1e9-0509-4de1-97ce-19707f4ede3d",
+ "ttft_stream_ms": 1392,
+ "time_to_request_ms": 88,
+ "queued_turn_count": 0
+}
