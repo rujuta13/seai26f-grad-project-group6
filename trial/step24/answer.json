@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6009,
+ "stop_reason": "end_turn",
+ "session_id": "01538f71-658f-48f2-9ba2-77166b537da5",
+ "total_cost_usd": 0.032971799999999996,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 31913,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1060,
+  "output_tokens_details": {
+   "thinking_tokens": 451
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 31913,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1060,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 31913,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 31913
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 25984,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.026059,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1060,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 31913,
+   "webSearchRequests": 0,
+   "costUSD": 0.006912799999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"step24.py: flow, for the two client questions.\n\nQ1: \"As new customers sign up, tell me straight away who's worth a welcome offer.\"\nQ2: \"Warn me when this month's sign-ups stop looking like our usual customers.\"\n\nQ1 is answered by step14.stream, the online Pareto test: a new sign-up is kept\nwhen no training customer and no earlier sign-up in the stream is at least as\ngood on every goal and strictly better on one. Q2 is answered by step14.drift,\nwhich warns at the first row where the recent sign-ups are mostly unlike the\ntraining customers, using the reference limit of step4.drift.\n\nBoth decisions come from the flow code in step4 through step14, so this module\nreuses them rather than repeating them. It only fixes the return types.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step14 import drift as _drift\nfrom step14 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each arriving sign-up that is worth a welcome offer, or drop\n    (False) it.\n\n    rows arrive one at a time, in order. Each decision uses only train_csv and\n    the rows before it. A row is kept unless a training row or an earlier row\n    of the stream is at least as good on every goal and strictly better on one.\n    \"\"\"\n    return [bool(keep) for keep in _stream(train_csv, rows)]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which the recent sign-ups have stopped\n    looking like train_csv, or None if they never do.\n\n    A warning is raised once at least MIN_UNLIKE of the last WINDOW rows are\n    unlike the training input rows. The rule is the one in step4.drift.\n    \"\"\"\n    idx = _drift(train_csv, rows)\n    return None if idx is None else int(idx)\n```",
+ "ttft_ms": 2881,
+ "type": "result",
+ "duration_ms": 4735,
+ "uuid": "23447797-9a51-4287-b23a-878f0e3c62fc",
+ "ttft_stream_ms": 1173,
+ "time_to_request_ms": 14,
+ "queued_turn_count": 0
+}
