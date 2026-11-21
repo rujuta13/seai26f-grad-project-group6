@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 50590,
+ "stop_reason": "end_turn",
+ "session_id": "842bdc46-f646-4ef4-b5a9-607cb6683196",
+ "total_cost_usd": 0.0247181,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 18342,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 10993,
+  "output_tokens_details": {
+   "thinking_tokens": 9388
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18342,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 10993,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 18342,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 18342
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 15488,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.015553,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 10993,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18342,
+   "webSearchRequests": 0,
+   "costUSD": 0.009165099999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\n\"\"\"Race: our tuner against a random search and a stdlib-only hill climber.\n\nThe standard library ships no hyperparameter tuner and no predictive model,\nso the stdlib rival here is a plain one-flip hill climber written with the\nstdlib alone. It is a stand-in for a library tuner, and it is named as one.\n\nEvery method gets the same budget of labelled builds from test_csv. Each\nmethod picks one build. Its pick is scored by wins: 100 at the best build\nin test_csv, 0 at an average one, using goals only as step4 does.\n\ntrain_csv is accepted for the shared signature. The tuners learn only from\nthe labels they buy on test_csv, so the training split is not used here.\n\"\"\"\nimport os\nimport random\nimport tempfile\n\nimport ezr\nimport step2\nimport step4\nimport step7\n\nBUDGET = 30   # labelled builds per method, the same for every rival\n\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Wins score of the build each method picks from TEST_CSV; higher is better.\"\n  _ = train_csv                        # shared signature; see docstring\n\n  tbl   = step2._load(test_csv)\n  rows  = tbl.rows\n  n     = len(rows)\n  cap   = min(BUDGET, n)\n  goals = step4._goals(tbl)\n  gat   = {g.at for g in goals}\n  truth = [{g.txt: r[g.at] for g in goals} for r in rows]\n\n  def label(i: int) -> dict:\n    \"Reveal the goals of test build I, as a paid label.\"\n    return truth[i]\n\n  # ---- scoring: wins over goals only, 100 best .. 0 average ----\n  ys      = sorted(step4._ydist(tbl, r) for r in rows)\n  lo, avg = ys[0], sum(ys) / n\n\n  def wins(i: int) -> float:\n    y = step4._ydist(tbl, rows[i])\n    return max(-100.0, min(100.0,\n                           100 * (1 - (y - lo) / (avg - lo + 1e-32))))\n\n  rng = random.Random(ezr.the.Seed)\n\n  # ---- ours: step7.choose on a blind copy of test_csv ----\n  # step7 reads its input from a path, so write a blind copy to a temp file:\n  # same header, every goal cell set to '?'.\n  text = [\",\".join(str(s) for s in tbl.names)]\n  for r in rows:\n    text.append(\",\".join(\"?\" if at in gat else str(v)\n                         for at, v in enumerate(r)))\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  try:\n    with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n      f.write(\"\\n\".join(text) + \"\\n\")\n    ours = step7.choose(path, label, budget=cap)\n  finally:\n    os.remove(path)\n\n  # ---- random search: the same budget, picked at random, best kept ----\n  def best_of(picks: list[int]) -> int:\n    \"Label PICKS, then return the one whose goals cost least.\"\n    lab  = ezr.clone(tbl)\n    seen = {}\n    for i in picks:\n      seen[i] = step7._fill(tbl, rows[i], label(i))\n      ezr.addRow(lab, seen[i])\n    return min(seen, key=lambda i: step7._cost(lab, seen[i], goals))\n\n  rand_pick = best_of(rng.sample(range(n), cap))\n\n  # ---- stdlib-only stand-in tuner: one-flip hill climb ----\n  # Start from a few random labels. Each step labels the unlabelled build\n  # nearest the current best in x-space, so the search walks locally.\n  def hill(first: list[int]) -> int:\n    \"Hill climb from the labels in FIRST, spending the whole budget.\"\n    lab  = ezr.clone(tbl)\n    seen = {}\n\n    def ask(i: int) -> None:\n      seen[i] = step7._fill(tbl, rows[i], label(i))\n      ezr.addRow(lab, seen[i])\n\n    for i in first:\n      ask(i)\n    while len(seen) < cap:\n      top  = min(seen, key=lambda i: step7._cost(lab, seen[i], goals))\n      rest = [i for i in range(n) if i not in seen]\n      ask(min(rest, key=lambda i: ezr.xdist(tbl, rows[i], rows[top])))\n    return min(seen, key=lambda i: step7._cost(lab, seen[i], goals))\n\n  hill_pick = hill(rng.sample(range(n), min(step7.START, cap)))\n\n  return {\n    \"ours\":             wins(ours),\n    \"random\":           wins(rand_pick),\n    \"stdlib_hillclimb\": wins(hill_pick),\n  }\n```",
+ "ttft_ms": 44375,
+ "type": "result",
+ "duration_ms": 49621,
+ "uuid": "ef68e23c-5e13-4345-b07a-6e4d4918073f",
+ "ttft_stream_ms": 1203,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
