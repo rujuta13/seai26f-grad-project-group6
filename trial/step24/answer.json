@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 8009,
+ "stop_reason": "end_turn",
+ "session_id": "5eef6cf5-ee78-4676-bd82-a661702a62e6",
+ "total_cost_usd": 0.0252582,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 23705,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1486,
+  "output_tokens_details": {
+   "thinking_tokens": 1145
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23705,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 1486,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 23705,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 23705
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 19709,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.019774,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 1486,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23705,
+   "webSearchRequests": 0,
+   "costUSD": 0.005484200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n#!/usr/bin/env python3 -B\n\"step24.py: flow. Keep the good new sign-ups as they arrive; warn when this month's sign-ups stop looking like our usual customers.\"\nfrom step4 import stream as _stream, drift as _drift\n\ndef stream(train_csv, rows) -> list[bool]:\n  \"\"\"One keep (True) or drop (False) per row of ROWS, in order.  A row is kept\n  if its goals are at least as good as the best rows of TRAIN_CSV.  Each\n  decision uses only TRAIN_CSV and the row in hand, so it is causal.\"\"\"\n  return _stream(str(train_csv), rows)\n\ndef drift(train_csv, rows) -> int | None:\n  \"\"\"Index into ROWS of the first row at which the last W rows' distances to\n  TRAIN_CSV stop looking like TRAIN_CSV's own spacing, or None if they never\n  do.  Reads ROWS in order and stops at the first warning.\"\"\"\n  return _drift(str(train_csv), rows)\n```",
+ "ttft_ms": 6072,
+ "type": "result",
+ "duration_ms": 6988,
+ "uuid": "c61f0327-c2b8-42ce-b391-0a38a3fbb5fd",
+ "ttft_stream_ms": 1330,
+ "time_to_request_ms": 82,
+ "queued_turn_count": 0
+}
