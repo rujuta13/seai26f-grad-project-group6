@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 28108,
+ "stop_reason": "end_turn",
+ "session_id": "51b1efd6-67aa-4c2b-af04-14470fa808f9",
+ "total_cost_usd": 0.0252742,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 21275,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6092,
+  "output_tokens_details": {
+   "thinking_tokens": 5110
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21275,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 6092,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 21275,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 21275
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 17908,
+   "outputTokens": 13,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.017973,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 6092,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21275,
+   "webSearchRequests": 0,
+   "costUSD": 0.007301200000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step15.py\n#!/usr/bin/env python3 -B\n\"\"\"\nstep15.py: blame.  Which input columns go with the bad rows?\nA row is bad if its ydist (all goals together) is in the worst quarter of\nthe training rows with every goal known.  Each input column is scored by\nhow much of the bad/good split its values explain: eta-squared on the 0/1\nbad flag, adjusted for the number of groups.  Symbols group by value;\nnumbers group by quartile.\n\nWhy this is not step5.blame unchanged: plain eta-squared rises toward 1 for\nany column with many distinct values, because each group then holds one or\ntwo rows and explains the flag by chance.  The adjustment\n1 - (1-eta)(n-1)/(n-k) removes that chance share, so identifier-like\ncolumns score near 0.  Reuses ezr for distance and step2 for the cached table.\n\"\"\"\nimport ezr\nimport step2\n\ndef blame(train_csv: str) -> list[str]:\n  \"Input column names, most to blame for bad rows (bad on the goals) first.\"\n  tbl  = step2._tbl(train_csv)\n  rows = [r for r in tbl.rows if all(r[c.at] != \"?\" for c in tbl.y)]\n  if not rows: return [c.txt for c in tbl.x]\n  ys   = [ezr.ydist(tbl, r) for r in rows]\n  cut  = sorted(ys)[min(len(ys)-1, int(0.75*len(ys)))]\n  bad  = [1 if y >= cut else 0 for y in ys]\n\n  def blame_of(col) -> float:\n    \"Adjusted share of the bad-flag variance that COL's groups explain.\"\n    idx = [i for i, r in enumerate(rows) if r[col.at] != \"?\"]\n    n   = len(idx)\n    if n < 2: return 0.0\n    if type(col) is ezr.Sym:\n      key = {i: rows[i][col.at] for i in idx}\n    else:\n      order = sorted(idx, key=lambda i: rows[i][col.at])\n      size  = max(1, n//4)\n      key   = {i: min(3, j//size) for j, i in enumerate(order)}\n    grand = sum(bad[i] for i in idx)/n\n    total = sum((bad[i]-grand)**2 for i in idx)\n    if total <= 0: return 0.0\n    groups = {}\n    for i in idx: groups.setdefault(key[i], []).append(bad[i])\n    k = len(groups)\n    if n <= k: return 0.0          # every row its own group: no evidence\n    between = sum(len(g)*(sum(g)/len(g)-grand)**2 for g in groups.values())\n    eta = between/total\n    return max(0.0, 1 - (1-eta)*(n-1)/(n-k))\n\n  scored = [(-blame_of(c), c.txt) for c in tbl.x]\n  return [name for _, name in sorted(scored)]\n```",
+ "ttft_ms": 24209,
+ "type": "result",
+ "duration_ms": 26872,
+ "uuid": "969b3cab-d872-4e49-b3a3-b03dc2b97029",
+ "ttft_stream_ms": 1239,
+ "time_to_request_ms": 19,
+ "queued_turn_count": 0
+}
