@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 18097,
+ "stop_reason": "end_turn",
+ "session_id": "2191325f-9b90-44ca-8d74-c05f8ca4c509",
+ "total_cost_usd": 0.00909346,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 202,
+  "cache_read_input_tokens": 7886,
+  "output_tokens": 3676,
+  "output_tokens_details": {
+   "thinking_tokens": 2894
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 202,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 3676,
+    "cache_read_input_tokens": 7886,
+    "cache_creation_input_tokens": 202,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 202
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 7061,
+   "outputTokens": 15,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.007136,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 3676,
+   "cacheReadInputTokens": 7886,
+   "cacheCreationInputTokens": 202,
+   "webSearchRequests": 0,
+   "costUSD": 0.00195746,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step1.py\n\"\"\"Families of flag sets, and the unusually good ones.\n\nFamilies are k-medoids clusters over the flag columns (the x columns).\nGood rows are those closest to the ideal on all goals together.\n\"\"\"\nimport ezr\n\n\ndef families(train_csv: str, k: int = 5) -> list[int]:\n  \"One family (cluster) label per data row of TRAIN_CSV, in file order.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  k    = max(1, min(k, n))\n\n  # farthest-first seeds, deterministic, starting from row 0\n  seeds = [0]\n  d = [ezr.xdist(tbl, r, rows[0]) for r in rows]\n  while len(seeds) < k:\n    i = max(range(n), key=lambda j: d[j])\n    seeds.append(i)\n    d = [min(d[j], ezr.xdist(tbl, rows[j], rows[i])) for j in range(n)]\n\n  def assign(meds: list) -> list[int]:\n    return [min(range(len(meds)),\n                key=lambda c: ezr.xdist(tbl, r, meds[c]))\n            for r in rows]\n\n  def medoid(group: list[int]) -> int:\n    return min(group, key=lambda a: sum(ezr.xdist(tbl, rows[a], rows[b])\n                                        for b in group))\n\n  meds   = [rows[i] for i in seeds]\n  labels = assign(meds)\n  for _ in range(3):\n    for c in range(k):\n      group = [i for i in range(n) if labels[i] == c]\n      if group: meds[c] = rows[medoid(group)]\n    new = assign(meds)\n    if new == labels: break\n    labels = new\n  return labels\n\n\ndef best(train_csv: str) -> list[int]:\n  \"Row indices of the unusually good rows (best on all goals together), at most 5% of rows.\"\n  tbl  = ezr.Tbl(ezr.csv(train_csv))\n  rows = tbl.rows\n  n    = len(rows)\n  cap  = max(1, n // 20)              # floor of 5%, so never above 5%\n  order = sorted(range(n), key=lambda i: ezr.ydist(tbl, rows[i]))\n  return order[:cap]\n```",
+ "ttft_ms": 14694,
+ "type": "result",
+ "duration_ms": 17221,
+ "uuid": "1cf08690-0dba-406d-96f2-073c285e3b5f",
+ "ttft_stream_ms": 1149,
+ "time_to_request_ms": 24,
+ "queued_turn_count": 0
+}
