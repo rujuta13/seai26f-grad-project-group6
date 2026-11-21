@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 6218,
+ "stop_reason": "end_turn",
+ "session_id": "5764e181-7c32-4eaa-9218-98499df511a2",
+ "total_cost_usd": 0.0266435,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 25224,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 569,
+  "output_tokens_details": {
+   "thinking_tokens": 427
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25224,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 569,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 25224,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 25224
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 21244,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.021314,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 569,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25224,
+   "webSearchRequests": 0,
+   "costUSD": 0.0053295,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step13.py\nimport ezr\n\ndef same(xs, ys) -> bool:\n  \"True if XS and YS are NOT really different (the gap is noise); False if the difference is real.\"\n  xs = [float(x) for x in xs]\n  ys = [float(y) for y in ys]\n  if not xs or not ys:\n    raise ValueError(\"same: both lists need at least one number\")\n  return ezr.same(xs, ys)\n```",
+ "ttft_ms": 3545,
+ "type": "result",
+ "duration_ms": 3928,
+ "uuid": "c423187f-735c-410f-b6c7-14d6efb1c578",
+ "ttft_stream_ms": 1405,
+ "time_to_request_ms": 84,
+ "queued_turn_count": 0
+}
