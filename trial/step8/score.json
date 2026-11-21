@@ -1,0 +1,13 @@
+{
+ "domain": "ssw",
+ "step": 8,
+ "skill": "fix",
+ "ok": false,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "error": "ValueError: fix: no good build reachable by changing the unfrozen flags",
+  "trace": "Traceback (most recent call last):\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/harness/score.py\", line 52, in score\n    out = c.SCORE[skill](load(code_dir, n), env_for(domain, tmp))\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/harness/contracts.py\", line 309, in score_fix\n    new = m.fix(env[\"train_csv\"], without(r, gs), frozen)\n  File \"/Users/rujuta/Documents/fall 26/se4ai/project/.runs/t6-r2/trial/step8.py\", line 81, in fix\n    raise ValueError(\"fix: no good build reachable by changing the unfrozen flags\")\nValueError: fix: no good build reachable by changing the unfrozen flags\n"
+ }
+}
