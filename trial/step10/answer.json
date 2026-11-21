@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 49266,
+ "stop_reason": "end_turn",
+ "session_id": "c1e5fc61-efff-47f3-8b4f-6b387dc06f6b",
+ "total_cost_usd": 0.022017000000000002,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 15604,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 11024,
+  "output_tokens_details": {
+   "thinking_tokens": 9044
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 15604,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 11024,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 15604,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 15604
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 13314,
+   "outputTokens": 14,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.013384,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 11024,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 15604,
+   "webSearchRequests": 0,
+   "costUSD": 0.008633,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n# step10.py\nimport os, random, tempfile\nimport ezr\nimport step2\nimport step7\n\n# The standard library ships no hyperparameter tuner and no regression\n# model, so the rivals are built from stdlib pieces:\n#   random : random search, the same label budget spent at random\n#   grid   : a fixed, evenly spaced sweep of the candidates\n#   linear : a least-squares linear model, trained on train_csv, that\n#            picks the test row it predicts to be best (no test labels)\n# \"ours\" is step7's tuner, run on a copy of test_csv with goal cells hidden.\n\ndef _best_of(tbl: ezr.TBL, idx: list[int]) -> int:\n  \"Among the labelled rows IDX, the index of the one with the smallest ydist.\"\n  labelled = [tbl.rows[i] for i in idx]\n  done     = ezr.clone(tbl, labelled)\n  return min(idx, key=lambda i: ezr.ydist(done, tbl.rows[i]))\n\ndef _random(tbl: ezr.TBL, budget: int) -> int:\n  \"Random search: label BUDGET random rows, keep the best.\"\n  rng = random.Random(ezr.the.Seed)\n  idx = rng.sample(range(len(tbl.rows)), min(budget, len(tbl.rows)))\n  return _best_of(tbl, idx)\n\ndef _grid(tbl: ezr.TBL, budget: int) -> int:\n  \"Grid search: label BUDGET evenly spaced rows, keep the best.\"\n  n   = len(tbl.rows)\n  k   = min(budget, n)\n  idx = sorted({int(i * n / k) for i in range(k)})\n  return _best_of(tbl, idx)\n\ndef _ours(test_csv: str, budget: int) -> int:\n  \"Our tuner (step7), blind: goal cells are hidden in a temp copy and labelled on demand.\"\n  src     = list(ezr.csv(test_csv))\n  headers = [str(h) for h in src[0]]\n  goal    = [h[-1] in \"+-\" for h in headers]\n\n  def label(i: int) -> dict:          # true goal values of data row I\n    row = src[i + 1]\n    return {h: v for h, v, g in zip(headers, row, goal) if g}\n\n  fd, path = tempfile.mkstemp(suffix=\".csv\")\n  try:\n    with os.fdopen(fd, \"w\", encoding=\"utf-8\") as f:\n      f.write(\",\".join(headers) + \"\\n\")\n      for row in src[1:]:\n        f.write(\",\".join(\"?\" if g else str(v)\n                         for v, g in zip(row, goal)) + \"\\n\")\n    return step7.choose(path, label, budget=budget)\n  finally:\n    os.remove(path)\n\ndef _feats(tbl: ezr.TBL, row: ezr.ROW) -> list[float]:\n  \"A bias term, then one feature per x column: norm for numbers, one-hot for symbols.\"\n  out = [1.0]\n  for c in tbl.x:\n    v = row[c.at]\n    if type(c) is ezr.Sym:\n      out += [1.0 if v == k else 0.0 for k in c.has]\n    else:\n      out.append(0.5 if v == \"?\" else ezr.norm(c, v))\n  return out\n\ndef _solve(A: list[list[float]], b: list[float]) -> list[float]:\n  \"Solve A w = b by Gauss-Jordan elimination with partial pivoting.\"\n  n = len(b)\n  M = [A[i][:] + [b[i]] for i in range(n)]\n  for i in range(n):\n    p = max(range(i, n), key=lambda r: abs(M[r][i]))\n    M[i], M[p] = M[p], M[i]\n    piv = M[i][i] or 1e-32\n    for r in range(n):\n      if r != i:\n        f = M[r][i] / piv\n        for k in range(i, n + 1): M[r][k] -= f * M[i][k]\n  return [M[i][n] / (M[i][i] or 1e-32) for i in range(n)]\n\ndef _fit(X: list[list[float]], y: list[float], lam: float = 1e-6) -> list[float]:\n  \"Ridge least squares via the normal equations.\"\n  d = len(X[0])\n  A = [[sum(x[i] * x[j] for x in X) + (lam if i == j else 0.0)\n        for j in range(d)] for i in range(d)]\n  b = [sum(x[i] * t for x, t in zip(X, y)) for i in range(d)]\n  return _solve(A, b)\n\ndef _linear(tr: ezr.TBL, test: ezr.TBL) -> int:\n  \"A linear model of the train wins; pick the test row it predicts is best.\"\n  score = ezr.wins(tr)\n  X     = [_feats(tr, r) for r in tr.rows]\n  y     = [score(r) for r in tr.rows]\n  w     = _fit(X, y)\n  preds = [sum(a * b for a, b in zip(w, _feats(tr, r))) for r in test.rows]\n  return max(range(len(preds)), key=lambda i: preds[i])\n\ndef race(train_csv: str, test_csv: str) -> dict[str, float]:\n  \"Each method picks one row of TEST_CSV; score it by wins on test (100 = best, 0 = average).\"\n  test = ezr.Tbl(ezr.csv(test_csv))\n  if not test.rows: raise ValueError(f\"no rows in {test_csv}\")\n  budget = min(ezr.the.Stop, len(test.rows))\n  picks  = {\n    \"ours\":   _ours(test_csv, budget),\n    \"random\": _random(test, budget),\n    \"grid\":   _grid(test, budget),\n    \"linear\": _linear(step2._table(train_csv), test),\n  }\n  score = ezr.wins(test)\n  return {k: float(score(test.rows[i])) for k, i in picks.items()}\n```",
+ "ttft_ms": 42424,
+ "type": "result",
+ "duration_ms": 48419,
+ "uuid": "a89b714b-9258-427b-9276-3f3b95f778ce",
+ "ttft_stream_ms": 1371,
+ "time_to_request_ms": 25,
+ "queued_turn_count": 0
+}
