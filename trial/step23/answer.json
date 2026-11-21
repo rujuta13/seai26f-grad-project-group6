@@ -1,0 +1,107 @@
+{
+ "duration_api_ms": 11915,
+ "stop_reason": "end_turn",
+ "session_id": "65890e50-0f14-41c3-b3fa-98d7304de2c1",
+ "total_cost_usd": 0.0424511,
+ "usage": {
+  "input_tokens": 2,
+  "cache_creation_input_tokens": 40217,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2541,
+  "output_tokens_details": {
+   "thinking_tokens": 1270
+  },
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 40217,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "global",
+  "iterations": [
+   {
+    "input_tokens": 2,
+    "output_tokens": 2541,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 40217,
+    "cache_creation": {
+     "ephemeral_5m_input_tokens": 0,
+     "ephemeral_1h_input_tokens": 40217
+    },
+    "type": "message"
+   }
+  ],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-4-5-20251001": {
+   "inputTokens": 33057,
+   "outputTokens": 16,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 0,
+   "webSearchRequests": 0,
+   "costUSD": 0.033137,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-4-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  },
+  "claude-haiku-5-5": {
+   "inputTokens": 2,
+   "outputTokens": 2541,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 40217,
+   "webSearchRequests": 0,
+   "costUSD": 0.0093141,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000,
+   "canonicalModel": "claude-haiku-5-5",
+   "provider": "firstParty",
+   "costBasis": "list"
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "extra_usage_disabled",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "is_error": false,
+ "num_turns": 1,
+ "subtype": "success",
+ "api_error_status": null,
+ "result": "```python\n\"\"\"Step 23: certify. Did the last campaign really lift purchases, or is that noise?\nDo families with teenagers really shop differently, or does it just look that way?\n\nMethod: a two-sided permutation test on the difference of means. It makes no\nnormality assumption, so it suits skewed spending and the many ties of 0/1\ncampaign-response and small-count purchase data. A difference counts as real\nonly when it is both statistically significant (p < _ALPHA) and non-negligible\nin size (|Cliff's delta| >= _MIN_DELTA). Otherwise the gap is treated as noise.\n\"\"\"\n\nimport bisect\nimport math\nimport random\n\n_ALPHA = 0.05          # significance level for the permutation test\n_PERMUTATIONS = 5000   # number of random relabellings\n_MIN_DELTA = 0.147     # Cliff's delta threshold for a \"small\" effect (Romano et al.)\n_SEED = 12345          # fixed seed so results are reproducible\n\n\ndef _clean(xs):\n    \"\"\"Return the finite numeric values of xs as floats; other entries are dropped.\"\"\"\n    out = []\n    for x in xs:\n        try:\n            v = float(x)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(v):\n            out.append(v)\n    return out\n\n\ndef _cliffs_delta(xs, ys_sorted):\n    \"\"\"Cliff's delta in [-1, 1]: P(x > y) - P(x < y), using a sorted copy of ys.\"\"\"\n    m = len(ys_sorted)\n    total = 0\n    for x in xs:\n        less = bisect.bisect_left(ys_sorted, x)\n        greater = m - bisect.bisect_right(ys_sorted, x)\n        total += greater - less\n    return total / (len(xs) * m)\n\n\ndef _permutation_p(a, b, observed):\n    \"\"\"Two-sided permutation p-value for an absolute difference of means >= observed.\n\n    The statistic is symmetric in the two groups, so the smaller group is the\n    one drawn at random from the pooled values. This keeps each relabelling\n    cheap even when the other group is very large.\n    \"\"\"\n    if len(a) <= len(b):\n        small, large = a, b\n    else:\n        small, large = b, a\n    pooled = small + large\n    k = len(small)\n    n_large = len(large)\n    n_all = len(pooled)\n    grand = math.fsum(pooled)\n\n    rng = random.Random(_SEED)\n    hits = 0\n    for _ in range(_PERMUTATIONS):\n        picked = rng.sample(range(n_all), k)\n        s = math.fsum(pooled[i] for i in picked)\n        d = abs(s / k - (grand - s) / n_large)\n        if d >= observed or math.isclose(d, observed, rel_tol=1e-9, abs_tol=1e-12):\n            hits += 1\n    return (hits + 1) / (_PERMUTATIONS + 1)\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the gap between xs and ys is noise, False if the difference is real.\n\n    xs, ys: lists of numbers (e.g. goal values of customers who were sent a\n    campaign and of those who were not, or spending of two family groups).\n    Non-numeric and non-finite entries are ignored. With no usable data on\n    either side there is no evidence of a difference, so the answer is True.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    if not a or not b:\n        return True\n\n    observed = abs(math.fsum(a) / len(a) - math.fsum(b) / len(b))\n    if observed == 0.0:\n        return True\n\n    p_value = _permutation_p(a, b, observed)\n    if p_value >= _ALPHA:\n        return True\n    return abs(_cliffs_delta(a, sorted(b))) < _MIN_DELTA\n```",
+ "ttft_ms": 7155,
+ "type": "result",
+ "duration_ms": 10782,
+ "uuid": "2e51654e-94e9-4441-81a7-53b8aeb4635b",
+ "ttft_stream_ms": 1477,
+ "time_to_request_ms": 27,
+ "queued_turn_count": 0
+}
