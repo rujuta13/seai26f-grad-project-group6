@@ -55,4 +55,22 @@ overall, and do not round it up to a win for either side.
 
 ## Amendments
 
-_None yet._
+**2026-11-22: N per LLM treatment is 3–5, not ≥ 10.** The course instructor ruled that 3–5
+repeats per LLM treatment is enough, to keep runtime and token use within the course
+budget. We ran T1, T2, T5 and T6 five times over all 30 steps, and T3 and T4 three times
+over steps 1–10. Smaller N makes `same` less likely to certify a difference, so it biases
+the comparisons toward ties, not toward either hypothesis. Analysis: `harness/claims.py`.
+
+**2026-11-22: each data set is a seeded 1000-row sample, split 80/20.** The instructor
+allowed capping each data set at 1000 randomly picked rows so that runs take minutes.
+`harness/data.py` draws 1000 rows per domain (seed 1234567891) from the MOOT csv as
+shipped, copies them byte for byte, and cuts them 800/200 into train and test. Every
+treatment gets the same split. The files are sampled, not edited. Row counts above
+describe the full files, not what the skills saw.
+
+**2026-11-22: how "without being worse on correctness" is tested.** The claim did not say
+how to test this, and we chose the method after seeing results. We compare two per-step
+0/1 outcomes, the same unit as new code: the code ran (`ran_ok`), and, for steps with a
+score, it beat the step's baseline. A reuse treatment counts as worse only if `same`
+certifies a lower rate. We first tried per-trial rates, but with 3–5 heavily tied values
+a single failure in 50 steps pushed Cliff's delta past 0.197, so we dropped that version.
