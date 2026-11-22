@@ -55,4 +55,8 @@ overall, and do not round it up to a win for either side.
 
 ## Amendments
 
-_None yet._
+**2026-11-22: N per LLM treatment is 3–5, not ≥ 10.** The course instructor ruled that 3–5
+repeats per LLM treatment is enough, to keep runtime and token use within the course
+budget. We ran T1, T2, T5 and T6 five times over all 30 steps, and T3 and T4 three times
+over steps 1–10. Smaller N makes `same` less likely to certify a difference, so it biases
+the comparisons toward ties, not toward either hypothesis. Analysis: `harness/claims.py`.
