@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 31398,
+ "duration_api_ms": 31375,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\n\nfrom step1 import _read, _columns, _to_float_column\nfrom step4 import stream as _stream\n\n_ALPHA = 0.05\n_FIRST_CHECK = 16\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a streamed row iff no training row and no earlier kept row beats it on every goal.\"\"\"\n    return _stream(train_csv, rows)\n\n\ndef _z_pvalue(x, y):\n    \"\"\"Two-sided normal-approximation p-value for the difference in means.\"\"\"\n    n, m = len(x), len(y)\n    if n < 2 or m < 1:\n        return 1.0\n    d = float(y.mean()) - float(x.mean())\n    if d == 0.0:\n        return 1.0\n    var_x = float(x.var(ddof=1))\n    var_y = float(y.var(ddof=1)) if m > 1 else 0.0\n    v = var_x / n + var_y / m\n    if not v > 0.0:\n        return 0.0\n    z = abs(d) / math.sqrt(v)\n    return math.erfc(z / math.sqrt(2.0))\n\n\ndef _num_getter(c):\n    def get(row):\n        try:\n            v = float(row.get(c))\n        except (TypeError, ValueError):\n            return None\n        return v if np.isfinite(v) else None\n    return get\n\n\ndef _eq_getter(c, v):\n    def get(row):\n        return 1.0 if row.get(c) == v else 0.0\n    return get\n\n\ndef _unseen_getter(c, seen):\n    def get(row):\n        return 0.0 if row.get(c) in seen else 1.0\n    return get\n\n\ndef _build(train_csv):\n    \"\"\"Feature specs: (key, training values, getter mapping a row to a float or None).\"\"\"\n    fieldnames, train_rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    specs = []\n\n    for name, _sign in goals:\n        col = _to_float_column(train_rows, name)\n        specs.append(((\"goal\", name), col[np.isfinite(col)], _num_getter(name)))\n\n    for c in inputs:\n        raw = [r.get(c) for r in train_rows]\n        try:\n            col = np.array([float(v) for v in raw], dtype=float)\n        except (TypeError, ValueError):\n            levels = list(dict.fromkeys(raw))\n            for v in levels:\n                arr = np.array([1.0 if r == v else 0.0 for r in raw], dtype=float)\n                specs.append(((\"lvl\", c, v), arr, _eq_getter(c, v)))\n            seen = set(levels)\n            specs.append(((\"unseen\", c), np.zeros(len(raw), dtype=float),\n                          _unseen_getter(c, seen)))\n        else:\n            col = col[np.isfinite(col)]\n            specs.append(((\"in\", c), col, _num_getter(c)))\n\n    return [s for s in specs if len(s[1]) >= 2]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the first row at which new rows no longer look like train_csv, or None.\n\n    Compares running windows of goal values and input features (numeric values,\n    category indicators, and unseen-category rate) against the training data at\n    geometrically growing checkpoints (16, 32, 64, ...). The j-th checkpoint\n    spends alpha / ((j+1)(j+2)) in total, split evenly across all features.\n    \"\"\"\n    specs = _build(train_csv)\n    if not specs or not rows:\n        return None\n\n    F = len(specs)\n    window = {key: [] for key, _, _ in specs}\n    next_check = _FIRST_CHECK\n    j = 0\n\n    for i, row in enumerate(rows):\n        for key, _x, get in specs:\n            v = get(row)\n            if v is not None and np.isfinite(v):\n                window[key].append(float(v))\n\n        if i + 1 == next_check:\n            alpha_j = _ALPHA / ((j + 1) * (j + 2)) / F\n            for key, x, _get in specs:\n                y = np.asarray(window[key], dtype=float)\n                if len(y) == 0:\n                    continue\n                if _z_pvalue(x, y) <= alpha_j:\n                    return i\n            j += 1\n            next_check *= 2\n\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "47160c8f-f22a-45a5-9452-8d7d303272ca",
+ "total_cost_usd": 0.0058664,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 18564,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7091,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18564,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7091,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18564,
+   "webSearchRequests": 0,
+   "costUSD": 0.0058664,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e819972d-ce20-45ea-8b9c-5ec09166d1cf"
+}
