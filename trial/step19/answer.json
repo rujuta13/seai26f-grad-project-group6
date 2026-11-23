@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 27951,
+ "duration_api_ms": 27939,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\n\n\n_BIG = 1e6           # z-score assigned to a missing or non-numeric goal value\n_ID_FRACTION = 0.9   # a column this unique is treated as an identifier\n_MAX_LEVELS = 50     # categorical columns with more levels are skipped\n\n\ndef _kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _load(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        rows = [dict(r) for r in reader]\n    return header, rows\n\n\ndef _num(cell):\n    \"\"\"Return cell as a finite float, or None if missing or not numeric.\"\"\"\n    if cell is None or isinstance(cell, bool):\n        return None\n    try:\n        f = float(cell)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _missing(v):\n    return v is None or (isinstance(v, str) and v.strip() == \"\")\n\n\ndef _key(v):\n    return \"\" if _missing(v) else str(v)\n\n\ndef _input_specs(header, train):\n    \"\"\"Per usable input column: (name, kind, meta).\n\n    kind \"num\": meta = (mean, sd) for standardisation.\n    kind \"cat\": meta = {level: index} for one-hot encoding.\n    Identifier-like columns (names, urls, row numbers) are skipped so that\n    a new name or url is not mistaken for an unusual build.\n    \"\"\"\n    n = len(train)\n    specs = []\n    for c in header:\n        if _kind(c) != \"input\":\n            continue\n        raw = [r.get(c) for r in train]\n        present = [v for v in raw if not _missing(v)]\n        nums = [_num(v) for v in present]\n        numeric = bool(present) and all(x is not None for x in nums)\n        distinct = len({_key(v) for v in raw})\n        if n > 0 and distinct > _ID_FRACTION * n and (\n            not numeric or all(float(x).is_integer() for x in nums)\n        ):\n            continue\n        if numeric:\n            arr = np.asarray(nums, dtype=float)\n            mean = float(arr.mean())\n            sd = float(arr.std())\n            if not sd > 0:\n                sd = 1.0\n            specs.append((c, \"num\", (mean, sd)))\n        else:\n            levels = sorted({_key(v) for v in raw})\n            if len(levels) > _MAX_LEVELS:\n                continue\n            specs.append((c, \"cat\", {k: i for i, k in enumerate(levels)}))\n    return specs\n\n\ndef _encode(rowlist, specs):\n    m = len(rowlist)\n    blocks = []\n    for c, kind, meta in specs:\n        if kind == \"num\":\n            mean, sd = meta\n            col = np.zeros(m, dtype=float)\n            for i, r in enumerate(rowlist):\n                x = _num(r.get(c))\n                col[i] = 0.0 if x is None else (x - mean) / sd\n            blocks.append(col[:, None])\n        else:\n            M = np.zeros((m, len(meta)), dtype=float)\n            for i, r in enumerate(rowlist):\n                j = meta.get(_key(r.get(c)))\n                if j is not None:\n                    M[i, j] = 1.0\n            blocks.append(M)\n    if not blocks:\n        return np.zeros((m, 0), dtype=float)\n    return np.hstack(blocks)\n\n\ndef _sqdist(A, B):\n    a2 = (A * A).sum(axis=1)[:, None]\n    b2 = (B * B).sum(axis=1)[None, :]\n    return np.maximum(a2 + b2 - 2.0 * (A @ B.T), 0.0)\n\n\ndef _novelty(header, train, rows):\n    \"\"\"Nearest-neighbour distance to training inputs, relative to the typical\n    leave-one-out nearest-neighbour distance within the training set.\"\"\"\n    out = np.zeros(len(rows), dtype=float)\n    specs = _input_specs(header, train)\n    if not specs or len(train) < 2:\n        return out\n    Z = _encode(train, specs)\n    if Z.shape[1] == 0:\n        return out\n\n    D = _sqdist(Z, Z)\n    np.fill_diagonal(D, np.inf)\n    base = np.sqrt(D.min(axis=1))\n\n    scale = float(np.median(base))\n    if not scale > 0:\n        positive = base[base > 0]\n        scale = float(positive.mean()) if positive.size else 1.0\n\n    Zr = _encode(rows, specs)\n    dist = np.sqrt(_sqdist(Zr, Z).min(axis=1))\n    return dist / scale\n\n\ndef _goal_outlier(header, train, rows):\n    \"\"\"Largest robust z-score (median/MAD on training goals) over all goals.\n    A missing or non-numeric goal gets a very large score.\"\"\"\n    goals = [c for c in header if _kind(c) in (\"max\", \"min\")]\n    out = np.zeros(len(rows), dtype=float)\n    if not goals:\n        return out\n    for g in goals:\n        ys = [x for x in (_num(r.get(g)) for r in train) if x is not None]\n        if not ys:\n            continue\n        ys = np.asarray(ys, dtype=float)\n        med = float(np.median(ys))\n        mad = 1.4826 * float(np.median(np.abs(ys - med)))\n        if not mad > 0:\n            mad = float(ys.std())\n        if not mad > 0:\n            mad = 1.0\n        z = np.empty(len(rows), dtype=float)\n        for i, r in enumerate(rows):\n            v = _num(r.get(g))\n            z[i] = _BIG if v is None else min(abs(v - med) / mad, _BIG)\n        out = np.maximum(out, z)\n    return out\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more\n    likely a glitch, a typo, or unlike anything in train_csv.\n\n    Two signals are combined on a log scale:\n      * goal outlier: the largest robust z-score over the goal columns,\n        fitted on the training builds. A missing or non-numeric goal scores\n        very high.\n      * input novelty: nearest-neighbour distance to the training inputs in\n        standardised input space, relative to the typical leave-one-out\n        nearest-neighbour distance within the training set.\n    With no training rows there is nothing to compare against, so all scores\n    are 0.0.\n    \"\"\"\n    rows = list(rows)\n    if not rows:\n        return []\n\n    header, train = _load(train_csv)\n    if not train:\n        return [0.0] * len(rows)\n\n    in_score = _novelty(header, train, rows)\n    goal_score = _goal_outlier(header, train, rows)\n\n    score = np.log1p(goal_score) + np.log1p(in_score)\n    score = np.where(np.isfinite(score), score, _BIG)\n    return [float(s) for s in score]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "991f6e1c-0600-4579-a3e3-782cd051be26",
+ "total_cost_usd": 0.007011775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 27647,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7111,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27647,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7111,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27647,
+   "webSearchRequests": 0,
+   "costUSD": 0.007011775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "6949ad9f-cf16-41bd-aa80-bf2b0f353118"
+}
