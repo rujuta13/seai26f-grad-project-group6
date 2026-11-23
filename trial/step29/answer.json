@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 9785,
+ "duration_api_ms": 9747,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step29.py: flag customer records that look like typos or glitches, or that are unlike\nanyone in the training data.\n\nodd() is step19.odd (goal-glitch scoring, unseen categories and unparseable values scored\ninf, novelty measured against the training customers with identifier columns left out),\nplus one new check. Novelty is a distance across all traits, so a single impossible value\n(an age of 250, an income of 10 million) can be hidden by the other traits. The new check\nscores each numeric trait on its own, as a robust z-score against the training customers,\nand the row keeps the larger of the two scores.\n\nHelpers are reused from step1 (loading, classification, value coercion), step9 (robust\nscaling), step11 (identifier filter) and step19 (the full odd() score).\n\"\"\"\nfrom __future__ import annotations\n\nimport math\n\nimport numpy as np\n\nfrom step1 import _classify, _load, _to_value\nfrom step9 import _robust_scale\nfrom step11 import _trait_inputs\nfrom step19 import odd as _odd\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more suspicious.\n\n    A score of inf marks a row with a missing or non-finite goal, an unparseable or\n    non-finite numeric input, or a categorical input value never seen in train_csv.\n    Otherwise the score is the larger of the step19 score (goal glitch or unlike the\n    training data as a whole) and the largest per-trait robust z-score of the numeric\n    inputs (one impossible value on its own).\n    \"\"\"\n    if not rows:\n        return []\n\n    base = _odd(train_csv, rows)\n\n    header, train_rows = _load(train_csv)\n    _, _, inputs = _classify(header)\n    inputs = _trait_inputs(header, inputs)\n\n    # Per-trait robust location and spread, for numeric trait columns only.\n    num_cols = []\n    for c in inputs:\n        vals = [_to_value(r[c]) for r in train_rows]\n        if vals and all(isinstance(v, float) and math.isfinite(v) for v in vals):\n            num_cols.append((c, _robust_scale(np.array(vals, dtype=float))))\n\n    scores: list[float] = []\n    for row, b in zip(rows, base):\n        if not math.isfinite(b):\n            scores.append(b)\n            continue\n        worst = 0.0\n        for c, (med, scale) in num_cols:\n            raw = row.get(header[c])\n            if raw is None:\n                continue\n            v = _to_value(raw)\n            if isinstance(v, float) and math.isfinite(v):\n                worst = max(worst, abs(v - med) / scale)\n        scores.append(float(max(b, worst)))\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "33b5a3d4-addf-4664-8908-56c5a14250a0",
+ "total_cost_usd": 0.0060333999999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 39540,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2181,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 39540,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2181,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 39540,
+   "webSearchRequests": 0,
+   "costUSD": 0.0060333999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ece70021-b934-4af4-9c3b-68089ea04ec0"
+}
