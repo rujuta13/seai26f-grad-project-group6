@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4929,
+ "duration_api_ms": 4917,
+ "num_turns": 1,
+ "result": "```python\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the same build's inputs with as few values changed as possible so\n    that it is predicted to be good. Columns named in `frozen` are never changed.\n\n    `row` is a bad build with its goal columns removed. The result keeps the\n    row's own columns, changes only input values, and never adds goal values.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen_set = {frozen}\n    else:\n        frozen_set = set(frozen)\n\n    original = dict(row)\n    out = dict(_fix(train_csv, original, frozen=frozen_set))\n\n    # Enforce the frozen-column guarantee explicitly, in case the underlying\n    # search ever returns a changed value for a protected column.\n    for c in frozen_set:\n        if c in original:\n            out[c] = original[c]\n\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "e4ff91ee-a13c-4e59-bef8-e65467de0724",
+ "total_cost_usd": 0.003865525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 27357,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 891,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27357,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 891,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27357,
+   "webSearchRequests": 0,
+   "costUSD": 0.003865525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e9939d60-4097-4afd-8d14-b729d7a50e6b"
+}
