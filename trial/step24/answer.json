@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4588,
+ "duration_api_ms": 4559,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step24.py: welcome-offer shortlist for new sign-ups, and drift warnings for each month's sign-ups.\n\nBoth client questions reuse the streaming logic already in step14 (and step4 underneath):\n- stream: keep (True) each new sign-up that no earlier row, from training or from this\n  month's arrivals, beats on every goal. Only train_csv and the rows already seen are used.\n- drift: warn at the last row of the first block of new rows whose goal values differ from\n  the training goals. Returns None if no block differs.\n\"\"\"\n\nfrom step14 import drift as _drift\nfrom step14 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each incoming sign-up that is not dominated on the goals by any row seen so far.\"\"\"\n    return [bool(k) for k in _stream(train_csv, list(rows))]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` at which new rows first stop looking like train_csv, or None if they never do.\"\"\"\n    result = _drift(train_csv, list(rows))\n    return None if result is None else int(result)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "a8598b7a-8816-43b9-981b-70e22044bce8",
+ "total_cost_usd": 0.0032283999999999998,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22128,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 924,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22128,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 924,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22128,
+   "webSearchRequests": 0,
+   "costUSD": 0.0032283999999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c90ad2aa-2138-485a-be94-75e7f2487977"
+}
