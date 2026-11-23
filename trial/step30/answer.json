@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 18989,
+ "duration_api_ms": 18968,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _goal_matrix, _load\nfrom step5 import _badness\nfrom step7 import choose\nfrom step12 import _encode_row, _num, _spec, _usable_inputs\nfrom step22 import guess as _response_guess\n\n\n_BUDGET = 30          # labelled test builds allowed for every tuner\n_GUESS_SAMPLE = 25    # test customers used to compare the two response guessers\n_SEED = 0\n_INCOME = \"INCOME\"    # the \"highest-income customers\" list is ordered by this column\n_RESPONSE = \"RESPONSE+\"\n\n\ndef _blind_copy(src_csv, dst_csv, goal_cols):\n    \"\"\"Write a copy of src_csv with every goal cell replaced by '?'.\"\"\"\n    with open(src_csv, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        raw = list(reader)\n    with open(dst_csv, \"w\", newline=\"\", encoding=\"utf-8\") as f:\n        writer = csv.DictWriter(f, fieldnames=header)\n        writer.writeheader()\n        for r in raw:\n            out = dict(r)\n            for g in goal_cols:\n                out[g] = \"?\"\n            writer.writerow(out)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare the earlier skills against standard rivals on test_csv.\n\n    Targeting question: each method labels at most _BUDGET test customers and\n    picks one. The score is 1 minus the chosen customer's mean normalised rank\n    over all goals across the test set (1.0 = best, 0.0 = worst). Keys:\n      \"ours\"            step7.choose, budgeted search over all test customers\n      \"highest_income\"  best of the _BUDGET test customers with the highest\n                        INCOME (omitted if the test data has no INCOME column)\n      \"random_search\"   best of a random sample of _BUDGET test customers\n\n    Response question: negative mean absolute error of the predicted\n    RESPONSE+ on a fixed sample of test customers (higher, closer to 0, is\n    better). Keys:\n      \"ours_response_guess\"          step22.guess (our response guesser)\n      \"off_the_shelf_response_guess\" default RandomForestRegressor on the\n                                     same encoded inputs\n    \"\"\"\n    header, rows = _load(test_csv)\n    n = len(rows)\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    if n == 0 or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n\n    G = _goal_matrix(header, rows)\n    badness = _badness(G)\n    budget = min(_BUDGET, n)\n    scores: dict[str, float] = {}\n    rng = np.random.default_rng(_SEED)\n\n    # ---- targeting question\n    def label_fn(i):\n        return {g: rows[i][g] for g in goals}\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _blind_copy(test_csv, blind, goals)\n        pick = choose(blind, label_fn, budget=budget)\n    scores[\"ours\"] = 1.0 - float(badness[pick])\n\n    if _INCOME in header:\n        income = np.empty(n, dtype=float)\n        for i, r in enumerate(rows):\n            v = _num(r.get(_INCOME))\n            income[i] = -np.inf if v is None else v\n        order = sorted(range(n), key=lambda i: (-income[i], i))\n        top = order[:budget]\n        pick = min(top, key=lambda i: badness[i])\n        scores[\"highest_income\"] = 1.0 - float(badness[pick])\n\n    idx = rng.choice(n, size=budget, replace=False)\n    pick = int(idx[int(np.argmin(badness[idx]))])\n    scores[\"random_search\"] = 1.0 - float(badness[pick])\n\n    # ---- response-guesser question\n    tr_header, tr_rows = _load(train_csv)\n    _, raw_test = _load(test_csv)\n    if _RESPONSE not in goals or _RESPONSE not in tr_header:\n        raise ValueError(\n            f\"'{_RESPONSE}' must be a goal column in both train_csv and test_csv\"\n        )\n\n    sample = rng.choice(n, size=min(_GUESS_SAMPLE, n), replace=False)\n    sub = [int(i) for i in sample if _num(raw_test[int(i)].get(_RESPONSE)) is not None]\n    if not sub:\n        raise ValueError(\"test_csv has no usable RESPONSE+ values to compare against\")\n    y_true = np.array([_num(raw_test[i][_RESPONSE]) for i in sub], dtype=float)\n\n    ours_pred = np.array(\n        [\n            float(_response_guess(train_csv, dict(raw_test[i]))[_RESPONSE][0])\n            for i in sub\n        ],\n        dtype=float,\n    )\n\n    tr_usable, tr_y = [], []\n    for r in tr_rows:\n        y = _num(r.get(_RESPONSE))\n        if y is not None:\n            tr_usable.append(r)\n            tr_y.append(y)\n    if not tr_usable:\n        raise ValueError(\"train_csv has no usable RESPONSE+ values\")\n    ytr = np.asarray(tr_y, dtype=float)\n\n    train_inputs = _usable_inputs(tr_header, tr_usable)\n    if train_inputs:\n        specs = [_spec(c, [r.get(c) for r in tr_usable]) for c in train_inputs]\n        Xtr = np.vstack([_encode_row(r, specs) for r in tr_usable])\n        Xte = np.vstack([_encode_row(raw_test[i], specs) for i in sub])\n        model = RandomForestRegressor(random_state=_SEED, n_jobs=1).fit(Xtr, ytr)\n        off_pred = model.predict(Xte)\n    else:\n        off_pred = np.full(len(sub), float(np.median(ytr)), dtype=float)\n\n    scores[\"ours_response_guess\"] = -float(np.mean(np.abs(ours_pred - y_true)))\n    scores[\"off_the_shelf_response_guess\"] = -float(np.mean(np.abs(off_pred - y_true)))\n\n    return {k: float(v) for k, v in scores.items()}\n```",
+ "stop_reason": "end_turn",
+ "session_id": "2723a2ef-8685-486a-beea-d61d839e0ea4",
+ "total_cost_usd": 0.007805025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 43529,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4727,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 43529,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4727,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 43529,
+   "webSearchRequests": 0,
+   "costUSD": 0.007805025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "62cee27b-96c9-4cc6-805c-e3a3a906080c"
+}
