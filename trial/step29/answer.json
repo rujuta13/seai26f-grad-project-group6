@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 20655,
+ "duration_api_ms": 20631,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step19 import _BIG, _goal_outlier, _kind, _load, _missing, _novelty, _num\n\n\n# Columns whose values must fall inside a fixed range, whatever the training data says.\n_PLAUSIBLE = {\"AGE\": (0.0, 110.0)}\n\n\ndef _cell_scores(header, train, rows):\n    \"\"\"Per-row score from individual numeric input cells.\n\n    For each input column that is fully numeric in train:\n      * a non-numeric or non-finite entry in a numeric column scores very high\n        (a typo such as \"3O\" or \"n/a\");\n      * a negative value in a column that is never negative in train scores very high;\n      * a value outside a fixed plausible range (e.g. AGE) scores very high;\n      * otherwise the robust z-score (median/MAD on train) is used. Columns whose\n        MAD is zero (for example 0/1 flags) get no z-score, since any deviation\n        would look extreme without being unusual.\n    Missing cells are not treated as errors here.\n    \"\"\"\n    out = np.zeros(len(rows), dtype=float)\n    for c in header:\n        if _kind(c) != \"input\":\n            continue\n        nums = [_num(r.get(c)) for r in train if not _missing(r.get(c))]\n        if not nums or any(x is None for x in nums):\n            continue\n        ys = np.asarray(nums, dtype=float)\n        med = float(np.median(ys))\n        mad = 1.4826 * float(np.median(np.abs(ys - med)))\n        nonneg = float(ys.min()) >= 0.0\n        bounds = _PLAUSIBLE.get(c.upper())\n\n        for i, r in enumerate(rows):\n            raw = r.get(c)\n            if _missing(raw):\n                continue\n            x = _num(raw)\n            if x is None:\n                z = _BIG\n            else:\n                z = 0.0\n                if mad > 0:\n                    z = min(abs(x - med) / mad, _BIG)\n                if (nonneg and x < 0) or (bounds is not None and not (bounds[0] <= x <= bounds[1])):\n                    z = _BIG\n            out[i] = max(out[i], z)\n    return out\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included); higher means more\n    likely a glitch, a typo, or unlike anything in train_csv.\n\n    The score is a log-scale sum of three signals:\n      * cell checks: non-numeric or impossible values (negative counts or\n        incomes, ages outside 0..110) and robust outliers within a single\n        input column;\n      * goal outlier: the largest robust z-score over the goal columns, with a\n        missing or non-numeric goal scored very high;\n      * input novelty: nearest-neighbour distance to the training inputs,\n        relative to the typical leave-one-out distance within the training set.\n    With no training rows there is nothing to compare against, so all scores\n    are 0.0.\n\n    These scores flag records for review. They do not show fraud: an unusual\n    record may be genuine, and a typical-looking record may still be wrong.\n    \"\"\"\n    rows = list(rows)\n    if not rows:\n        return []\n\n    header, train = _load(train_csv)\n    if not train:\n        return [0.0] * len(rows)\n\n    cell = _cell_scores(header, train, rows)\n    goal = _goal_outlier(header, train, rows)\n    novelty = _novelty(header, train, rows)\n\n    score = np.log1p(cell) + np.log1p(goal) + np.log1p(novelty)\n    score = np.where(np.isfinite(score), score, _BIG)\n    return [float(s) for s in score]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "965d98ff-7493-4fc7-98be-73000b08088f",
+ "total_cost_usd": 0.0075458999999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 42304,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4515,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 42304,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4515,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 42304,
+   "webSearchRequests": 0,
+   "costUSD": 0.0075458999999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "65d8f4c1-f832-4b0d-a4e0-e3094c2f511c"
+}
