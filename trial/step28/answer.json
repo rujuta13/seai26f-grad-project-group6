@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2853,
+ "duration_api_ms": 2829,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 28: smallest input changes that bring a drifting customer back to a good outcome.\"\"\"\n\nfrom step18 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs with as few values changed as possible so it becomes good.\n\n    `row` is a bad row with its goal values removed; any goal keys present are\n    ignored. The result contains only input columns, each either unchanged from\n    `row` or taken from an observed training build that is good by the step6\n    criterion. Columns named in `frozen` are never changed. Among admissible\n    candidates, the one differing from `row` in the fewest inputs is chosen,\n    with ties going to the higher average percentile and then to the lower\n    training index. If no admissible good build exists, the row's inputs are\n    returned unchanged.\n    \"\"\"\n    return _fix(train_csv, row, frozen=tuple(frozen))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5d001304-74dc-4d10-8397-cc56dd3aaf5f",
+ "total_cost_usd": 0.004353275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 32763,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 515,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32763,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 515,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32763,
+   "webSearchRequests": 0,
+   "costUSD": 0.004353275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "8e1d34a2-b9b6-4d32-83e6-982b384ebd40"
+}
