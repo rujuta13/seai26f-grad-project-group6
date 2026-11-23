@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 14787,
+ "duration_api_ms": 14775,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step11.py: player types (families) and strong-and-good-from-the-spot players at full scale.\n\nSame definitions as step1.families and step1.best, but built to stay workable on\nabout 17,000 rows: the silhouette score is estimated on a fixed random sample, and\nthe Pareto front is computed in blocks so the full pairwise comparison never has\nto fit in memory at once. Loading and encoding come from step1.\n\"\"\"\n\nimport numpy as np\nfrom sklearn.cluster import KMeans\nfrom sklearn.metrics import silhouette_score\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _load, _encode\n\n# Rows used to estimate the silhouette score (exact scoring is quadratic in rows).\n_SIL_SAMPLE = 2000\n# Rows compared per block when finding the Pareto front (bounds memory use).\n_BLOCK = 256\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    rows, inputs, _ = _load(train_csv)\n    n = len(rows)\n    if n == 0:\n        return []\n    if not inputs:\n        return [0] * n\n\n    X = StandardScaler().fit_transform(_encode(rows, inputs))\n\n    rng = np.random.default_rng(0)\n    sil_idx = None\n    if n > _SIL_SAMPLE:\n        sil_idx = rng.choice(n, size=_SIL_SAMPLE, replace=False)\n\n    best_labels = np.zeros(n, dtype=int)\n    best_score = -np.inf\n    for k in range(2, min(8, n - 1) + 1):\n        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)\n        labels = km.labels_\n        if len(set(labels.tolist())) < 2:\n            continue\n        try:\n            if sil_idx is None:\n                score = silhouette_score(X, labels)\n            else:\n                score = silhouette_score(X[sil_idx], labels[sil_idx])\n        except ValueError:\n            # Sampled labels collapsed to one cluster; this k cannot be scored.\n            continue\n        if score > best_score:\n            best_score = score\n            best_labels = labels\n\n    return [int(x) for x in best_labels]\n\n\ndef _pareto_front(M):\n    \"\"\"Indices of rows not dominated by any other row (larger is better everywhere).\"\"\"\n    n = M.shape[0]\n    dominated = np.zeros(n, dtype=bool)\n    for s in range(0, n, _BLOCK):\n        Mi = M[s:s + _BLOCK][:, None, :]\n        Mj = M[None, :, :]\n        ge = (Mj >= Mi).all(axis=2)   # row j is at least as good on every goal\n        gt = (Mj > Mi).any(axis=2)    # row j is strictly better on some goal\n        dominated[s:s + _BLOCK] = (ge & gt).any(axis=1)\n    return np.flatnonzero(~dominated)\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows. Uses the Pareto front over all goals, ranked when the\n    front is larger than the cap.\"\"\"\n    rows, _, goals = _load(train_csv)\n    n = len(rows)\n    if n == 0 or not goals:\n        return []\n\n    # Larger is always better: minimised goals are negated.\n    M = np.array(\n        [[float(r[name]) * sign for name, sign in goals] for r in rows],\n        dtype=float,\n    )\n\n    front_idx = _pareto_front(M)\n\n    cap = max(1, int(0.05 * n))\n    if len(front_idx) <= cap:\n        return sorted(int(i) for i in front_idx)\n\n    # Too many non-dominated rows: keep the ones with the best normalised total.\n    F = M[front_idx]\n    mins = F.min(axis=0)\n    maxs = F.max(axis=0)\n    span = np.where(maxs > mins, maxs - mins, 1.0)\n    score = ((F - mins) / span).sum(axis=1)\n    order = np.argsort(-score, kind=\"stable\")\n    chosen = front_idx[order[:cap]]\n    return sorted(int(i) for i in chosen)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1462b1a9-a95a-4705-9a61-792c0ad1d020",
+ "total_cost_usd": 0.0035225250000000003,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 14973,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3301,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 14973,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3301,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 14973,
+   "webSearchRequests": 0,
+   "costUSD": 0.0035225250000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ac35cf3f-66c2-4af2-bfef-cfbbbe02b323"
+}
