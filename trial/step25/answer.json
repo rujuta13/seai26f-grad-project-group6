@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 14745,
+ "duration_api_ms": 14723,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _load\nfrom step5 import _badness\nfrom step15 import _encode_blocks\n\n\n_N_TREES = 200\n_MIN_LEAF = 2\n_SEED = 0\n_REPEATS = 5\n# The client's two questions concern these goals: response to campaigns and complaints.\n_FOCUS_GOALS = (\"RESPONSE+\", \"COMPLAIN-\")\n\n\ndef _goal_columns(header):\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    focus = [c for c in goals if c in _FOCUS_GOALS]\n    return focus if focus else goals\n\n\ndef _signed_goals(cols, rows):\n    \"\"\"(n, m) matrix where smaller is always better; missing or non-finite goals are worst.\"\"\"\n    G = np.empty((len(rows), len(cols)), dtype=float)\n    for j, c in enumerate(cols):\n        sign = -1.0 if _column_kind(c) == \"max\" else 1.0\n        for i, r in enumerate(rows):\n            try:\n                f = float(r.get(c))\n            except (TypeError, ValueError):\n                f = math.nan\n            G[i, j] = sign * f if math.isfinite(f) else math.inf\n    return G\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Bad rows are judged on the goals RESPONSE+ (never responding to campaigns)\n    and COMPLAIN- (complaining); if neither is present, on all goal columns.\n    Each row gets a badness score (mean normalised rank over those goals, where\n    larger is worse). A random forest is fitted from the input columns to that\n    score. Each input's importance is the average increase in squared error\n    when its values are shuffled across rows (permutation importance).\n    Identifier-like inputs are ranked last. Ties are broken by header order.\n    \"\"\"\n    header, rows = _load(train_csv)\n    inputs = [c for c in header if _column_kind(c) == \"input\"]\n    n = len(rows)\n\n    if n == 0 or not inputs:\n        return list(inputs)\n\n    goal_cols = _goal_columns(header)\n    if not goal_cols:\n        return list(inputs)\n\n    score = _badness(_signed_goals(goal_cols, rows))\n    if n < 2 or float(score.std()) == 0.0:\n        return list(inputs)\n\n    blocks, dropped = _encode_blocks(inputs, rows)\n    if not blocks:\n        return list(inputs)\n\n    X = np.hstack([M for _, M in blocks])\n    model = RandomForestRegressor(\n        n_estimators=_N_TREES,\n        min_samples_leaf=_MIN_LEAF,\n        random_state=_SEED,\n        n_jobs=1,\n    ).fit(X, score)\n\n    base_err = float(np.mean((model.predict(X) - score) ** 2))\n\n    rng = np.random.default_rng(_SEED)\n    importance = {}\n    offset = 0\n    for name, M in blocks:\n        width = M.shape[1]\n        s, e = offset, offset + width\n        offset = e\n        total = 0.0\n        for _ in range(_REPEATS):\n            perm = rng.permutation(n)\n            Xp = X.copy()\n            Xp[:, s:e] = X[perm, s:e]\n            err = float(np.mean((model.predict(Xp) - score) ** 2))\n            total += err - base_err\n        importance[name] = total / _REPEATS\n\n    position = {c: j for j, c in enumerate(inputs)}\n    usable = sorted(importance, key=lambda c: (-importance[c], position[c]))\n    return usable + [c for c in inputs if c in dropped]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "47efc351-9e01-46b7-a478-13a438e38a9e",
+ "total_cost_usd": 0.006416525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 37601,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3432,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 37601,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3432,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 37601,
+   "webSearchRequests": 0,
+   "costUSD": 0.006416525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "079f9190-ffe0-40bc-aa71-7307b6855446"
+}
