@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 6436,
+ "duration_api_ms": 6410,
+ "num_turns": 1,
+ "result": "```python\nfrom step18 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the same row's inputs with as few values changed as possible so the row becomes good.\n\n    `row` is a bad row with its goals removed. \"Good\" is the verdict step6.why\n    uses: the average standardized goal score is at least the training median.\n    Columns named in `frozen` are never changed. A single column name may be\n    passed as a plain string. Covers both client questions: the smallest nudge\n    that brings a drifting customer back, and the offer that would turn a\n    deal-only shopper into a regular one (pass columns that must stay as they\n    are in `frozen`).\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    return _fix(train_csv, row, tuple(frozen))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4baf697f-fbf8-46f7-b16e-4b3fe0b03d0f",
+ "total_cost_usd": 0.0037726500000000002,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 25586,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1148,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 25586,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1148,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 25586,
+   "webSearchRequests": 0,
+   "costUSD": 0.0037726500000000002,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "1110292c-d4c5-41f2-ba54-0c8a4f3dc3e4"
+}
