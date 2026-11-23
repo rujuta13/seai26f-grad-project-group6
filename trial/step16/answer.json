@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 29686,
+ "duration_api_ms": 29674,
+ "num_turns": 1,
+ "result": "```python\nimport math\nfrom collections import Counter\n\nimport numpy as np\n\nfrom step1 import _column_kind, _load, best\nfrom step4 import stream\n\n\n_MIN_GROUP = 3      # fewest recommended builds that can support a claim\n_MIN_EFFECT = 0.5   # smallest standardised gap worth reporting\n_TOP = 5            # most input contrasts listed in explain()\n\n\ndef _num(cell):\n    \"\"\"Return cell as a finite float, or None if missing or not numeric.\"\"\"\n    if cell is None or isinstance(cell, bool):\n        return None\n    try:\n        f = float(cell)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _missing(v):\n    return v is None or (isinstance(v, str) and v.strip() == \"\")\n\n\ndef _goals(header):\n    return [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n\n\ndef _label(goal):\n    return goal[:-1].rstrip()\n\n\ndef _direction(goal):\n    return \"higher is better\" if _column_kind(goal) == \"max\" else \"lower is better\"\n\n\ndef _signed_matrix(goals, rows):\n    \"\"\"(n, m) matrix where smaller is always better; missing goals are worst.\"\"\"\n    G = np.empty((len(rows), len(goals)), dtype=float)\n    for j, g in enumerate(goals):\n        sign = -1.0 if _column_kind(g) == \"max\" else 1.0\n        for i, r in enumerate(rows):\n            v = _num(r.get(g))\n            G[i, j] = math.inf if v is None else sign * v\n    return G\n\n\ndef _numeric_contrast(name, all_vals, good_vals):\n    a = [x for x in (_num(v) for v in all_vals) if x is not None]\n    g = [x for x in (_num(v) for v in good_vals) if x is not None]\n    if len(a) < 2 or len(g) < _MIN_GROUP:\n        return None\n    sd = float(np.std(a))\n    if sd == 0.0:\n        return None\n    mean_a = float(np.mean(a))\n    mean_g = float(np.mean(g))\n    effect = (mean_g - mean_a) / sd\n    text = (\n        f\"{name}: recommended builds average {mean_g:.3g}, \"\n        f\"against {mean_a:.3g} for all builds\"\n    )\n    return abs(effect), text\n\n\ndef _categorical_contrast(name, all_vals, good_vals):\n    a_keys = [str(v) for v in all_vals if not _missing(v)]\n    g_keys = [str(v) for v in good_vals if not _missing(v)]\n    if not a_keys or len(g_keys) < _MIN_GROUP:\n        return None\n    count_a = Counter(a_keys)\n    count_g = Counter(g_keys)\n    best_pick = None\n    for lab, ca in count_a.items():\n        p = ca / len(a_keys)\n        if p <= 0.0 or p >= 1.0:\n            continue\n        cg = count_g.get(lab, 0)\n        if cg < _MIN_GROUP:\n            continue\n        q = cg / len(g_keys)\n        effect = (q - p) / math.sqrt(p * (1.0 - p))\n        if best_pick is None or abs(effect) > abs(best_pick[0]):\n            best_pick = (effect, lab, p, q)\n    if best_pick is None:\n        return None\n    _, lab, p, q = best_pick\n    text = (\n        f\"{name}: '{lab}' is in {q:.0%} of recommended builds, \"\n        f\"against {p:.0%} of all builds\"\n    )\n    return abs(best_pick[0]), text\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons, checkable against the data, for what makes rows good.\"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"No training builds were given, so there is nothing to explain.\"\n    goals = _goals(header)\n    if not goals:\n        return \"No goal columns (names ending in '+' or '-') were found, so builds cannot be judged.\"\n\n    good_idx = best(train_csv)\n    n = len(rows)\n    if not good_idx:\n        return \"No build qualifies as recommended in this data, so no reasons can be given.\"\n\n    good_rows = [rows[i] for i in good_idx]\n    lines = []\n    lines.append(\n        f\"Recommended builds: {len(good_idx)} of {n} training builds. A build is \"\n        \"recommended if no other build is at least as good on every goal and \"\n        \"strictly better on one; if that set is larger than 5% of the builds, the \"\n        \"best-ranked 5% of it (summed rank over the goals) is kept.\"\n    )\n\n    goal_parts = []\n    for g in goals:\n        g_vals = [_num(r.get(g)) for r in good_rows]\n        a_vals = [_num(r.get(g)) for r in rows]\n        g_vals = [v for v in g_vals if v is not None]\n        a_vals = [v for v in a_vals if v is not None]\n        if g_vals and a_vals:\n            goal_parts.append(\n                f\"{_label(g)} median {float(np.median(g_vals)):.3g} against \"\n                f\"{float(np.median(a_vals)):.3g} for all builds ({_direction(g)})\"\n            )\n    if goal_parts:\n        lines.append(\"On the goals: \" + \"; \".join(goal_parts) + \".\")\n\n    inputs = [c for c in header if _column_kind(c) == \"input\"]\n    contrasts = []\n    for c in inputs:\n        all_vals = [r.get(c) for r in rows]\n        good_vals = [r.get(c) for r in good_rows]\n        present = [v for v in all_vals if not _missing(v)]\n        numeric = bool(present) and all(_num(v) is not None for v in present)\n        if numeric:\n            found = _numeric_contrast(c, all_vals, good_vals)\n        else:\n            found = _categorical_contrast(c, all_vals, good_vals)\n        if found is not None and found[0] >= _MIN_EFFECT:\n            contrasts.append(found)\n\n    contrasts.sort(key=lambda t: -t[0])\n    if contrasts:\n        lines.append(\n            \"Input differences that stand out (at least half a standard deviation, \"\n            \"largest first):\"\n        )\n        for _, text in contrasts[:_TOP]:\n            lines.append(f\"  - {text}.\")\n    else:\n        lines.append(\"No input differs clearly between recommended and all builds.\")\n\n    lines.append(\n        f\"Caveat: these are patterns in {n} rows only. They show association, not \"\n        \"cause. Check each point on video or on held-out builds before relying on it.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this build, goals included, is good or bad.\"\"\"\n    header, rows = _load(train_csv)\n    goals = _goals(header)\n    if not rows or not goals:\n        return \"Cannot judge this build: no training builds or goal columns were given.\"\n\n    values = []\n    for g in goals:\n        v = _num(row.get(g))\n        if v is None:\n            return (\n                f\"Cannot judge this build: goal '{_label(g)}' is missing or not a \"\n                \"finite number.\"\n            )\n        values.append(v)\n\n    kept = bool(stream(train_csv, [row])[0])\n\n    G = _signed_matrix(goals, rows)\n    target = np.array(\n        [(-1.0 if _column_kind(g) == \"max\" else 1.0) * v for g, v in zip(goals, values)],\n        dtype=float,\n    )\n    le = (G <= target).all(axis=1)\n    lt = (G < target).any(axis=1)\n    dominators = int((le & lt).sum())\n\n    if kept:\n        first = (\n            \"Rated good: no training build is at least as good on every goal and \"\n            \"strictly better on at least one.\"\n        )\n    else:\n        first = (\n            f\"Rated bad: {dominators} training build(s) are at least as good on every \"\n            \"goal and strictly better on at least one.\"\n        )\n\n    beaten = [float((G[:, j] > target[j]).mean()) for j in range(len(goals))]\n    parts = [\n        f\"{_label(g)} {v:g} beats {b:.0%}\"\n        for g, v, b in zip(goals, values, beaten)\n    ]\n    second = \"Share of training builds beaten, per goal: \" + \"; \".join(parts) + \".\"\n    return f\"{first} {second}\"\n```",
+ "stop_reason": "end_turn",
+ "session_id": "34bef97c-b632-4c37-9c4f-12969a8fc7c6",
+ "total_cost_usd": 0.0068260249999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 24101,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 7626,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 24101,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 7626,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 24101,
+   "webSearchRequests": 0,
+   "costUSD": 0.0068260249999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "fa05171c-2d9d-410a-b95d-754191922945"
+}
