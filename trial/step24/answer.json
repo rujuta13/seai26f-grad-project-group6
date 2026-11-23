@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4448,
+ "duration_api_ms": 4425,
+ "num_turns": 1,
+ "result": "```python\nfrom step14 import drift as _drift\nfrom step14 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide keep (True) or not (False) for each row as it arrives.\n\n    A row is worth a welcome offer if no training row or earlier streamed row\n    beats it on every standardized goal, and its average standardized score is\n    in the top 5% of the reference rows. Each decision uses only train_csv and\n    the rows before it.\n    \"\"\"\n    return _stream(train_csv, list(rows))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row at which new sign-ups stop looking like train_csv.\n\n    Compares the nearest-training-row distances of the last 20 rows with the\n    training set's own leave-one-out nearest-neighbour distances, using the\n    permutation test from step3. Returns None if the rows never drift.\n    \"\"\"\n    return _drift(train_csv, list(rows))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "228fc865-5c1a-46a8-bada-95e8932757e5",
+ "total_cost_usd": 0.003308775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23039,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 857,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23039,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 857,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23039,
+   "webSearchRequests": 0,
+   "costUSD": 0.003308775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "be253bdf-1fd8-407e-a7e3-910d158fee5f"
+}
