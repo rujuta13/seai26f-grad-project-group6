@@ -1,0 +1,16 @@
+{
+ "domain": "players",
+ "step": 20,
+ "skill": "race",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "ours": 0.9723618090452262,
+  "random_search": 0.9396984924623115,
+  "top_overall_rating": 0.9723618090452262,
+  "ours_penalty_guess": -4.690829172679176,
+  "off_the_shelf_penalty_guess": -4.7608
+ }
+}

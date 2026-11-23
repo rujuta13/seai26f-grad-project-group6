@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 35117,
+ "duration_api_ms": 35101,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _column_kind, _goal_matrix, _load\nfrom step5 import _badness\nfrom step7 import choose\nfrom step12 import (\n    _encode_row,\n    _load as _load_raw,\n    _num,\n    _spec,\n    _usable_inputs,\n    guess as _penalty_guess,\n)\n\n\n_BUDGET = 30          # labelled test builds allowed for every tuner\n_GUESS_SAMPLE = 25    # test builds used to compare the two penalty guessers\n_SEED = 0\n_RATING = \"OVR\"       # the \"top overall rating\" list is ordered by this column\n_PENALTY = \"Penalties+\"\n\n\ndef _blind_copy(src_csv, dst_csv, goal_cols):\n    \"\"\"Write a copy of src_csv with every goal cell replaced by '?'.\"\"\"\n    with open(src_csv, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        raw = list(reader)\n    with open(dst_csv, \"w\", newline=\"\", encoding=\"utf-8\") as f:\n        writer = csv.DictWriter(f, fieldnames=header)\n        writer.writeheader()\n        for r in raw:\n            out = dict(r)\n            for g in goal_cols:\n                out[g] = \"?\"\n            writer.writerow(out)\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Compare the earlier skills against standard rivals on test_csv.\n\n    Shortlist question: each method labels at most _BUDGET test builds and\n    picks one. The score is 1 minus the chosen build's mean normalised rank\n    over all goals across the test set (1.0 = best, 0.0 = worst). Keys:\n      \"ours\"               step7.choose, budgeted search over all test builds\n      \"random_search\"      best of a random sample of _BUDGET test builds\n      \"top_overall_rating\" best of the _BUDGET test builds with the highest\n                           OVR (omitted if the test data has no OVR column)\n\n    Penalty question: negative mean absolute error of the predicted\n    Penalties+ on a fixed sample of test builds (higher, closer to 0, is\n    better). Keys:\n      \"ours_penalty_guess\"          step12.guess (our penalty guesser)\n      \"off_the_shelf_penalty_guess\" default RandomForestRegressor on the\n                                    same encoded inputs\n    \"\"\"\n    header, rows = _load(test_csv)\n    n = len(rows)\n    goals = [c for c in header if _column_kind(c) in (\"max\", \"min\")]\n    if n == 0 or not goals:\n        raise ValueError(\"test_csv needs rows and goal columns\")\n\n    G = _goal_matrix(header, rows)\n    badness = _badness(G)\n    budget = min(_BUDGET, n)\n    scores: dict[str, float] = {}\n    rng = np.random.default_rng(_SEED)\n\n    # ---- shortlist question\n    def label_fn(i):\n        return {g: rows[i][g] for g in goals}\n\n    with tempfile.TemporaryDirectory() as tmp:\n        blind = os.path.join(tmp, \"blind.csv\")\n        _blind_copy(test_csv, blind, goals)\n        pick = choose(blind, label_fn, budget=budget)\n    scores[\"ours\"] = 1.0 - float(badness[pick])\n\n    idx = rng.choice(n, size=budget, replace=False)\n    pick = int(idx[int(np.argmin(badness[idx]))])\n    scores[\"random_search\"] = 1.0 - float(badness[pick])\n\n    if _RATING in header:\n        ovr = np.empty(n, dtype=float)\n        for i, r in enumerate(rows):\n            v = _num(r.get(_RATING))\n            ovr[i] = -np.inf if v is None else v\n        order = sorted(range(n), key=lambda i: (-ovr[i], i))\n        top = order[:budget]\n        pick = min(top, key=lambda i: badness[i])\n        scores[\"top_overall_rating\"] = 1.0 - float(badness[pick])\n\n    # ---- penalty-guesser question\n    raw_train_header, raw_train = _load_raw(train_csv)\n    _, raw_test = _load_raw(test_csv)\n    if _PENALTY not in goals or _PENALTY not in raw_train_header:\n        raise ValueError(\n            f\"'{_PENALTY}' must be a goal column in both train_csv and test_csv\"\n        )\n\n    sample = rng.choice(n, size=min(_GUESS_SAMPLE, n), replace=False)\n    sub = [int(i) for i in sample if _num(raw_test[int(i)].get(_PENALTY)) is not None]\n    if not sub:\n        raise ValueError(\"test_csv has no usable Penalties+ values to compare against\")\n    y_true = np.array([_num(raw_test[i][_PENALTY]) for i in sub], dtype=float)\n\n    ours_pred = np.array(\n        [\n            float(_penalty_guess(train_csv, dict(raw_test[i]))[_PENALTY][0])\n            for i in sub\n        ],\n        dtype=float,\n    )\n\n    tr_rows, tr_y = [], []\n    for r in raw_train:\n        y = _num(r.get(_PENALTY))\n        if y is not None:\n            tr_rows.append(r)\n            tr_y.append(y)\n    if not tr_rows:\n        raise ValueError(\"train_csv has no usable Penalties+ values\")\n    ytr = np.asarray(tr_y, dtype=float)\n\n    train_inputs = _usable_inputs(raw_train_header, raw_train)\n    if train_inputs:\n        specs = [_spec(c, [r.get(c) for r in tr_rows]) for c in train_inputs]\n        Xtr = np.vstack([_encode_row(r, specs) for r in tr_rows])\n        Xte = np.vstack([_encode_row(raw_test[i], specs) for i in sub])\n        model = RandomForestRegressor(random_state=_SEED, n_jobs=1).fit(Xtr, ytr)\n        off_pred = model.predict(Xte)\n    else:\n        off_pred = np.full(len(sub), float(np.median(ytr)), dtype=float)\n\n    scores[\"ours_penalty_guess\"] = -float(np.mean(np.abs(ours_pred - y_true)))\n    scores[\"off_the_shelf_penalty_guess\"] = -float(np.mean(np.abs(off_pred - y_true)))\n\n    return scores\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1c7ebccc-09c4-4338-94d7-13f7e58f9ba5",
+ "total_cost_usd": 0.008053774999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 30079,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 8587,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 30079,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 8587,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 30079,
+   "webSearchRequests": 0,
+   "costUSD": 0.008053774999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "1c845def-0652-4aa0-aa68-6fac72ccd5e5"
+}
