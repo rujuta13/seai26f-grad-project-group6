@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4673,
+ "duration_api_ms": 4638,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 27: client-facing search for customers to target under a mailing limit.\n\nchoose(blind_csv, label, budget=30, goal=None): returns the index of the best\ncustomer found, calling label(i) at most `budget` times. If `goal` names one\ngoal, only that goal is optimised; otherwise all goals are optimised together.\n\nClient requests:\n  * \"Find the best customers to target while test-mailing only 50 people.\"\n      -> choose(blind_csv, label, budget=50)\n  * \"If I care most about store visits rather than web orders, who should I\n     target instead?\"\n      -> choose(blind_csv, label, budget=50, goal=\"NUMSTOREPURCHASES+\")\n\"\"\"\n\nimport step17\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Return the index of the best row found, calling label(i) at most `budget` times.\n\n    blind_csv has every goal cell set to '?'. label(i) returns the goals of row i\n    as a dict {goal: value}. If `goal` names one goal, only that goal is\n    optimised; otherwise all goals are optimised together. Calling label more\n    than `budget` times raises RuntimeError.\n    \"\"\"\n    return int(step17.choose(blind_csv, label, budget=budget, goal=goal))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "11e13d9d-9619-4255-a1ce-389af270d61a",
+ "total_cost_usd": 0.0043904,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 31992,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 782,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 31992,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 782,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 31992,
+   "webSearchRequests": 0,
+   "costUSD": 0.0043904,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f3d23a94-41a9-4b50-959d-47ad2b4d4ac2"
+}
