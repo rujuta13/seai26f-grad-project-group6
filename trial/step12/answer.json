@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 7048,
+ "duration_api_ms": 7028,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 12: client-facing guesser for a single build.\n\nguess(train_csv, row): estimates every goal for a player whose goal columns\nare removed, returning (estimate, low, high) per goal. The low..high range is\nthe interval the true value should fall in with fairly high confidence. A\nwide range means low confidence.\n\"\"\"\n\nimport csv\nimport math\n\nimport numpy as np\n\nimport step2\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a flag set `row` (goal columns removed).\n\n    Returns {goal: (estimate, low, high)}, where low..high is a range the true\n    value should fall in with fairly high confidence. Built on step2.guess,\n    with non-finite or inverted values repaired from the training data.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    goals = [c for c in cols if c.endswith((\"+\", \"-\"))]\n\n    raw = step2.guess(train_csv, row)\n\n    out: dict[str, tuple[float, float, float]] = {}\n    for g in goals:\n        train_vals = np.array(\n            [_to_float(r.get(g)) for r in rows], dtype=float\n        )\n        train_vals = train_vals[np.isfinite(train_vals)]\n\n        if train_vals.size:\n            med = float(np.median(train_vals))\n            q_lo, q_hi = (float(q) for q in np.quantile(train_vals, [0.05, 0.95]))\n        else:\n            med, q_lo, q_hi = 0.0, 0.0, 0.0\n\n        est, low, high = raw.get(g, (med, -math.inf, math.inf))\n\n        if not math.isfinite(est):\n            est = med\n        if not math.isfinite(low):\n            low = min(q_lo, est)\n        if not math.isfinite(high):\n            high = max(q_hi, est)\n\n        low = min(float(low), float(est))\n        high = max(float(high), float(est))\n        out[g] = (float(est), low, high)\n\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "8a5bf0e0-b6f4-456a-b8bc-21975dcd35d6",
+ "total_cost_usd": 0.003342775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 20603,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1534,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 20603,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1534,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 20603,
+   "webSearchRequests": 0,
+   "costUSD": 0.003342775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "b140ced7-a5c2-4441-8fa5-730d79ea2895"
+}
