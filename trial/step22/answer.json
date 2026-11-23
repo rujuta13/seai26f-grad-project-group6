@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 8965,
+ "duration_api_ms": 8941,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step22.py: guess a new customer's online and in-store purchases and campaign response.\n\nThe client's two questions are answered by step12.guess, which predicts every goal\nfrom the customer's other columns. The estimate is the median of the nearest\ntraining customers, and low..high is their 10th to 90th percentile. For the\npurchase counts this is the expected number of purchases; for RESPONSE+ it is the\nshare of similar customers who answered the campaign, rounded to the median.\n\nIdentifier filtering (num, Name, url) comes from step11 through step12. The\ncustomer file has no such columns, so every trait column is used.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step12 import guess as _guess\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of `row` as (estimate, low, high).\n\n    `row` is a dict {input column name: value} with the goal columns removed.\n    Returns {goal column name: (estimate, low, high)} for every goal in the\n    training file, in header order. Relevant goals include NUMWEBPURCHASES+,\n    NUMSTOREPURCHASES+ and RESPONSE+.\n    \"\"\"\n    return dict(_guess(train_csv, row))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4132b421-d0ce-467f-a227-648986c60a71",
+ "total_cost_usd": 0.00498615,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 32706,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1795,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32706,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1795,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32706,
+   "webSearchRequests": 0,
+   "costUSD": 0.00498615,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "33da4438-2500-46d6-a054-1be111ec3094"
+}
