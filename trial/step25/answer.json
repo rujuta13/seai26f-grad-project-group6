@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 23905,
+ "duration_api_ms": 23878,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 25: client-facing blame for two customer questions.\n\nblame(train_csv): input column names, most to blame for bad rows first.\n\nThis version answers the client's two questions directly:\n  * \"Why do some customers never respond to campaigns?\" uses RESPONSE+.\n    A customer is bad here when RESPONSE+ is not 1 (0 or missing).\n  * \"What do the customers who complain have in common?\" uses COMPLAIN-.\n    A customer is bad here when COMPLAIN- is above 0 (or missing).\n\nEach input gets a signed score per goal: for binary inputs, the difference in\nhow often the input is on among bad rows versus good rows; for other inputs,\nthe Spearman-style correlation between the input's ranks and the bad indicator.\nThe two goal scores are summed per input. Higher total means more blame, and\nties keep the original column order. If neither goal column is present, this\nfalls back to step5.blame (all goals together).\n\"\"\"\n\nimport csv\nimport math\n\nimport numpy as np\n\nimport step5\n\nRESPONSE = \"RESPONSE+\"\nCOMPLAIN = \"COMPLAIN-\"\n\n\ndef _load(train_csv):\n    with open(train_csv, newline=\"\") as f:\n        reader = csv.DictReader(f)\n        cols = list(reader.fieldnames or [])\n        rows = list(reader)\n    return cols, rows\n\n\ndef _to_float(value):\n    try:\n        return float(value)\n    except (TypeError, ValueError):\n        return math.nan\n\n\ndef _split_columns(cols):\n    goal_max = [c for c in cols if c.endswith(\"+\")]\n    goal_min = [c for c in cols if c.endswith(\"-\")]\n    inputs = [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n    return inputs, goal_max, goal_min\n\n\ndef _average_ranks(values):\n    \"\"\"Ranks 1..N with ties replaced by their average rank.\"\"\"\n    values = np.asarray(values, dtype=float)\n    _, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)\n    starts = np.cumsum(counts) - counts\n    avg = starts + (counts + 1) / 2.0\n    return avg[np.asarray(inverse).reshape(-1)]\n\n\ndef _bad_mask(goal, rows):\n    \"\"\"True for the customers that are bad on this goal.\"\"\"\n    vals = np.array([_to_float(r.get(goal)) for r in rows], dtype=float)\n    finite = np.isfinite(vals)\n    if goal == RESPONSE:\n        # Bad = never responds: anything other than a positive response.\n        return ~(finite & (vals > 0))\n    # COMPLAIN-: bad = complained, or missing (counts as worst).\n    return ~finite | (vals > 0)\n\n\ndef _score(vals, bad):\n    \"\"\"Signed score: positive means the input goes with the bad group.\n    Returns None if one of the two groups is empty.\"\"\"\n    good = ~bad\n    if not bad.any() or not good.any():\n        return None\n    uniq = np.unique(vals)\n    if len(uniq) <= 1:\n        return 0.0\n    if len(uniq) == 2:\n        on = vals == uniq[-1]\n        return float(on[bad].mean() - on[good].mean())\n    rv = _average_ranks(vals)\n    rb = bad.astype(float)\n    if rv.std() == 0 or rb.std() == 0:\n        return 0.0\n    s = float(np.corrcoef(rv, rb)[0, 1])\n    return s if math.isfinite(s) else 0.0\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows first.\n\n    Bad rows are defined by the client's two questions: non-responders\n    (RESPONSE+ not 1) and complainers (COMPLAIN- above 0). Inputs are scored\n    per goal and the scores are summed. Ties keep the original column order.\n    \"\"\"\n    cols, rows = _load(train_csv)\n    inputs, goal_max, goal_min = _split_columns(cols)\n    n = len(rows)\n\n    if not inputs:\n        return []\n    if n == 0:\n        return list(inputs)\n\n    goals = [g for g in (RESPONSE, COMPLAIN) if g in cols]\n    if not goals:\n        return [str(c) for c in step5.blame(train_csv)]\n\n    # Input values, missing treated as 0.0 (as in step5).\n    values = {}\n    for c in inputs:\n        v = np.array([_to_float(r.get(c)) for r in rows], dtype=float)\n        values[c] = np.where(np.isnan(v), 0.0, v)\n\n    totals = np.zeros(len(inputs), dtype=float)\n    used = 0\n    for g in goals:\n        bad = _bad_mask(g, rows)\n        if not bad.any() or bad.all():\n            continue\n        used += 1\n        for idx, c in enumerate(inputs):\n            s = _score(values[c], bad)\n            if s is not None:\n                totals[idx] += s\n\n    if used == 0:\n        return [str(c) for c in step5.blame(train_csv)]\n\n    order = sorted(range(len(inputs)), key=lambda i: (-totals[i], i))\n    return [inputs[i] for i in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "68445b2e-6484-49bc-be64-b9e242974f56",
+ "total_cost_usd": 0.006107275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 29627,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4807,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29627,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4807,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29627,
+   "webSearchRequests": 0,
+   "costUSD": 0.006107275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "242cc881-31dc-4941-8d5b-a94053828e91"
+}
