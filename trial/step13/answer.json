@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 3919,
+ "duration_api_ms": 3893,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step13.py: certify whether two sets of measurements really differ.\n\nThe client asks two questions: whether the shortlist really beats the league\naverage, and whether strikers really take better penalties than midfielders.\nBoth reduce to comparing two samples of numbers, so this module exposes the\nsame() check that step3 already implements (a two-sided permutation test on\nthe difference of means, at the 5% level) and reuses it rather than\nrewriting it.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step3 import same as _permutation_same\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the two samples do NOT differ beyond noise, False if the gap is real.\n\n    xs, ys: lists of numbers (e.g. goal values of two groups of players).\n    \"\"\"\n    return _permutation_same(xs, ys)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "f25a50f1-6368-488b-9b37-fba03038646c",
+ "total_cost_usd": 0.003115525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22013,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 727,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22013,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 727,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22013,
+   "webSearchRequests": 0,
+   "costUSD": 0.003115525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "aa8e5f69-e76d-48ed-b0f7-85c7f597ac93"
+}
