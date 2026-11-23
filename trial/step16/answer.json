@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 20729,
+ "duration_api_ms": 20717,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _load\nfrom step2 import _columns, guess\nfrom step4 import _goal_layout, _goal_vec\nfrom step6 import _standardize, _goal_names, _is_num\n\n_REPS = 5000   # permutations per flag test\n_SEED = 0\n_ALPHA = 0.05  # family-wise level, shared across all flags tested\n\n\ndef _perm_p(a, b, rng):\n    \"\"\"Two-sided permutation p-value for the difference of means of a and b.\"\"\"\n    obs = abs(float(a.mean()) - float(b.mean()))\n    if obs == 0.0:\n        return 1.0\n    pooled = np.concatenate([a, b])\n    n = len(a)\n    count = 0\n    for _ in range(_REPS):\n        p = rng.permutation(pooled)\n        if abs(float(p[:n].mean()) - float(p[n:].mean())) >= obs - 1e-12:\n            count += 1\n    return (count + 1) / (_REPS + 1)\n\n\ndef _on_mask(col):\n    \"\"\"A flag counts as 'on' when it is above its lowest training value.\"\"\"\n    return col != col.min()\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-language reasons that separate good rows from the rest, checkable against the data.\"\"\"\n    inputs, _ = _columns(train_csv)\n    G, mu, sd, Z = _standardize(train_csv)\n    n = len(G)\n    if n < 2 or G.shape[1] == 0:\n        return \"Not enough measured rows to give reasons.\"\n\n    score = Z.mean(axis=1)\n    names = _goal_names(train_csv)\n    X = _load(train_csv)[\"X\"]\n    top_cut = float(np.quantile(score, 0.95))\n    top = score >= top_cut\n\n    lines = [\n        f\"These reasons come from {n} measured rows. Each row is scored by averaging \"\n        f\"its goals, each goal standardized so higher is better (minimised goals reversed): \"\n        f\"{', '.join(names)}.\",\n        f\"The top 5% of rows (score at least {top_cut:.2f}) are the reference for 'good'.\",\n    ]\n\n    # Test each on/off flag against the score, with a Bonferroni correction for\n    # the number of flags tested, so that chance hits are not reported as reasons.\n    rng = np.random.default_rng(_SEED)\n    testable = []\n    for j, c in enumerate(inputs):\n        on = _on_mask(X[:, j])\n        off = ~on\n        if on.any() and off.any():\n            testable.append((j, c, on, off))\n\n    m = len(testable)\n    reasons = []\n    if m:\n        cutoff = _ALPHA / m\n        for j, c, on, off in testable:\n            diff = float(score[on].mean() - score[off].mean())\n            p = _perm_p(score[on], score[off], rng)\n            if p < cutoff:\n                reasons.append((abs(diff), c, diff, on, off, p))\n    reasons.sort(key=lambda t: -t[0])\n\n    if reasons:\n        lines.append(\n            f\"Flags whose on/off difference holds up after correcting for {m} flags \"\n            f\"tested (family-wise 5%):\"\n        )\n        for _, c, diff, on, off, p in reasons[:6]:\n            share_top = float(np.mean(on[top])) if top.any() else float(\"nan\")\n            share_all = float(np.mean(on))\n            verb = \"goes with better rows\" if diff > 0 else \"goes with weaker rows\"\n            lines.append(\n                f\"  - {c} being on {verb}: average score {score[on].mean():.2f} when on \"\n                f\"vs {score[off].mean():.2f} when off; it is on in {share_top:.0%} of \"\n                f\"top-5% rows against {share_all:.0%} of all rows.\"\n            )\n        lines.append(\n            \"These are associations in past data, not proof that changing the flag \"\n            \"causes the difference. Check them against the recorded rows before relying on them.\"\n        )\n    else:\n        lines.append(\n            f\"No single flag's on/off difference survives correction for {m} flags tested, \"\n            \"so this data gives no flag-level reason you can check.\"\n        )\n\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row, goals included, is good or bad.\"\"\"\n    G, mu, sd, Z = _standardize(train_csv)\n    if len(G) == 0 or G.shape[1] == 0:\n        return \"Cannot judge this row: the training data has no goal columns.\"\n\n    maxg, ming = _goal_layout(train_csv)\n    names = maxg + ming\n    median = float(np.median(Z.mean(axis=1)))\n\n    measured = all(_is_num(row.get(g)) for g in names)\n    if measured:\n        vec = np.array(_goal_vec(row, maxg, ming), dtype=float)\n        raw = {g: float(row[g]) for g in names}\n        source = \"measured\"\n    else:\n        est = guess(train_csv, row)\n        if not all(g in est for g in names):\n            return \"Cannot judge this row: the goal estimates are incomplete.\"\n        mids = {g: est[g][0] for g in names}\n        vec = np.array(_goal_vec(mids, maxg, ming), dtype=float)\n        raw = mids\n        source = \"estimated\"\n\n    z = (vec - mu) / sd\n    s = float(z.mean())\n    verdict = \"good\" if s >= median else \"weak\"\n    i_min, i_max = int(np.argmin(z)), int(np.argmax(z))\n\n    first = (\n        f\"This row rates {verdict}: its {source} goals average a standardized score of \"\n        f\"{s:.2f} against a training median of {median:.2f}.\"\n    )\n    second = (\n        f\"Weakest on {names[i_min]} ({raw[names[i_min]]:.4g}, z {z[i_min]:.2f}); \"\n        f\"strongest on {names[i_max]} ({raw[names[i_max]]:.4g}, z {z[i_max]:.2f})\"\n    )\n    if not measured:\n        second += \"; these goal values are model estimates, not measurements, so check them on video\"\n    return first + \" \" + second + \".\"\n```",
+ "stop_reason": "end_turn",
+ "session_id": "b43914b8-e7c9-4bc6-8863-2a8849b91077",
+ "total_cost_usd": 0.004652524999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 17777,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4860,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17777,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4860,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17777,
+   "webSearchRequests": 0,
+   "costUSD": 0.004652524999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "879925be-f128-46fb-a255-a89b49a232cb"
+}
