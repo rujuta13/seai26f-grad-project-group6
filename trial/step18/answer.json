@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4957,
+ "duration_api_ms": 4944,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 18: client-facing wrapper around step8.fix for improving a near-miss build.\"\"\"\n\nfrom step1 import _read, _columns\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs changed as little as possible so the build is good.\n\n    `row` is a bad row with its goal values removed; any goal keys present are\n    ignored. The result contains only input columns, with each value either\n    unchanged from `row` or taken from an observed training build that is good\n    by the step6 criterion. Columns named in `frozen` are never changed. Among\n    admissible candidates, the one differing from `row` in the fewest inputs is\n    chosen, with ties going to the higher average percentile and then to the\n    lower training index. If no admissible good build exists, the row's inputs\n    are returned unchanged.\n    \"\"\"\n    fieldnames, _rows = _read(train_csv)\n    inputs, _goals = _columns(fieldnames)\n\n    frozen_names = tuple(str(c) for c in frozen)\n    result = _fix(train_csv, row, frozen=frozen_names)\n\n    # Only input columns are reported, and frozen columns keep their values.\n    out = {}\n    for c in inputs:\n        if c in frozen_names:\n            out[c] = row.get(c)\n        else:\n            out[c] = result.get(c, row.get(c))\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "23112db4-f7b2-4b3d-beb0-28c143b4891b",
+ "total_cost_usd": 0.0033281499999999998,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23034,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 897,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23034,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 897,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23034,
+   "webSearchRequests": 0,
+   "costUSD": 0.0033281499999999998,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f88b83ed-070c-44fe-846f-fa78424ce930"
+}
