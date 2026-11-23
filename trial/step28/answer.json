@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4599,
+ "duration_api_ms": 4577,
+ "num_turns": 1,
+ "result": "```python\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the same row's inputs with as few values changed as possible so\n    that it becomes good. Columns named in `frozen` are never changed.\n\n    `row` is a bad row with its goal columns removed. The result keeps the\n    row's own columns, changes only input values, and never adds goal values.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen_set = {frozen}\n    else:\n        frozen_set = set(frozen)\n\n    original = dict(row)\n    out = dict(_fix(train_csv, original, frozen=frozen_set))\n\n    # Enforce the guarantees explicitly: frozen columns keep their original\n    # values, and no column absent from the input row is introduced.\n    for c in frozen_set:\n        if c in original:\n            out[c] = original[c]\n    for c in list(out):\n        if c not in original:\n            del out[c]\n\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "4bc16cf7-df35-4569-a6f9-934df8d39427",
+ "total_cost_usd": 0.00570165,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 41982,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 907,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 41982,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 907,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 41982,
+   "webSearchRequests": 0,
+   "costUSD": 0.00570165,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "7c75a0c4-a078-4bf4-90a8-14be1f4f2025"
+}
