@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 9412,
+ "duration_api_ms": 9394,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step18.py: smallest set of input changes that turns a bad build into a good one.\n\nBoth client questions are answered by step8.fix, which searches for the fewest\nchanged input columns. Observed builds on the training Pareto front are preferred,\nand predicted builds (step2.guess) are used only when they need strictly fewer\nchanges. Columns in `frozen` never change.\n\nThis module adds only input handling: a single column name may be passed as a\nstring, and the result is returned as a fresh dict.\n\nCaveat: if no good build is found within the search budget, step8 returns its\nlowest-scoring predicted configuration, which is not guaranteed to be good.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row` with as few values changed as possible so the build becomes good.\n\n    row: dict {input column name: value} for a bad build (goals removed).\n    frozen: input column names that must not change. A single column name given\n        as a string is treated as one frozen column.\n    Returns {input column name: value} for every input column of the training file.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    return dict(_fix(train_csv, row, frozen=tuple(frozen)))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "e079ac54-3caa-41b5-9a5b-2a113acb7fce",
+ "total_cost_usd": 0.004560275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 28199,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2070,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28199,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2070,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28199,
+   "webSearchRequests": 0,
+   "costUSD": 0.004560275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f37dc5cd-4051-45f9-bab0-4460ed84881c"
+}
