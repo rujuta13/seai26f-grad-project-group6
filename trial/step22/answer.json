@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4464,
+ "duration_api_ms": 4441,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step22.py: guesses for a new customer's online and store purchases, and campaign response.\n\nThe client's two questions are answered by the goal guesses already in step12, which\nwraps step2.guess. Every goal of train_csv is predicted, including NUMWEBPURCHASES+,\nNUMSTOREPURCHASES+ and RESPONSE+. Each range is the 5th to 95th percentile of\nout-of-bag errors, added around the estimate.\n\"\"\"\n\nimport math\n\nfrom step12 import guess as _guess_wrapped\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal of train_csv.\n\n    `row` has its goal columns removed. low..high is the range the true value is\n    fairly sure to fall in. Estimates are plain floats with low <= estimate <= high.\n    \"\"\"\n    raw = _guess_wrapped(train_csv, row)\n    out: dict[str, tuple[float, float, float]] = {}\n    for name, (est, lo, hi) in raw.items():\n        est = float(est)\n        lo = float(lo)\n        hi = float(hi)\n        if math.isnan(est) or math.isnan(lo) or math.isnan(hi):\n            out[name] = (est, lo, hi)\n            continue\n        lo, hi = min(lo, est), max(hi, est)\n        out[name] = (est, lo, hi)\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "534d7cb4-acc5-4e93-b0fd-f1d937cda14a",
+ "total_cost_usd": 0.0031175250000000003,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 21305,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 908,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21305,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 908,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21305,
+   "webSearchRequests": 0,
+   "costUSD": 0.0031175250000000003,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "851351bb-0898-4200-8393-d6462164ede2"
+}
