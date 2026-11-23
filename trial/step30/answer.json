@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 19942,
+ "duration_api_ms": 19921,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.ensemble import GradientBoostingRegressor\n\nfrom step1 import _load\nfrom step2 import _columns, _as_float\nfrom step6 import _standardize\nfrom step7 import choose\nfrom step10 import _BUDGET, _GUESS_ROWS, _composite, _pick, _r2\nfrom step22 import guess\n\n_INCOME = \"INCOME\"\n_RESPONSE = \"RESPONSE+\"\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race our targeting and response guesser against simple rivals on test_csv.\n\n    Targeting scores: the true mean standardized goal of the customer each\n    method picks after measuring at most _BUDGET test rows. Rivals are a\n    uniform random sample and the highest-income customers (the client's\n    \"simply mail our highest-income customers\" plan). Higher is better.\n\n    Guesser scores: R^2 of predicted vs true RESPONSE+ on a subsample of test\n    rows, for step22.guess (\"guess_ours\") and a gradient boosting model\n    (\"guess_off_the_shelf\"). Higher is better. Compare within each group.\n    \"\"\"\n    inputs, test_goals = _columns(test_csv)\n    _, train_goals = _columns(train_csv)\n    dt = _load(test_csv)\n    Gt, Xt, rows = dt[\"G\"], dt[\"X\"], dt[\"rows\"]\n    nt = len(Gt)\n    zero = {\"ours\": 0.0, \"random\": 0.0, \"top_income\": 0.0,\n            \"guess_ours\": 0.0, \"guess_off_the_shelf\": 0.0}\n    if not test_goals or nt == 0:\n        return zero\n\n    _, mu, sd, _ = _standardize(train_csv)\n    true = _composite(Gt, mu, sd)\n    k = Gt.shape[1]\n    budget = min(_BUDGET, nt)\n    result = {}\n\n    # Our targeting: the step7 tuner, measuring through the label callback.\n    ours_idx = choose(test_csv, lambda i: rows[i], budget=budget)\n    result[\"ours\"] = float(true[ours_idx])\n\n    # Rival 1: uniform random sample of the same size.\n    rng = np.random.default_rng(0)\n    rand_pick = rng.choice(nt, size=budget, replace=False)\n    meas = {int(i): Gt[i].copy() for i in rand_pick}\n    result[\"random\"] = float(true[_pick(meas, k)])\n\n    # Rival 2: mail the highest-income customers (highest INCOME first).\n    income = np.array([_as_float(r.get(_INCOME, 0.0)) for r in rows], dtype=float)\n    order = sorted(range(nt), key=lambda i: (-income[i], i))\n    meas = {int(i): Gt[i].copy() for i in order[:budget]}\n    result[\"top_income\"] = float(true[_pick(meas, k)])\n\n    # Response guesser versus an off-the-shelf model, on RESPONSE+ itself.\n    if inputs and _RESPONSE in test_goals and _RESPONSE in train_goals:\n        dtr = _load(train_csv)\n        Xtr, train_rows = dtr[\"X\"], dtr[\"rows\"]\n        n_g = min(_GUESS_ROWS, nt)\n        sub = np.random.default_rng(2).choice(nt, size=n_g, replace=False)\n        truth = np.array([float(rows[int(i)][_RESPONSE]) for i in sub], dtype=float)\n\n        pred_ours = []\n        for i in sub:\n            est = guess(train_csv, rows[int(i)])\n            if _RESPONSE in est:\n                pred_ours.append(float(est[_RESPONSE][0]))\n            else:\n                pred_ours.append(0.0)\n        result[\"guess_ours\"] = _r2(truth, pred_ours)\n\n        ytr = np.array([float(r[_RESPONSE]) for r in train_rows], dtype=float)\n        off = GradientBoostingRegressor(random_state=0)\n        off.fit(Xtr, ytr)\n        result[\"guess_off_the_shelf\"] = _r2(truth, off.predict(Xt[sub]))\n    else:\n        result[\"guess_ours\"] = 0.0\n        result[\"guess_off_the_shelf\"] = 0.0\n\n    return {name: float(v) for name, v in result.items()}\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d7bdf817-78b4-45aa-a485-eeea77f3be9c",
+ "total_cost_usd": 0.005925649999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 27730,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4918,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27730,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4918,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27730,
+   "webSearchRequests": 0,
+   "costUSD": 0.005925649999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "d8d561ef-852d-425b-9a96-13c198dc14fc"
+}
