@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 9028,
+ "duration_api_ms": 9004,
+ "num_turns": 1,
+ "result": "```python\nfrom step4 import drift as _drift\nfrom step4 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide keep (True) or not (False) for each row, in arrival order.\n\n    A row is kept if no training row or earlier streamed row dominates it on\n    the standardized goals, and its average standardized score is in the top\n    5% of the reference rows. Each decision uses only train_csv and the rows\n    before it.\n    \"\"\"\n    return _stream(train_csv, list(rows))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into rows of the first row where new rows stop looking like train_csv.\n\n    Compares the nearest-training-row distances of the last 20 rows with the\n    training set's own leave-one-out nearest-neighbour distances, using the\n    permutation test from step3. Returns None if no warning is raised.\n    \"\"\"\n    return _drift(train_csv, list(rows))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d97b9d6c-3017-4f01-9747-344909a0e080",
+ "total_cost_usd": 0.002981275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16391,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1864,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16391,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1864,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16391,
+   "webSearchRequests": 0,
+   "costUSD": 0.002981275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e8340e52-34cd-497f-8762-97a02c909f99"
+}
