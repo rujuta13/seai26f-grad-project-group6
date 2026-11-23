@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 26296,
+ "duration_api_ms": 26271,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 22: guess online vs in-store purchases and campaign response for a new customer.\"\"\"\n\nimport numpy as np\n\nfrom step1 import _read, _columns\n\n_K = 25\n_MIN_LOCAL = 3\n\n\ndef _parse(v):\n    \"\"\"Finite float for a cell value, NaN otherwise.\"\"\"\n    try:\n        f = float(v)\n    except (TypeError, ValueError):\n        return float(\"nan\")\n    return f if np.isfinite(f) else float(\"nan\")\n\n\ndef _key(v):\n    \"\"\"Category key for a cell value.\"\"\"\n    return \"\" if v is None else str(v)\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate each goal for a new customer from similar training customers.\n\n    `row` has no goal columns; any goal keys present are ignored. Customers are\n    compared on their inputs: numeric inputs are standardised, and categorical\n    inputs become indicator columns. The neighbours are the 25 closest training\n    rows. For each goal, low..high is the 10th to 90th percentile of the\n    neighbours' finite values. For 0/1 goals such as campaign response, the\n    estimate is the neighbours' rate of 1s; for count goals it is the median.\n    If too few neighbours have a finite value, the whole training column is used.\n    \"\"\"\n    fieldnames, train_rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(train_rows)\n\n    if n == 0 or not goals:\n        return {name: (float(\"nan\"), float(\"-inf\"), float(\"inf\"))\n                for name, _ in goals}\n\n    # Per-input encoding spec, learned from training rows only.\n    specs = []  # (kind, column, payload, mu, sd)\n    for c in inputs:\n        raw = [r.get(c) for r in train_rows]\n        parsed = np.array([_parse(v) for v in raw], dtype=float)\n        ok = np.isfinite(parsed)\n        if ok.sum() >= max(1, 0.9 * n):\n            med = float(np.median(parsed[ok]))\n            filled = np.where(ok, parsed, med)\n            mu = float(filled.mean())\n            sd = float(filled.std())\n            if not sd > 0:\n                sd = 1.0\n            specs.append((\"num\", c, med, mu, sd))\n        else:\n            levels = list(dict.fromkeys(_key(v) for v in raw))\n            specs.append((\"cat\", c, levels, None, None))\n\n    def encode(r):\n        out = []\n        for kind, c, payload, mu, sd in specs:\n            v = r.get(c)\n            if kind == \"num\":\n                x = _parse(v)\n                if not np.isfinite(x):\n                    x = payload\n                out.append((x - mu) / sd)\n            else:\n                k = _key(v)\n                out.extend(1.0 if k == lev else 0.0 for lev in payload)\n        return out\n\n    if specs:\n        Z = np.array([encode(r) for r in train_rows], dtype=float)\n        z = np.array(encode(row), dtype=float)\n    else:\n        Z = np.zeros((n, 1))\n        z = np.zeros(1)\n\n    dist = np.sqrt(((Z - z) ** 2).sum(axis=1))\n    k = min(_K, n)\n    idx = np.argsort(dist, kind=\"stable\")[:k]\n\n    result: dict[str, tuple[float, float, float]] = {}\n    for name, _sign in goals:\n        Y = np.array([_parse(r.get(name)) for r in train_rows], dtype=float)\n        Yf = Y[np.isfinite(Y)]\n        if Yf.size == 0:\n            result[name] = (float(\"nan\"), float(\"-inf\"), float(\"inf\"))\n            continue\n\n        local = Y[idx]\n        local = local[np.isfinite(local)]\n        if local.size < _MIN_LOCAL:\n            local = Yf\n\n        is_binary = set(np.unique(Yf).tolist()) <= {0.0, 1.0}\n        if is_binary:\n            estimate = float(local.mean())\n        else:\n            estimate = float(np.median(local))\n        low = float(np.percentile(local, 10))\n        high = float(np.percentile(local, 90))\n        result[name] = (estimate, low, high)\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "9590d8bb-2ce9-41ab-ac5b-1787ae616669",
+ "total_cost_usd": 0.0062479,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 26188,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5948,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 26188,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5948,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 26188,
+   "webSearchRequests": 0,
+   "costUSD": 0.0062479,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c68b757d-9c0c-49f4-b60b-dc960ff5d4b4"
+}
