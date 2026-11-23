@@ -1,0 +1,13 @@
+{
+ "domain": "marketing",
+ "step": 28,
+ "skill": "fix",
+ "ok": false,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "error": "ValueError: no measured build has the frozen settings, so no fix is possible",
+  "trace": "Traceback (most recent call last):\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/harness/score.py\", line 52, in score\n    out = c.SCORE[skill](load(code_dir, n), env_for(domain, tmp))\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/harness/contracts.py\", line 309, in score_fix\n    new = m.fix(env[\"train_csv\"], without(r, gs), frozen)\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/.runs/t4-r1/trial/step28.py\", line 19, in fix\n    return dict(_fix(train_csv, row, frozen=frozen))\n                ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: no measured build has the frozen settings, so no fix is possible\n"
+ }
+}

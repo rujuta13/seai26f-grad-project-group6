@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2505,
+ "duration_api_ms": 2484,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step28.py: smallest nudge that brings a drifting customer back, or turns a deal-only\nshopper into a regular one.\n\nBoth client questions are answered by the minimal-change fix already in step18 (and\nstep8 underneath). The fix is a measured training build that agrees with the frozen\nsettings and changes as few other settings as possible, so no new modelling is needed.\n\"\"\"\n\nfrom step18 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the row's inputs with as few values changed as possible so the build is good.\n\n    `row` is a bad row with its goal columns removed. Columns named in `frozen` keep\n    their current values. Raises ValueError if `frozen` names a column that is not an\n    input, or if no measured build has the frozen settings.\n    \"\"\"\n    return dict(_fix(train_csv, row, frozen=frozen))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d2bc7eef-8b01-420d-a812-ed8bef7427a2",
+ "total_cost_usd": 0.00318165,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23322,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 532,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23322,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 532,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23322,
+   "webSearchRequests": 0,
+   "costUSD": 0.00318165,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "14282499-7a09-49bb-88b7-7a911a65ef78"
+}
