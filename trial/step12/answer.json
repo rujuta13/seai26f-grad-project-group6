@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 19288,
+ "duration_api_ms": 19276,
+ "num_turns": 1,
+ "result": "```python\nimport csv\nimport math\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.model_selection import KFold, cross_val_predict\n\n\n_N_TREES = 300\n_MIN_LEAF = 2\n_SEED = 0\n_LOW_Q = 0.05\n_HIGH_Q = 0.95\n_ID_FRACTION = 0.9  # a column this unique is treated as an identifier\n\n\ndef _kind(name):\n    if not name:\n        return \"ignore\"\n    last = name[-1]\n    if last == \"X\":\n        return \"ignore\"\n    if last == \"+\":\n        return \"max\"\n    if last == \"-\":\n        return \"min\"\n    return \"input\"\n\n\ndef _load(path):\n    with open(path, newline=\"\", encoding=\"utf-8\") as f:\n        reader = csv.DictReader(f)\n        header = list(reader.fieldnames or [])\n        rows = [dict(r) for r in reader]\n    return header, rows\n\n\ndef _num(cell):\n    \"\"\"Return cell as a finite float, or None if missing or not numeric.\"\"\"\n    if cell is None:\n        return None\n    try:\n        f = float(cell)\n    except (TypeError, ValueError):\n        return None\n    return f if math.isfinite(f) else None\n\n\ndef _is_missing(v):\n    return v is None or (isinstance(v, str) and v.strip() == \"\")\n\n\ndef _key(v):\n    return \"\" if _is_missing(v) else str(v)\n\n\ndef _usable_inputs(header, rows):\n    \"\"\"Input columns, minus identifier-like columns (names, urls, row numbers).\"\"\"\n    n = len(rows)\n    keep = []\n    for c in header:\n        if _kind(c) != \"input\":\n            continue\n        raw = [r.get(c) for r in rows]\n        present = [v for v in raw if not _is_missing(v)]\n        nums = [_num(v) for v in present]\n        numeric = bool(present) and all(v is not None for v in nums)\n        distinct = len(set(_key(v) for v in raw))\n        if n > 0 and distinct > _ID_FRACTION * n:\n            if not numeric or all(float(v).is_integer() for v in nums):\n                continue\n        keep.append(c)\n    return keep\n\n\ndef _spec(column, values):\n    \"\"\"(column, labels or None, fill). labels is None for numeric columns.\"\"\"\n    present = [v for v in values if not _is_missing(v)]\n    nums = [_num(v) for v in present]\n    numeric = bool(present) and all(v is not None for v in nums)\n    if numeric:\n        fill = float(np.mean(nums))\n        return (column, None, fill)\n    labels = {k: i for i, k in enumerate(sorted(set(_key(v) for v in values)))}\n    return (column, labels, 0.0)\n\n\ndef _encode_row(row, specs):\n    out = np.empty(len(specs), dtype=float)\n    for j, (c, labels, fill) in enumerate(specs):\n        v = row.get(c)\n        if labels is None:\n            f = _num(v)\n            out[j] = fill if f is None else f\n        else:\n            out[j] = labels.get(_key(v), float(len(labels)))\n    return out\n\n\ndef _make_model():\n    return RandomForestRegressor(\n        n_estimators=_N_TREES,\n        min_samples_leaf=_MIN_LEAF,\n        random_state=_SEED,\n        n_jobs=1,\n    )\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a build whose goal columns are unknown.\n\n    Returns {goal: (estimate, low, high)}. The estimate comes from a random\n    forest fitted on the training builds' input columns. The low..high range\n    is the estimate shifted by the 5th and 95th percentiles of out-of-fold\n    residuals, so it covers roughly 90% of the errors seen on the training\n    data. Goal values in `row`, if any, are ignored.\n    \"\"\"\n    header, train = _load(train_csv)\n    goals = [c for c in header if _kind(c) in (\"max\", \"min\")]\n    if not goals:\n        return {}\n\n    n = len(train)\n    inputs = _usable_inputs(header, train)\n    specs = [_spec(c, [r.get(c) for r in train]) for c in inputs]\n\n    if n > 0 and specs:\n        X = np.vstack([_encode_row(r, specs) for r in train])\n    else:\n        X = np.zeros((n, len(specs)), dtype=float)\n    xq = _encode_row(row, specs).reshape(1, len(specs))\n\n    result = {}\n    for g in goals:\n        ys = [_num(r.get(g)) for r in train]\n        keep = [i for i, v in enumerate(ys) if v is not None]\n        if not keep:\n            result[g] = (0.0, 0.0, 0.0)\n            continue\n\n        y = np.asarray([ys[i] for i in keep], dtype=float)\n        Xg = X[keep]\n\n        if len(specs) == 0 or len(keep) < 4:\n            est = float(np.median(y))\n            low = float(np.quantile(y, _LOW_Q))\n            high = float(np.quantile(y, _HIGH_Q))\n            result[g] = (est, min(low, est), max(high, est))\n            continue\n\n        k = min(5, len(keep))\n        cv = KFold(n_splits=k, shuffle=True, random_state=_SEED)\n        oof = cross_val_predict(_make_model(), Xg, y, cv=cv)\n        residuals = y - oof\n        r_lo, r_hi = np.quantile(residuals, [_LOW_Q, _HIGH_Q])\n\n        model = _make_model().fit(Xg, y)\n        est = float(model.predict(xq)[0])\n        low = est + float(r_lo)\n        high = est + float(r_hi)\n        result[g] = (est, min(low, est), max(high, est))\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "241d4d1c-7ac2-47d0-a906-3a281dfa60ea",
+ "total_cost_usd": 0.004890024999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 19577,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4885,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 19577,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4885,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 19577,
+   "webSearchRequests": 0,
+   "costUSD": 0.004890024999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "a0b7610d-dd46-44b5-9071-5f89b8ecd884"
+}
