@@ -1,0 +1,1674 @@
+Use the Python 3.13 standard library plus scikit-learn 1.7 and numpy 1.26. No other third-party packages.
+
+Data conventions:
+- Data files are csv files (MOOT format). Column names ending in "+" are goals to maximise,
+  "-" goals to minimise; names ending in "X" are ignored; every other column is an input.
+- A *row* is a dict {column name: value}; numbers are floats, other cells are strings.
+- Row indices count data rows of a csv from 0 (header excluded).
+- `train_csv` / `test_csv` are paths to such files, about 800 / 200 rows.
+
+The data file starts like this (header, then two rows):
+```
+INCOME,KIDHOME,TEENHOME,RECENCY,MNTWINES,MNTFRUITS,MNTMEATPRODUCTS,MNTFISHPRODUCTS,MNTSWEETPRODUCTS,MNTGOLDPRODS,NUMDEALSPURCHASES+,NUMWEBPURCHASES+,NUMCATALOGPURCHASES+,NUMSTOREPURCHASES+,NUMWEBVISITSMONTH+,ACCEPTEDCMP3,ACCEPTEDCMP4,ACCEPTEDCMP5,ACCEPTEDCMP1,ACCEPTEDCMP2,COMPLAIN-,Z_COSTCONTACT,Z_REVENUE,RESPONSE+,AGE,CUSTOMER_DAYS+,MARITAL_DIVORCED,MARITAL_MARRIED,MARITAL_SINGLE,MARITAL_TOGETHER,MARITAL_WIDOW,EDUCATION_2N CYCLE,EDUCATION_BASIC,EDUCATION_GRADUATION,EDUCATION_MASTER,EDUCATION_PHD,MNTTOTAL,MNTREGULARPRODS,ACCEPTEDCMPOVERALL
+34320,1,0,66,4,1,9,3,0,0,1,1,0,2,8,0,0,0,0,0,0,3,11,0,34,2292,0,0,0,1,0,0,0,0,0,1,17,17,0
+55375,0,1,3,42,11,57,10,28,14,1,1,1,6,2,0,0,0,0,0,0,3,11,0,43,2414,0,0,0,1,0,0,0,1,0,0,148,134,0
+```
+
+Earlier steps of this project. Their files sit in the same directory as yours and can be imported (e.g. `from step1 import ...`):
+
+### step1.py
+```python
+import csv
+
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+_cache = {}
+
+
+def _num(v):
+    try:
+        return float(v)
+    except ValueError:
+        return v.strip()
+
+
+def _load(path):
+    if path in _cache:
+        return _cache[path]
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = reader.fieldnames or []
+        rows = [{k: _num(v) for k, v in r.items()} for r in reader]
+
+    inputs, maxg, ming = [], [], []
+    for c in cols:
+        if c.endswith("+"):
+            maxg.append(c)
+        elif c.endswith("-"):
+            ming.append(c)
+        elif c.endswith("X"):
+            continue
+        else:
+            inputs.append(c)
+
+    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)
+    X = X.reshape(len(rows), len(inputs))
+    G = np.array(
+        [[float(r[c]) for c in maxg] + [-float(r[c]) for c in ming] for r in rows],
+        dtype=float,
+    ).reshape(len(rows), len(maxg) + len(ming))
+
+    d = {"rows": rows, "X": X, "G": G}
+    _cache[path] = d
+    return d
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order."""
+    d = _load(train_csv)
+    X = d["X"]
+    n = len(X)
+    if n == 0:
+        return []
+    distinct = np.unique(X, axis=0)
+    if len(distinct) < 3:
+        return [0] * n
+
+    best_s, best_labels = None, None
+    for k in range(2, min(9, len(distinct))):
+        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)
+        labels = km.labels_
+        if len(set(labels.tolist())) < 2:
+            continue
+        s = silhouette_score(X, labels)
+        if best_s is None or s > best_s:
+            best_s, best_labels = s, labels
+    if best_labels is None:
+        return [0] * n
+    return [int(x) for x in best_labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of unusually good rows (best on all goals together), at most 5% of rows."""
+    d = _load(train_csv)
+    G = d["G"]
+    n = len(G)
+    cap = int(0.05 * n)
+    if cap == 0 or G.shape[1] == 0:
+        return []
+
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    Z = (G - mu) / sd  # higher is better on every column
+
+    # Pareto front: rows not dominated by any other row on all goals.
+    nondominated = np.ones(n, dtype=bool)
+    for i in range(n):
+        dominated = np.all(Z >= Z[i], axis=1) & np.any(Z > Z[i], axis=1)
+        if dominated.any():
+            nondominated[i] = False
+    cand = np.flatnonzero(nondominated)
+
+    # Rank the front by average standardized goal score, keep at most 5%.
+    score = Z.mean(axis=1)
+    order = cand[np.argsort(-score[cand], kind="stable")]
+    return sorted(int(i) for i in order[:cap])
+```
+
+### step2.py
+```python
+import csv
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import KFold, cross_val_predict
+
+from step1 import _load
+
+
+def _columns(train_csv):
+    with open(train_csv, newline="") as f:
+        cols = next(csv.reader(f), [])
+    goals = [c for c in cols if c.endswith("+") or c.endswith("-")]
+    inputs = [c for c in cols
+              if not (c.endswith("+") or c.endswith("-") or c.endswith("X"))]
+    return inputs, goals
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate each goal for a flag set, with an interval calibrated on held-out errors."""
+    inputs, goals = _columns(train_csv)
+    if not goals:
+        return {}
+
+    d = _load(train_csv)
+    rows = d["rows"]
+    n = len(rows)
+
+    X = np.array([[float(r[c]) for c in inputs] for r in rows], dtype=float)
+    X = X.reshape(n, len(inputs))
+    Y = np.array([[float(r[g]) for g in goals] for r in rows], dtype=float)
+    Y = Y.reshape(n, len(goals))
+
+    x_new = np.array(
+        [[_as_float(row.get(c, 0.0)) for c in inputs]], dtype=float
+    ).reshape(1, len(inputs))
+
+    if n == 0:
+        return {g: (0.0, 0.0, 0.0) for g in goals}
+    if n < 4:
+        # Too little data for a model; report the observed spread.
+        out = {}
+        for j, g in enumerate(goals):
+            lo, mid, hi = float(Y[:, j].min()), float(Y[:, j].mean()), float(Y[:, j].max())
+            out[g] = (mid, lo, hi)
+        return out
+
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+    )
+    if len(inputs) == 0:
+        est = Y.mean(axis=0).reshape(1, -1)
+        oof = np.tile(Y.mean(axis=0), (n, 1))
+    else:
+        model.fit(X, Y)
+        est = model.predict(x_new).reshape(1, -1)
+        cv = KFold(n_splits=min(5, n), shuffle=True, random_state=0)
+        oof = cross_val_predict(
+            RandomForestRegressor(
+                n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+            ),
+            X, Y, cv=cv,
+        ).reshape(n, len(goals))
+
+    resid = Y - oof
+    lo_r = np.quantile(resid, 0.10, axis=0)
+    hi_r = np.quantile(resid, 0.90, axis=0)
+
+    result = {}
+    for j, g in enumerate(goals):
+        e = float(est[0, j])
+        lo = e + float(lo_r[j])
+        hi = e + float(hi_r[j])
+        lo, hi = min(lo, e), max(hi, e)
+        result[g] = (e, lo, hi)
+    return result
+
+
+def _as_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+```
+
+### step3.py
+```python
+import numpy as np
+
+_ALPHA = 0.05
+_RESAMPLES = 10000
+
+
+def same(xs, ys) -> bool:
+    """True if the two samples do NOT differ beyond run-to-run noise, False if the difference is real.
+
+    Two-sided permutation test on the difference of means, at the 5% level.
+    Empty samples, or samples whose means are identical, count as not different.
+    """
+    x = np.asarray(list(xs), dtype=float).ravel()
+    y = np.asarray(list(ys), dtype=float).ravel()
+    x = x[np.isfinite(x)]
+    y = y[np.isfinite(y)]
+    if len(x) == 0 or len(y) == 0:
+        return True
+
+    observed = abs(float(x.mean()) - float(y.mean()))
+    if observed == 0.0:
+        return True
+
+    n = len(x)
+    pooled = np.concatenate([x, y])
+    rng = np.random.default_rng(0)
+    threshold = observed - 1e-12 * max(1.0, observed)
+
+    count = 0
+    for _ in range(_RESAMPLES):
+        p = rng.permutation(pooled)
+        d = abs(float(p[:n].mean()) - float(p[n:].mean()))
+        if d >= threshold:
+            count += 1
+
+    p_value = (count + 1) / (_RESAMPLES + 1)
+    return p_value >= _ALPHA
+```
+
+### step4.py
+```python
+import numpy as np
+
+from step1 import _load
+from step2 import _columns, _as_float
+from step3 import same
+
+_WINDOW = 20  # recent rows compared against the training reference
+
+
+def _goal_layout(train_csv):
+    """Goal columns in the same order step1._load uses: maximised, then minimised."""
+    _, goals = _columns(train_csv)
+    maxg = [g for g in goals if g.endswith("+")]
+    ming = [g for g in goals if g.endswith("-")]
+    return maxg, ming
+
+
+def _goal_vec(row, maxg, ming):
+    return ([_as_float(row.get(g, 0.0)) for g in maxg]
+            + [-_as_float(row.get(g, 0.0)) for g in ming])
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Keep a row if no earlier row (training or streamed) dominates it on the
+    standardized goals, and its average standardized score is in the top 5% of
+    the reference rows. Only training data and earlier rows are used."""
+    maxg, ming = _goal_layout(train_csv)
+    if not (maxg or ming):
+        return [False] * len(rows)
+
+    G0 = _load(train_csv)["G"]
+    if len(G0) == 0:
+        return [False] * len(rows)
+
+    mu = G0.mean(axis=0)
+    sd = G0.std(axis=0)
+    sd[sd == 0] = 1.0
+    ref = (G0 - mu) / sd  # higher is better on every column
+
+    decisions = []
+    for row in rows:
+        z = (np.array(_goal_vec(row, maxg, ming), dtype=float) - mu) / sd
+        dominated = bool(np.any(np.all(ref >= z, axis=1) & np.any(ref > z, axis=1)))
+        threshold = float(np.quantile(ref.mean(axis=1), 0.95))
+        keep = (not dominated) and float(z.mean()) >= threshold
+        decisions.append(bool(keep))
+        # Every row, kept or not, becomes part of the reference for later rows.
+        ref = np.vstack([ref, z.reshape(1, -1)])
+    return decisions
+
+
+def _nn_distances(A, B):
+    """Distance from each row of A to its nearest row of B (Euclidean)."""
+    sq = (A ** 2).sum(axis=1)[:, None] + (B ** 2).sum(axis=1)[None, :] - 2.0 * (A @ B.T)
+    return np.sqrt(np.maximum(sq, 0.0)).min(axis=1)
+
+
+def drift(train_csv, rows) -> int | None:
+    """Warn at the first index where the last _WINDOW rows' nearest-training-row
+    distances differ from the training set's own leave-one-out nearest-neighbour
+    distances (permutation test from step3). Uses only rows up to that index."""
+    inputs, _ = _columns(train_csv)
+    X0 = _load(train_csv)["X"]
+    n = len(X0)
+    if n < 2 or not inputs or not rows:
+        return None
+
+    # Leave-one-out nearest-neighbour distances within the training set.
+    sq0 = (X0 ** 2).sum(axis=1)
+    D0 = np.sqrt(np.maximum(sq0[:, None] + sq0[None, :] - 2.0 * (X0 @ X0.T), 0.0))
+    np.fill_diagonal(D0, np.inf)
+    ref_nn = D0.min(axis=1)
+
+    Xn = np.array(
+        [[_as_float(r.get(c, 0.0)) for c in inputs] for r in rows], dtype=float
+    ).reshape(len(rows), len(inputs))
+    new_nn = _nn_distances(Xn, X0)
+
+    for i in range(_WINDOW - 1, len(rows)):
+        window = new_nn[i - _WINDOW + 1:i + 1]
+        if not same(ref_nn, window):
+            return i
+    return None
+```
+
+### step5.py
+```python
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from step1 import _load
+from step2 import _columns
+
+
+def blame(train_csv) -> list[str]:
+    """Input column names, most to blame for bad rows (bad on the goals) first."""
+    inputs, _ = _columns(train_csv)
+    if not inputs:
+        return []
+
+    d = _load(train_csv)
+    X = d["X"]
+    G = d["G"]
+    n = len(X)
+    if n < 2 or G.shape[1] == 0:
+        return list(inputs)
+
+    # Same standardization as step1.best: higher score is better on every goal.
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    score = ((G - mu) / sd).mean(axis=1)
+    badness = -score  # higher means worse
+
+    if np.all(badness == badness[0]):
+        return list(inputs)
+
+    # Importance of each input for predicting badness.
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+    )
+    model.fit(X, badness)
+    imp = model.feature_importances_
+
+    # An input is only blamed if its "on" state (any value above the column
+    # minimum) goes with worse rows than its "off" state. Inputs whose
+    # presence helps get zero blame and sink to the end.
+    blame_scores = np.zeros(len(inputs))
+    for j in range(len(inputs)):
+        col = X[:, j]
+        on = col != col.min()
+        off = ~on
+        if on.any() and off.any() and imp[j] > 0:
+            if badness[on].mean() > badness[off].mean():
+                blame_scores[j] = imp[j]
+
+    order = sorted(range(len(inputs)), key=lambda j: (-blame_scores[j], j))
+    return [inputs[j] for j in order]
+```
+
+### step6.py
+```python
+import numpy as np
+
+from step1 import _load, best
+from step2 import _columns, guess
+from step3 import same
+from step4 import _goal_layout, _goal_vec
+
+
+def _standardize(train_csv):
+    G = _load(train_csv)["G"]
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    return G, mu, sd, (G - mu) / sd
+
+
+def _goal_names(train_csv):
+    maxg, ming = _goal_layout(train_csv)
+    return maxg + ming
+
+
+def _is_num(v):
+    try:
+        return v is not None and bool(np.isfinite(float(v)))
+    except (TypeError, ValueError):
+        return False
+
+
+def explain(train_csv) -> str:
+    inputs, _ = _columns(train_csv)
+    G, mu, sd, Z = _standardize(train_csv)
+    n = len(G)
+    if n == 0 or G.shape[1] == 0 or not inputs:
+        return "Not enough data (need rows, flags and goals) to explain anything."
+
+    d = _load(train_csv)
+    rows, X = d["rows"], d["X"]
+    score = Z.mean(axis=1)
+    names = _goal_names(train_csv)
+
+    lines = [
+        f"Data: {n} measured builds, {len(inputs)} on/off flags, "
+        f"goals: {', '.join(names)}.",
+        "Score: each goal is z-scored against the training data (minimised goals "
+        "negated, so higher is better); a build's score is the mean of its z-scores.",
+    ]
+
+    # Recommended flag set: the best-scoring Pareto-front build.
+    front = best(train_csv)
+    if front:
+        gi = max(front, key=lambda i: score[i])
+        rec = rows[gi]
+        on_flags = [c for j, c in enumerate(inputs)
+                    if X[gi, j] != X[:, j].min()]
+        lines.append(
+            f"Recommended build: training row {gi}, score {score[gi]:.2f}; "
+            "no other build beats it on every goal."
+        )
+        lines.append(
+            "Flags on: " + (", ".join(on_flags) if on_flags else "none") + "."
+        )
+        lines.append(
+            "Measured goals: " + ", ".join(
+                f"{g} = {rec[g]:.6g}" for g in names if _is_num(rec.get(g))
+            ) + "."
+        )
+        est = guess(train_csv, rec)
+        if est:
+            lines.append(
+                "Model estimate for this flag set (random forest, 10th-90th "
+                "percentile of held-out errors; fitted on the same rows, so "
+                "optimistic): " + "; ".join(
+                    f"{g} {mid:.4g} [{lo:.4g}, {hi:.4g}]"
+                    for g, (mid, lo, hi) in est.items()
+                ) + "."
+            )
+
+    # Which flags go with better builds, with a permutation test per flag.
+    effects = []
+    for j, c in enumerate(inputs):
+        on = X[:, j] != X[:, j].min()
+        off = ~on
+        if not (on.any() and off.any()):
+            continue
+        diff = float(score[on].mean() - score[off].mean())
+        real = not same(score[on], score[off])
+        if real:
+            effects.append((abs(diff), c, diff, float(score[on].mean()),
+                            float(score[off].mean())))
+    effects.sort(key=lambda t: -t[0])
+
+    if effects:
+        lines.append(
+            "Flags whose on/off split changes the score beyond run-to-run noise "
+            f"(permutation test, 5%; {len(inputs)} flags tested without "
+            "correction, so treat marginal ones as hypotheses):"
+        )
+        for _, c, diff, m_on, m_off in effects[:8]:
+            verb = "helps" if diff > 0 else "hurts"
+            lines.append(
+                f"  {c} {verb}: mean score {m_on:.2f} when on vs {m_off:.2f} when off."
+            )
+    else:
+        lines.append(
+            "No single flag's on/off split is distinguishable from noise in this data."
+        )
+
+    return "\n".join(lines)
+
+
+def why(train_csv, row) -> str:
+    G, mu, sd, Z = _standardize(train_csv)
+    if len(G) == 0 or G.shape[1] == 0:
+        return "Cannot judge this build: the training data has no goal columns."
+
+    maxg, ming = _goal_layout(train_csv)
+    names = maxg + ming
+    median = float(np.median(Z.mean(axis=1)))
+
+    measured = all(_is_num(row.get(g)) for g in names)
+    if measured:
+        vec = np.array(_goal_vec(row, maxg, ming), dtype=float)
+        source = "measured"
+    else:
+        est = guess(train_csv, row)
+        mid_row = {g: est[g][0] for g in names if g in est}
+        vec = np.array(_goal_vec(mid_row, maxg, ming), dtype=float)
+        source = "estimated"
+
+    z = (vec - mu) / sd
+    s = float(z.mean())
+    verdict = "good" if s >= median else "bad"
+    k = int(np.sum(np.all(Z >= z, axis=1) & np.any(Z > z, axis=1)))
+    dom_text = ("no training build beats it on every goal" if k == 0
+                else f"{k} training build(s) beat it on every goal")
+    first = (f"Rated {verdict}: {source} goals give an average standardized score of "
+             f"{s:.2f} against a training median of {median:.2f}, and {dom_text}.")
+
+    i_min, i_max = int(np.argmin(z)), int(np.argmax(z))
+    second = (f"Weakest goal: {names[i_min]} (z {z[i_min]:.2f}); strongest: "
+              f"{names[i_max]} (z {z[i_max]:.2f})")
+    if not measured:
+        second += "; goal values are model estimates, not measurements"
+    return first + " " + second + "."
+```
+
+### step7.py
+```python
+import csv
+import math
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from step2 import _columns, _as_float
+
+_N_TREES = 200
+_KAPPA = 1.0  # exploration weight on the surrogate's spread
+
+
+def _read_blind(blind_csv):
+    """Read only the input flags; goal cells in a blind file are '?' and are not parsed."""
+    inputs, goals = _columns(blind_csv)
+    with open(blind_csv, newline="") as f:
+        reader = csv.DictReader(f)
+        rows = [{c: _as_float(r.get(c, 0.0)) for c in inputs} for r in reader]
+    X = np.array([[r[c] for c in inputs] for r in rows], dtype=float)
+    X = X.reshape(len(rows), len(inputs))
+    return X, inputs, goals
+
+
+def _standardize_cols(A):
+    mu = A.mean(axis=0)
+    sd = A.std(axis=0)
+    sd[sd == 0] = 1.0
+    return (A - mu) / sd
+
+
+def _scores(meas, k):
+    """Scalar score per measured row: mean standardized (signed) goal value.
+
+    meas maps row index -> array of k signed goal values (NaN if missing).
+    Rows with any missing value get -inf.
+    """
+    ids = list(meas)
+    V = np.array([meas[i] for i in ids], dtype=float).reshape(len(ids), k)
+    good = np.all(np.isfinite(V), axis=1)
+    out = {i: -math.inf for i in ids}
+    if good.any():
+        Z = _standardize_cols_with_stats(V[good])
+        s = Z.mean(axis=1)
+        for i, v in zip([ids[j] for j in np.flatnonzero(good)], s):
+            out[i] = float(v)
+    return out
+
+
+def _standardize_cols_with_stats(G):
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    return (G - mu) / sd
+
+
+def _farthest_first(Z, k, rng):
+    """Pick k well-spread rows of Z (greedy farthest-point sampling)."""
+    n = len(Z)
+    first = int(rng.integers(n))
+    chosen = [first]
+    mind = np.linalg.norm(Z - Z[first], axis=1)
+    mind[first] = -1.0
+    while len(chosen) < k:
+        nxt = int(np.argmax(mind))
+        chosen.append(nxt)
+        mind = np.minimum(mind, np.linalg.norm(Z - Z[nxt], axis=1))
+        mind[chosen] = -1.0
+    return chosen
+
+
+def _farthest_from(Z, measured_ids, candidates):
+    """Candidate row farthest (in standardized flag space) from all measured rows."""
+    D = np.linalg.norm(
+        Z[candidates][:, None, :] - Z[measured_ids][None, :, :], axis=2
+    ).min(axis=1)
+    return int(candidates[int(np.argmax(D))])
+
+
+def choose(blind_csv, label, budget=30, goal=None) -> int:
+    """Find a good flag set by benchmarking at most `budget` builds.
+
+    label(i) returns the goals of row i as a dict (at most `budget` calls).
+    If `goal` names one goal, only that goal is optimised; otherwise all goals
+    are combined as the mean of their standardized, sign-adjusted values.
+    Returns the index of the best measured row.
+    """
+    X, inputs, goals = _read_blind(blind_csv)
+    if not goals:
+        raise ValueError("blind_csv has no goal columns")
+    n = len(X)
+    if n == 0:
+        raise ValueError("blind_csv has no rows")
+    budget = int(budget)
+    if budget < 1:
+        raise ValueError("budget must be at least 1")
+
+    if goal is None:
+        use = list(range(len(goals)))
+    else:
+        if goal not in goals:
+            raise ValueError(f"unknown goal {goal!r}; goals are {goals}")
+        use = [goals.index(goal)]
+    use_names = [goals[j] for j in use]
+    k = len(use)
+    signs = np.array([1.0 if g.endswith("+") else -1.0 for g in use_names])
+
+    spent = 0
+    meas = {}
+
+    def measure(i):
+        nonlocal spent
+        if spent >= budget:
+            raise RuntimeError("benchmark budget exceeded")
+        spent += 1
+        d = label(i)
+        vals = np.full(k, np.nan)
+        for j, g in enumerate(use_names):
+            try:
+                vals[j] = float(d[g]) * signs[j]
+            except (KeyError, TypeError, ValueError):
+                vals[j] = np.nan
+        meas[i] = vals
+
+    rng = np.random.default_rng(0)
+
+    if X.shape[1] == 0:
+        # No flags to model: nothing to learn from, just measure in file order.
+        for i in range(min(n, budget)):
+            measure(i)
+    else:
+        Z = _standardize_cols(X)
+        n_init = min(n, budget, max(3, budget // 3))
+        for i in _farthest_first(Z, n_init, rng):
+            measure(int(i))
+
+        while spent < budget and len(meas) < n:
+            sc = _scores(meas, k)
+            ok_ids = [i for i in meas if math.isfinite(sc[i])]
+            unmeasured = np.array([i for i in range(n) if i not in meas], dtype=int)
+
+            if len(ok_ids) < 2:
+                pick = _farthest_from(Z, list(meas), unmeasured)
+            else:
+                y = np.array([sc[i] for i in ok_ids], dtype=float)
+                model = RandomForestRegressor(
+                    n_estimators=_N_TREES, min_samples_leaf=1,
+                    random_state=spent, n_jobs=1,
+                )
+                model.fit(X[ok_ids], y)
+                preds = np.array([t.predict(X[unmeasured]) for t in model.estimators_])
+                acq = preds.mean(axis=0) + _KAPPA * preds.std(axis=0)
+                pick = int(unmeasured[int(np.argmax(acq))])
+            measure(pick)
+
+    sc = _scores(meas, k)
+    best_i = max(meas, key=lambda i: (sc[i], -i))
+    return int(best_i)
+```
+
+### step8.py
+```python
+import itertools
+
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from step1 import _load
+from step2 import _columns, _as_float
+from step6 import _standardize
+
+_MAX_CHANGES = 3          # search up to this many changed flags
+_MAX_CANDIDATES = 50_000  # cap on candidate flag sets evaluated per change count
+
+
+def fix(train_csv, row, frozen=()) -> dict:
+    """Smallest set of input changes that makes a bad row good.
+
+    "Good" is the same verdict step6.why uses: the average standardized goal
+    score is at least the training median. The goals of `row` are unknown, so
+    each candidate flag set is scored with a random forest fitted on the
+    training rows. Columns named in `frozen` are never changed. Returns the
+    row's inputs with the fewest changes found (fewest changed flags first,
+    then highest predicted score).
+    """
+    inputs, goals = _columns(train_csv)
+    base = np.array([_as_float(row.get(c, 0.0)) for c in inputs], dtype=float)
+
+    def out(v):
+        return {c: float(x) for c, x in zip(inputs, v)}
+
+    if not goals or not inputs:
+        return out(base)
+
+    d = _load(train_csv)
+    X = d["X"]
+    if len(X) < 4:
+        return out(base)
+
+    G, mu, sd, Z = _standardize(train_csv)
+    median = float(np.median(Z.mean(axis=1)))
+
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+    )
+    model.fit(X, G)
+
+    def scores(C):
+        P = model.predict(C).reshape(len(C), G.shape[1])
+        return ((P - mu) / sd).mean(axis=1)
+
+    frozen_set = set(frozen)
+    free = [j for j, c in enumerate(inputs) if c not in frozen_set]
+
+    s0 = float(scores(base.reshape(1, -1))[0])
+    if s0 >= median or not free:
+        return out(base)
+
+    best_v, best_s = base, s0
+    alts = {
+        j: [float(v) for v in np.unique(X[:, j]) if v != base[j]]
+        for j in free
+    }
+
+    for k in range(1, min(_MAX_CHANGES, len(free)) + 1):
+        cands = []
+        for cols in itertools.combinations(free, k):
+            if any(not alts[j] for j in cols):
+                continue
+            for vals in itertools.product(*(alts[j] for j in cols)):
+                v = base.copy()
+                for j, x in zip(cols, vals):
+                    v[j] = x
+                cands.append(v)
+                if len(cands) >= _MAX_CANDIDATES:
+                    break
+            if len(cands) >= _MAX_CANDIDATES:
+                break
+        if not cands:
+            continue
+
+        C = np.array(cands, dtype=float)
+        s = scores(C)
+        good = np.flatnonzero(s >= median)
+        if good.size:
+            i = int(good[np.argmax(s[good])])
+            return out(C[i])
+
+        i = int(np.argmax(s))
+        if s[i] > best_s:
+            best_v, best_s = C[i], float(s[i])
+
+    return out(best_v)
+```
+
+### step9.py
+```python
+import math
+
+import numpy as np
+
+from step1 import _load
+from step2 import _columns
+from step4 import _goal_layout, _nn_distances
+
+_BAD_WEIGHT = 10.0  # each invalid or never-seen cell adds this much suspicion
+
+
+def _cell(v):
+    """A cell as a float, or NaN if it is missing or not numeric."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return math.nan
+
+
+def odd(train_csv, rows) -> list[float]:
+    """One suspicion score per row (higher = more likely a glitch, typo, or unlike training).
+
+    Three parts are added together:
+      * flag novelty: distance from the row's flags to the nearest training row,
+        in units of the typical training nearest-neighbour distance;
+      * goal anomaly: the largest absolute z-score of the row's goals against
+        the training goals (minimised goals already sign-flipped, as in step1);
+      * bad cells: missing or non-numeric values, and flag values never seen in
+        that column of the training data (typos), each weighted heavily.
+    """
+    rows = list(rows)
+    if not rows:
+        return []
+
+    inputs, _ = _columns(train_csv)
+    maxg, ming = _goal_layout(train_csv)
+    gnames = maxg + ming
+
+    d = _load(train_csv)
+    X0 = d["X"]
+    G0 = d["G"]
+    n = len(X0)
+    m = len(inputs)
+    k = len(rows)
+
+    # Flags of the new rows.
+    Xn = np.array(
+        [[_cell(r.get(c, math.nan)) for c in inputs] for r in rows], dtype=float
+    ).reshape(k, m)
+
+    bad = np.zeros(k)
+    bad += np.sum(~np.isfinite(Xn), axis=1)
+
+    # Flag values never seen in that column of the training data (typos).
+    if n > 0:
+        for j in range(m):
+            seen = set(X0[:, j].tolist())
+            for i in range(k):
+                v = Xn[i, j]
+                if np.isfinite(v) and v not in seen:
+                    bad[i] += 1
+
+    # Flag novelty: nearest-training-row distance, scaled by the typical
+    # leave-one-out nearest-neighbour distance within the training set.
+    nov = np.zeros(k)
+    if n >= 2 and m > 0:
+        X0c = np.where(np.isfinite(X0), X0, 0.0)
+        Xc = np.where(np.isfinite(Xn), Xn, 0.0)
+
+        sq0 = (X0c ** 2).sum(axis=1)
+        D0 = np.sqrt(np.maximum(sq0[:, None] + sq0[None, :] - 2.0 * (X0c @ X0c.T), 0.0))
+        np.fill_diagonal(D0, np.inf)
+        ref = D0.min(axis=1)
+
+        pos = ref[np.isfinite(ref) & (ref > 0)]
+        scale = float(np.median(pos)) if pos.size else 1.0
+        if not (scale > 0 and math.isfinite(scale)):
+            scale = 1.0
+
+        nov = _nn_distances(Xc, X0c) / scale
+
+    # Goal anomaly: largest absolute z-score against the training goals.
+    gz = np.zeros(k)
+    if n > 0 and G0.shape[1] > 0 and gnames:
+        mu = G0.mean(axis=0)
+        sd = G0.std(axis=0)
+        sd[sd == 0] = 1.0
+        for i, r in enumerate(rows):
+            vals = ([_cell(r.get(g, math.nan)) for g in maxg]
+                    + [-_cell(r.get(g, math.nan)) for g in ming])
+            vec = np.array(vals, dtype=float)
+            finite = np.isfinite(vec)
+            bad[i] += int(np.sum(~finite))
+            if finite.any():
+                z = (vec[finite] - mu[finite]) / sd[finite]
+                gz[i] = float(np.max(np.abs(z)))
+
+    score = nov + gz + _BAD_WEIGHT * bad
+    return [float(s) for s in score]
+```
+
+### step10.py
+```python
+import numpy as np
+from sklearn.ensemble import GradientBoostingRegressor
+
+from step1 import _load
+from step2 import _columns, guess
+from step4 import _goal_layout, _goal_vec
+from step6 import _standardize
+from step7 import choose, _scores
+
+_BUDGET = 30        # benchmark builds each tuner may measure
+_GUESS_ROWS = 25    # test rows used to compare the guessers (guess() is slow)
+
+
+def _composite(G, mu, sd):
+    """Mean standardized goal score per row, using training mean and sd."""
+    return ((G - mu) / sd).mean(axis=1)
+
+
+def _r2(y, p):
+    y = np.asarray(y, dtype=float)
+    p = np.asarray(p, dtype=float)
+    sst = float(np.sum((y - y.mean()) ** 2))
+    if sst == 0.0:
+        return 0.0
+    return 1.0 - float(np.sum((y - p) ** 2)) / sst
+
+
+def _pick(meas, k):
+    """Choose the best measured row with the same rule step7.choose uses."""
+    sc = _scores(meas, k)
+    return max(meas, key=lambda i: (sc[i], -i))
+
+
+def race(train_csv, test_csv) -> dict[str, float]:
+    """Race the tuner (step7.choose) against random search and an off-the-shelf
+    surrogate tuner on test_csv, and compare the guesser (step2.guess) with an
+    off-the-shelf regressor.
+
+    Tuner scores: the true mean standardized goal of the build each method
+    picks, after measuring at most _BUDGET test builds. Higher is better.
+    Guesser scores: R^2 of predicted vs true composite score on a subsample of
+    test rows. Higher is better. Compare tuners with tuners and guessers with
+    guessers.
+    """
+    _, goals = _columns(test_csv)
+    inputs, _ = _columns(test_csv)
+    dt = _load(test_csv)
+    Gt, Xt, rows = dt["G"], dt["X"], dt["rows"]
+    nt = len(Gt)
+    if not goals or nt == 0:
+        return {"ours": 0.0, "random": 0.0, "off_the_shelf": 0.0,
+                "guess_ours": 0.0, "guess_off_the_shelf": 0.0}
+
+    _, mu, sd, _ = _standardize(train_csv)
+    true = _composite(Gt, mu, sd)
+    k = Gt.shape[1]
+    budget = min(_BUDGET, nt)
+
+    def label(i):
+        return rows[i]
+
+    result = {}
+
+    # Ours: the step7 tuner, measuring through the label callback.
+    ours_idx = choose(test_csv, label, budget=budget)
+    result["ours"] = float(true[ours_idx])
+
+    # Random search: measure a uniform random sample of the same size.
+    rng = np.random.default_rng(0)
+    rand_pick = rng.choice(nt, size=budget, replace=False)
+    meas = {int(i): Gt[i].copy() for i in rand_pick}
+    result["random"] = float(true[_pick(meas, k)])
+
+    # Off-the-shelf surrogate tuner: sklearn gradient boosting, greedy picks.
+    if Xt.shape[1] == 0:
+        meas = {int(i): Gt[i].copy() for i in range(budget)}
+        result["off_the_shelf"] = float(true[_pick(meas, k)])
+    else:
+        init = min(3, budget)
+        measured = [int(i) for i in rng.choice(nt, size=init, replace=False)]
+        while len(measured) < budget:
+            taken = set(measured)
+            unm = np.array([i for i in range(nt) if i not in taken], dtype=int)
+            model = GradientBoostingRegressor(random_state=0)
+            model.fit(Xt[measured], true[measured])
+            measured.append(int(unm[int(np.argmax(model.predict(Xt[unm])))]))
+        meas = {i: Gt[i].copy() for i in measured}
+        result["off_the_shelf"] = float(true[_pick(meas, k)])
+
+    # Guesser comparison on a subsample of test rows.
+    if inputs and goals:
+        dtr = _load(train_csv)
+        Xtr, Gtr = dtr["X"], dtr["G"]
+        n_g = min(_GUESS_ROWS, nt)
+        sub = np.random.default_rng(2).choice(nt, size=n_g, replace=False)
+        truth = true[sub]
+
+        maxg, ming = _goal_layout(train_csv)
+        pred_ours = []
+        for i in sub:
+            est = guess(train_csv, rows[int(i)])
+            mids = {g: v[0] for g, v in est.items()}
+            vec = np.array(_goal_vec(mids, maxg, ming), dtype=float)
+            pred_ours.append(float(((vec - mu) / sd).mean()))
+        result["guess_ours"] = _r2(truth, pred_ours)
+
+        ytr = _composite(Gtr, mu, sd)
+        off = GradientBoostingRegressor(random_state=0)
+        off.fit(Xtr, ytr)
+        result["guess_off_the_shelf"] = _r2(truth, off.predict(Xt[sub]))
+    else:
+        result["guess_ours"] = 0.0
+        result["guess_off_the_shelf"] = 0.0
+
+    return {k_: float(v) for k_, v in result.items()}
+```
+
+### step11.py
+```python
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+from step1 import _load
+from step2 import _columns
+
+# Columns that identify a player or record rather than describe them.
+_IDENTIFIERS = {"num", "Rank", "Name", "url"}
+# "Strong and good from the spot": Strength and Penalties, both maximised.
+_SPOT_GOALS = ("Strength+", "Penalties+")
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order.
+
+    Clusters on the player attributes only: identifier columns are left out,
+    and the attributes are standardized so no single scale dominates.
+    """
+    inputs, _ = _columns(train_csv)
+    rows = _load(train_csv)["rows"]
+    n = len(rows)
+    if n == 0:
+        return []
+
+    keep = [c for c in inputs if c not in _IDENTIFIERS] or list(inputs)
+    if not keep:
+        return [0] * n
+
+    X = np.array([[float(r[c]) for c in keep] for r in rows], dtype=float)
+    X = X.reshape(n, len(keep))
+    mu = X.mean(axis=0)
+    sd = X.std(axis=0)
+    sd[sd == 0] = 1.0
+    X = (X - mu) / sd
+
+    distinct = np.unique(X, axis=0)
+    if len(distinct) < 3:
+        return [0] * n
+
+    best_s, best_labels = None, None
+    for k in range(2, min(9, len(distinct))):
+        km = KMeans(n_clusters=k, n_init=10, random_state=0).fit(X)
+        labels = km.labels_
+        if len(set(labels.tolist())) < 2:
+            continue
+        # Silhouette on a fixed sample keeps this fast for ~17,000 players.
+        s = silhouette_score(
+            X, labels,
+            sample_size=min(n, 3000),
+            random_state=0,
+        )
+        if best_s is None or s > best_s:
+            best_s, best_labels = s, labels
+    if best_labels is None:
+        return [0] * n
+    return [int(x) for x in best_labels]
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows on Strength and Penalties together.
+
+    A row qualifies if no other row is at least as good on both goals and
+    strictly better on one. Qualifying rows are ranked by their average
+    standardized score on these two goals; at most 5% of rows are returned.
+    """
+    rows = _load(train_csv)["rows"]
+    n = len(rows)
+    cap = int(0.05 * n)
+    if cap == 0 or not rows:
+        return []
+    if any(c not in rows[0] for c in _SPOT_GOALS):
+        return []
+
+    G = np.array([[float(r[c]) for c in _SPOT_GOALS] for r in rows], dtype=float)
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    Z = (G - mu) / sd  # higher is better on both goals
+
+    # Pareto front: rows not dominated by any other row on both goals.
+    nondominated = np.ones(n, dtype=bool)
+    for i in range(n):
+        dominated = np.all(Z >= Z[i], axis=1) & np.any(Z > Z[i], axis=1)
+        if dominated.any():
+            nondominated[i] = False
+    cand = np.flatnonzero(nondominated)
+
+    score = Z.mean(axis=1)
+    order = cand[np.argsort(-score[cand], kind="stable")]
+    return sorted(int(i) for i in order[:cap])
+```
+
+### step12.py
+```python
+from step2 import guess as _guess_base
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate every goal for a player whose goal columns are unknown.
+
+    Returns {goal: (estimate, low, high)}. The estimate comes from a random
+    forest fitted on the training rows, and low..high is the 10th to 90th
+    percentile range of that model's held-out errors, shifted onto the
+    estimate. Goal cells in `row` are ignored, since only the input columns
+    are used.
+    """
+    est = _guess_base(train_csv, row)
+    return {g: (float(mid), float(lo), float(hi))
+            for g, (mid, lo, hi) in est.items()}
+```
+
+### step13.py
+```python
+from step3 import same as _same
+
+
+def same(xs, ys) -> bool:
+    """True if the two samples do NOT differ beyond run-to-run noise, False if the difference is real.
+
+    xs, ys: lists of numbers (e.g. run times). Uses the two-sided permutation
+    test at the 5% level from step3.
+    """
+    return _same(xs, ys)
+```
+
+### step14.py
+```python
+from step4 import drift as _drift
+from step4 import stream as _stream
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Decide keep (True) or not (False) for each row, in arrival order.
+
+    A row is kept if no training row or earlier streamed row dominates it on
+    the standardized goals, and its average standardized score is in the top
+    5% of the reference rows. Each decision uses only train_csv and the rows
+    before it.
+    """
+    return _stream(train_csv, list(rows))
+
+
+def drift(train_csv, rows) -> int | None:
+    """Index into rows of the first row where new rows stop looking like train_csv.
+
+    Compares the nearest-training-row distances of the last 20 rows with the
+    training set's own leave-one-out nearest-neighbour distances, using the
+    permutation test from step3. Returns None if no warning is raised.
+    """
+    return _drift(train_csv, list(rows))
+```
+
+### step15.py
+```python
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+from step1 import _load
+from step2 import _columns
+from step4 import _goal_layout
+
+# Goals the client asked about: weakness from the spot, and physical strength.
+_FOCUS = ("Penalties+", "Strength+")
+# Columns that identify a record rather than describe it; never used as causes.
+_IDENTIFIERS = {"num", "Rank", "Name", "url"}
+
+
+def _blame_for(X, badness):
+    """Blame per input column for one badness vector (higher = worse).
+
+    Uses the same rule as step5.blame: an input is blamed only if its "on"
+    state (any value above the column minimum) goes with worse rows.
+    """
+    m = X.shape[1]
+    out = np.zeros(m)
+    if m == 0 or np.all(badness == badness[0]):
+        return out
+
+    model = RandomForestRegressor(
+        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1
+    )
+    model.fit(X, badness)
+    imp = model.feature_importances_
+
+    for j in range(m):
+        col = X[:, j]
+        on = col != col.min()
+        off = ~on
+        if on.any() and off.any() and imp[j] > 0:
+            if badness[on].mean() > badness[off].mean():
+                out[j] = imp[j]
+    return out
+
+
+def blame(train_csv) -> list[str]:
+    """Input column names, most to blame for bad rows (bad on the goals) first.
+
+    Bad means weak on Penalties+ (weak from the spot) or weak on Strength+
+    (physically weak). Each focus goal gets its own blame ranking, and the two
+    rankings are averaged, so inputs that explain either weakness rise to the top.
+    Identifier columns are never blamed and sink to the end.
+    """
+    inputs, _ = _columns(train_csv)
+    if not inputs:
+        return []
+
+    d = _load(train_csv)
+    X = d["X"]
+    G = d["G"]
+    n = len(X)
+    if n < 2 or G.shape[1] == 0:
+        return list(inputs)
+
+    maxg, ming = _goal_layout(train_csv)
+    names = maxg + ming  # same column order as step1._load's G
+
+    # Standardize goals so higher is better on every column.
+    mu = G.mean(axis=0)
+    sd = G.std(axis=0)
+    sd[sd == 0] = 1.0
+    Z = (G - mu) / sd
+
+    focus = [names.index(g) for g in _FOCUS if g in names]
+    if not focus:
+        # None of the focus goals exist: fall back to all goals together.
+        focus = list(range(G.shape[1]))
+        badness_list = [-Z.mean(axis=1)]
+    else:
+        badness_list = [-Z[:, g] for g in focus]
+
+    feat = [j for j, c in enumerate(inputs) if c not in _IDENTIFIERS]
+    if not feat:
+        feat = list(range(len(inputs)))
+    Xf = X[:, feat]
+
+    total = np.zeros(len(inputs))
+    for badness in badness_list:
+        b = _blame_for(Xf, badness)
+        total[feat] += b / len(badness_list)
+
+    order = sorted(range(len(inputs)), key=lambda j: (-total[j], j))
+    return [inputs[j] for j in order]
+```
+
+### step16.py
+```python
+import numpy as np
+
+from step1 import _load
+from step2 import _columns, guess
+from step4 import _goal_layout, _goal_vec
+from step6 import _standardize, _goal_names, _is_num
+
+_REPS = 5000   # permutations per flag test
+_SEED = 0
+_ALPHA = 0.05  # family-wise level, shared across all flags tested
+
+
+def _perm_p(a, b, rng):
+    """Two-sided permutation p-value for the difference of means of a and b."""
+    obs = abs(float(a.mean()) - float(b.mean()))
+    if obs == 0.0:
+        return 1.0
+    pooled = np.concatenate([a, b])
+    n = len(a)
+    count = 0
+    for _ in range(_REPS):
+        p = rng.permutation(pooled)
+        if abs(float(p[:n].mean()) - float(p[n:].mean())) >= obs - 1e-12:
+            count += 1
+    return (count + 1) / (_REPS + 1)
+
+
+def _on_mask(col):
+    """A flag counts as 'on' when it is above its lowest training value."""
+    return col != col.min()
+
+
+def explain(train_csv) -> str:
+    """Plain-language reasons that separate good rows from the rest, checkable against the data."""
+    inputs, _ = _columns(train_csv)
+    G, mu, sd, Z = _standardize(train_csv)
+    n = len(G)
+    if n < 2 or G.shape[1] == 0:
+        return "Not enough measured rows to give reasons."
+
+    score = Z.mean(axis=1)
+    names = _goal_names(train_csv)
+    X = _load(train_csv)["X"]
+    top_cut = float(np.quantile(score, 0.95))
+    top = score >= top_cut
+
+    lines = [
+        f"These reasons come from {n} measured rows. Each row is scored by averaging "
+        f"its goals, each goal standardized so higher is better (minimised goals reversed): "
+        f"{', '.join(names)}.",
+        f"The top 5% of rows (score at least {top_cut:.2f}) are the reference for 'good'.",
+    ]
+
+    # Test each on/off flag against the score, with a Bonferroni correction for
+    # the number of flags tested, so that chance hits are not reported as reasons.
+    rng = np.random.default_rng(_SEED)
+    testable = []
+    for j, c in enumerate(inputs):
+        on = _on_mask(X[:, j])
+        off = ~on
+        if on.any() and off.any():
+            testable.append((j, c, on, off))
+
+    m = len(testable)
+    reasons = []
+    if m:
+        cutoff = _ALPHA / m
+        for j, c, on, off in testable:
+            diff = float(score[on].mean() - score[off].mean())
+            p = _perm_p(score[on], score[off], rng)
+            if p < cutoff:
+                reasons.append((abs(diff), c, diff, on, off, p))
+    reasons.sort(key=lambda t: -t[0])
+
+    if reasons:
+        lines.append(
+            f"Flags whose on/off difference holds up after correcting for {m} flags "
+            f"tested (family-wise 5%):"
+        )
+        for _, c, diff, on, off, p in reasons[:6]:
+            share_top = float(np.mean(on[top])) if top.any() else float("nan")
+            share_all = float(np.mean(on))
+            verb = "goes with better rows" if diff > 0 else "goes with weaker rows"
+            lines.append(
+                f"  - {c} being on {verb}: average score {score[on].mean():.2f} when on "
+                f"vs {score[off].mean():.2f} when off; it is on in {share_top:.0%} of "
+                f"top-5% rows against {share_all:.0%} of all rows."
+            )
+        lines.append(
+            "These are associations in past data, not proof that changing the flag "
+            "causes the difference. Check them against the recorded rows before relying on them."
+        )
+    else:
+        lines.append(
+            f"No single flag's on/off difference survives correction for {m} flags tested, "
+            "so this data gives no flag-level reason you can check."
+        )
+
+    return "\n".join(lines)
+
+
+def why(train_csv, row) -> str:
+    """One or two sentences on why this row, goals included, is good or bad."""
+    G, mu, sd, Z = _standardize(train_csv)
+    if len(G) == 0 or G.shape[1] == 0:
+        return "Cannot judge this row: the training data has no goal columns."
+
+    maxg, ming = _goal_layout(train_csv)
+    names = maxg + ming
+    median = float(np.median(Z.mean(axis=1)))
+
+    measured = all(_is_num(row.get(g)) for g in names)
+    if measured:
+        vec = np.array(_goal_vec(row, maxg, ming), dtype=float)
+        raw = {g: float(row[g]) for g in names}
+        source = "measured"
+    else:
+        est = guess(train_csv, row)
+        if not all(g in est for g in names):
+            return "Cannot judge this row: the goal estimates are incomplete."
+        mids = {g: est[g][0] for g in names}
+        vec = np.array(_goal_vec(mids, maxg, ming), dtype=float)
+        raw = mids
+        source = "estimated"
+
+    z = (vec - mu) / sd
+    s = float(z.mean())
+    verdict = "good" if s >= median else "weak"
+    i_min, i_max = int(np.argmin(z)), int(np.argmax(z))
+
+    first = (
+        f"This row rates {verdict}: its {source} goals average a standardized score of "
+        f"{s:.2f} against a training median of {median:.2f}."
+    )
+    second = (
+        f"Weakest on {names[i_min]} ({raw[names[i_min]]:.4g}, z {z[i_min]:.2f}); "
+        f"strongest on {names[i_max]} ({raw[names[i_max]]:.4g}, z {z[i_max]:.2f})"
+    )
+    if not measured:
+        second += "; these goal values are model estimates, not measurements, so check them on video"
+    return first + " " + second + "."
+```
+
+### step17.py
+```python
+from step7 import choose as _choose
+
+
+def choose(blind_csv, label, budget=30, goal=None) -> int:
+    """Find a good row by benchmarking at most `budget` builds.
+
+    blind_csv has every goal cell set to '?'. label(i) returns the goals of
+    row i as a dict and is called at most `budget` times; a further call
+    raises RuntimeError. If `goal` names one goal, only that goal is
+    optimised. Returns the index of the best row found.
+    """
+    budget = int(budget)
+    if budget < 1:
+        raise ValueError("budget must be at least 1")
+
+    calls = 0
+
+    def guarded_label(i):
+        nonlocal calls
+        if calls >= budget:
+            raise RuntimeError("benchmark budget exceeded")
+        calls += 1
+        return label(i)
+
+    return int(_choose(blind_csv, guarded_label, budget=budget, goal=goal))
+```
+
+### step18.py
+```python
+from step8 import fix as _fix
+
+
+def fix(train_csv, row, frozen=()) -> dict:
+    """Return the row's inputs with as few changes as possible so the row becomes good.
+
+    `row` is a bad row with its goals removed. "Good" is the verdict step6.why
+    uses: the average standardized goal score is at least the training median.
+    Columns named in `frozen` are never changed. Covers both client questions:
+    the shortlist fix for a close player, and the training focus that would
+    turn a weak penalty-taker into a reliable one.
+    """
+    return _fix(train_csv, row, tuple(frozen))
+```
+
+### step19.py
+```python
+from step9 import odd as _odd
+
+
+def odd(train_csv, rows) -> list[float]:
+    """One suspicion score per row in `rows` (goals included): higher means more likely a
+    glitch, a typo, or unlike anything in train_csv.
+
+    Delegates to step9.odd, which adds together flag novelty, goal anomaly (largest
+    absolute z-score against the training goals), and heavily weighted bad cells
+    (missing, non-numeric, or never-seen flag values).
+    """
+    rows = list(rows)
+    if not rows:
+        return []
+    return [float(s) for s in _odd(train_csv, rows)]
+```
+
+### step20.py
+```python
+import numpy as np
+from sklearn.ensemble import GradientBoostingRegressor
+
+from step1 import _load
+from step2 import _columns, _as_float, guess
+from step4 import _goal_layout
+from step6 import _standardize
+from step7 import choose
+from step10 import _BUDGET, _GUESS_ROWS, _composite, _pick, _r2
+
+_PENALTY = "Penalties+"
+_OVR = "OVR"
+
+
+def race(train_csv, test_csv) -> dict[str, float]:
+    """Compare the shortlist tuner with simple rivals on test_csv, and the
+    penalty guesser with an off-the-shelf model.
+
+    Shortlist scores: the true mean standardized goal of the build each method
+    picks after measuring at most _BUDGET test builds. Rivals are a uniform
+    random list and a plain "top overall rating" list (highest OVR first).
+    Penalty guesser scores: R^2 of predicted vs true Penalties+ on a subsample
+    of test rows, for step2.guess ("guess_ours") and for a gradient boosting
+    model ("guess_off_the_shelf"). Higher is better. Compare within each group.
+    """
+    inputs, goals = _columns(test_csv)
+    dt = _load(test_csv)
+    Gt, Xt, rows = dt["G"], dt["X"], dt["rows"]
+    nt = len(Gt)
+    zero = {"ours": 0.0, "random": 0.0, "top_overall": 0.0,
+            "guess_ours": 0.0, "guess_off_the_shelf": 0.0}
+    if not goals or nt == 0:
+        return zero
+
+    _, mu, sd, _ = _standardize(train_csv)
+    true = _composite(Gt, mu, sd)
+    k = Gt.shape[1]
+    budget = min(_BUDGET, nt)
+    result = {}
+
+    # Shortlist: the step7 tuner, measuring through the label callback.
+    ours_idx = choose(test_csv, lambda i: rows[i], budget=budget)
+    result["ours"] = float(true[ours_idx])
+
+    # Rival 1: uniform random list of the same size.
+    rng = np.random.default_rng(0)
+    rand_pick = rng.choice(nt, size=budget, replace=False)
+    meas = {int(i): Gt[i].copy() for i in rand_pick}
+    result["random"] = float(true[_pick(meas, k)])
+
+    # Rival 2: the simple top-overall-rating list (highest OVR first).
+    ovr = np.array([_as_float(r.get(_OVR, 0.0)) for r in rows], dtype=float)
+    order = sorted(range(nt), key=lambda i: (-ovr[i], i))
+    meas = {int(i): Gt[i].copy() for i in order[:budget]}
+    result["top_overall"] = float(true[_pick(meas, k)])
+
+    # Penalty guesser versus an off-the-shelf model, on Penalties+ itself.
+    _, train_goals = _columns(train_csv)
+    if inputs and _PENALTY in goals and _PENALTY in train_goals:
+        dtr = _load(train_csv)
+        Xtr, train_rows = dtr["X"], dtr["rows"]
+        n_g = min(_GUESS_ROWS, nt)
+        sub = np.random.default_rng(2).choice(nt, size=n_g, replace=False)
+        truth = np.array([float(rows[int(i)][_PENALTY]) for i in sub], dtype=float)
+
+        pred_ours = []
+        for i in sub:
+            est = guess(train_csv, rows[int(i)])
+            pred_ours.append(float(est[_PENALTY][0]))
+        result["guess_ours"] = _r2(truth, pred_ours)
+
+        ytr = np.array([float(r[_PENALTY]) for r in train_rows], dtype=float)
+        off = GradientBoostingRegressor(random_state=0)
+        off.fit(Xtr, ytr)
+        result["guess_off_the_shelf"] = _r2(truth, off.predict(Xt[sub]))
+    else:
+        result["guess_ours"] = 0.0
+        result["guess_off_the_shelf"] = 0.0
+
+    return {name: float(v) for name, v in result.items()}
+```
+
+### step21.py
+```python
+from step1 import best as _best
+from step11 import families as _families_std
+
+
+def families(train_csv) -> list[int]:
+    """One family (cluster) label per data row of train_csv, in file order.
+
+    Clusters on all input flags after standardizing each column, so large-scale
+    columns such as INCOME do not dominate the grouping.
+    """
+    return _families_std(train_csv)
+
+
+def best(train_csv) -> list[int]:
+    """Row indices of the unusually good rows (best on all goals together), at most 5% of rows.
+
+    Uses the Pareto-front ranking from step1: a row qualifies if no other row is
+    at least as good on every goal and strictly better on one.
+    """
+    return _best(train_csv)
+```
+
+### step22.py
+```python
+import numpy as np
+
+from step1 import _load
+from step2 import _columns, guess as _guess_base
+
+
+def guess(train_csv, row) -> dict[str, tuple[float, float, float]]:
+    """Estimate each goal for a customer whose goal columns are removed.
+
+    Returns {goal: (estimate, low, high)} for every goal. The estimate and the
+    interval come from step2.guess, a random forest with held-out-error
+    calibration. Results are clipped to the range of values seen in the
+    training data, so counts stay non-negative and RESPONSE stays within 0..1.
+    """
+    est = _guess_base(train_csv, row)
+    if not est:
+        return {}
+
+    _, goals = _columns(train_csv)
+    rows = _load(train_csv)["rows"]
+
+    out = {}
+    for g in goals:
+        if g not in est:
+            continue
+        mid, lo, hi = est[g]
+        vals = np.array([float(r[g]) for r in rows], dtype=float)
+        gmin, gmax = float(vals.min()), float(vals.max())
+
+        mid = min(max(float(mid), gmin), gmax)
+        lo = min(max(float(lo), gmin), gmax)
+        hi = min(max(float(hi), gmin), gmax)
+        lo, hi = min(lo, mid), max(hi, mid)
+        out[g] = (mid, lo, hi)
+    return out
+```
+
+### step23.py
+```python
+from step3 import same as _same
+
+
+def same(xs, ys) -> bool:
+    """True if the two samples are NOT really different (the gap is noise), False if the difference is real.
+
+    xs, ys: lists of numbers, e.g. purchase amounts before and after a campaign,
+    or purchases of families with and without teenagers. Uses the two-sided
+    permutation test on the difference of means at the 5% level from step3.
+    """
+    return _same(xs, ys)
+```
+
+### step24.py
+```python
+from step14 import drift as _drift
+from step14 import stream as _stream
+
+
+def stream(train_csv, rows) -> list[bool]:
+    """Decide keep (True) or not (False) for each row as it arrives.
+
+    A row is worth a welcome offer if no training row or earlier streamed row
+    beats it on every standardized goal, and its average standardized score is
+    in the top 5% of the reference rows. Each decision uses only train_csv and
+    the rows before it.
+    """
+    return _stream(train_csv, list(rows))
+
+
+def drift(train_csv, rows) -> int | None:
+    """Index into rows of the first row at which new sign-ups stop looking like train_csv.
+
+    Compares the nearest-training-row distances of the last 20 rows with the
+    training set's own leave-one-out nearest-neighbour distances, using the
+    permutation test from step3. Returns None if the rows never drift.
+    """
+    return _drift(train_csv, list(rows))
+```
+
+Step 25: blame.
+The client asks:
+  - "Why do some customers never respond to campaigns?"
+  - "What do the customers who complain have in common?"
+
+Write step25.py defining exactly these functions:
+def blame(train_csv) -> list[str]
+    Input column names, most to blame for bad rows (bad on the goals) first.
+
+Reuse the code in the earlier steps wherever you can: import what you need from them instead of rewriting it, and write only what is new.
+
+Reply with the complete step25.py in one ```python block.

@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 11094,
+ "duration_api_ms": 11082,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\nfrom step1 import _load\nfrom step2 import _columns\nfrom step4 import _goal_layout\nfrom step15 import _blame_for, _IDENTIFIERS\n\n# The client's two questions: customers who never respond to campaigns\n# (weak on RESPONSE+) and customers who complain (high COMPLAIN-, which is\n# negated in G, so fewer complaints means a higher, better value).\n_FOCUS = (\"RESPONSE+\", \"COMPLAIN-\")\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Bad means never responding to campaigns (weak RESPONSE+) or complaining\n    (weak COMPLAIN-). Each focus goal gets its own blame ranking from\n    step15._blame_for, and the rankings are averaged, so inputs that explain\n    either problem rise to the top. Identifier columns are never blamed and\n    sink to the end.\n    \"\"\"\n    inputs, _ = _columns(train_csv)\n    if not inputs:\n        return []\n\n    d = _load(train_csv)\n    X = d[\"X\"]\n    G = d[\"G\"]\n    n = len(X)\n    if n < 2 or G.shape[1] == 0:\n        return list(inputs)\n\n    maxg, ming = _goal_layout(train_csv)\n    names = maxg + ming  # same column order as step1._load's G\n\n    # Standardize goals so higher is better on every column.\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    Z = (G - mu) / sd\n\n    focus = [names.index(g) for g in _FOCUS if g in names]\n    if focus:\n        badness_list = [-Z[:, g] for g in focus]\n    else:\n        # Neither focus goal exists: fall back to all goals together.\n        badness_list = [-Z.mean(axis=1)]\n\n    feat = [j for j, c in enumerate(inputs) if c not in _IDENTIFIERS]\n    if not feat:\n        feat = list(range(len(inputs)))\n    Xf = X[:, feat]\n\n    total = np.zeros(len(inputs))\n    for badness in badness_list:\n        b = _blame_for(Xf, badness)\n        total[feat] += b / len(badness_list)\n\n    order = sorted(range(len(inputs)), key=lambda j: (-total[j], j))\n    return [inputs[j] for j in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "9df679d7-7eed-4d90-af16-4eb6ea97ae1f",
+ "total_cost_usd": 0.0043114,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23240,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2812,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23240,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2812,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23240,
+   "webSearchRequests": 0,
+   "costUSD": 0.0043114,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "600105f1-5c93-41d6-adce-ec590cffb488"
+}
