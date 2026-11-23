@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 3577,
+ "duration_api_ms": 3551,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step18.py: smallest change to a bad build that makes it good, leaving frozen settings alone.\n\nThe work is done by step8.fix, which picks a measured training build that agrees\nwith the frozen settings and changes as few other settings as possible. A single\ncolumn name passed as `frozen` is treated as one column, not as a sequence of characters.\n\"\"\"\n\nfrom step8 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the bad row's inputs with as few values changed as possible so the build is good.\n\n    `row` is a bad row with its goal columns removed. Columns named in `frozen` keep\n    their current values. Raises ValueError if `frozen` names a column that is not an\n    input, or if no measured build has the frozen settings.\n    \"\"\"\n    if isinstance(frozen, str):\n        frozen = (frozen,)\n    return _fix(train_csv, row, frozen=tuple(frozen))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "dd3b0594-a019-4a7a-8081-e144ffa71d73",
+ "total_cost_usd": 0.002654275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 18539,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 673,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 18539,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 673,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 18539,
+   "webSearchRequests": 0,
+   "costUSD": 0.002654275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "1af803ac-9517-4d74-8394-e420a4cc18ad"
+}
