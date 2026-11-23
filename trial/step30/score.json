@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 30,
+ "skill": "race",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "ours": 0.16896984924623115,
+  "top_income": 0.16896984924623115,
+  "random": 0.1658291457286432,
+  "ours_guess": 0.3117301078829807,
+  "rf_guess": 0.5299159319715209
+ }
+}
