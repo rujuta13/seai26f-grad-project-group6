@@ -1,0 +1,16 @@
+{
+ "domain": "marketing",
+ "step": 25,
+ "skill": "blame",
+ "ok": true,
+ "score": 0.017717038420184978,
+ "baseline": 0.03047795579998813,
+ "better": "higher",
+ "extra": {
+  "named": [
+   "MNTMEATPRODUCTS",
+   "MNTTOTAL",
+   "MNTWINES"
+  ]
+ }
+}
