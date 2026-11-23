@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4413,
+ "duration_api_ms": 4389,
+ "num_turns": 1,
+ "result": "```python\nfrom step17 import choose as _choose\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Return the index of the best row found, labelling at most `budget` rows.\n\n    blind_csv: CSV whose goal cells are all '?'.\n    label(i):  returns a dict {goal column: value} for row i. Called at most\n               `budget` times; a further call raises RuntimeError.\n    goal:      optional name of one goal column to optimise. If None, all goal\n               columns are optimised together (mean normalised rank).\n\n    Example requests:\n      - Best customers to target while test-mailing only 50 people:\n            choose(blind, label, budget=50)\n      - Best customers for store visits rather than web orders:\n            choose(blind, label, budget=50, goal=\"NUMSTOREPURCHASES+\")\n    \"\"\"\n    return _choose(blind_csv, label, budget=budget, goal=goal)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "72e653a6-3988-427c-ba38-63a82653facb",
+ "total_cost_usd": 0.00562715,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 41698,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 829,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 41698,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 829,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 41698,
+   "webSearchRequests": 0,
+   "costUSD": 0.00562715,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "896c2612-5571-481f-8d9a-70e7274d9ed1"
+}
