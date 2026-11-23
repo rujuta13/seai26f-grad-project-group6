@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 24198,
+ "duration_api_ms": 24173,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 30: race targeting and response guessing against standard rivals.\"\"\"\n\nimport csv\nimport os\nimport tempfile\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.metrics import r2_score\n\nfrom step1 import _read, _columns, _to_float_column\nfrom step2 import _encode_inputs\nfrom step22 import guess as _guess22\nfrom step27 import choose as _choose\n\n_TRIALS = 20\n\n\ndef _response_name(goals):\n    \"\"\"The response goal (name starts with RESPONSE), or None.\"\"\"\n    for name, _sign in goals:\n        if name.upper().startswith(\"RESPONSE\"):\n            return name\n    return None\n\n\ndef _norm01(y):\n    \"\"\"Min-max normalise finite values to [0, 1]; unusable cells count as 0.\"\"\"\n    fin = y[np.isfinite(y)]\n    if fin.size == 0:\n        return np.zeros(len(y))\n    lo = float(fin.min())\n    hi = float(fin.max())\n    span = hi - lo if hi - lo > 0 else 1.0\n    z = (y - lo) / span\n    return np.where(np.isfinite(z), z, 0.0)\n\n\ndef _r2(y, p):\n    \"\"\"R^2 over rows where both values are finite; 0.0 if undefined.\"\"\"\n    y = np.asarray(y, dtype=float)\n    p = np.asarray(p, dtype=float)\n    mask = np.isfinite(y) & np.isfinite(p)\n    if mask.sum() >= 2 and np.var(y[mask]) > 0:\n        return float(r2_score(y[mask], p[mask]))\n    return 0.0\n\n\ndef _targeting_scores(test_csv, fieldnames, test_rows, names, target):\n    \"\"\"Targeting keys: normalised response of the single row each method picks.\"\"\"\n    n = len(test_rows)\n    scores = {\"ours\": 0.0, \"random_search\": 0.0, \"highest_income\": 0.0}\n    if target is None or n == 0:\n        return scores\n\n    y = _to_float_column(test_rows, target)\n    tnorm = _norm01(y)\n    B = min(30, n)\n\n    # Our targeting: labelled search via step27.choose on a blinded copy.\n    def label(i):\n        return {g: test_rows[i].get(g) for g in names}\n\n    with tempfile.TemporaryDirectory() as d:\n        path = os.path.join(d, \"blind.csv\")\n        with open(path, \"w\", newline=\"\") as f:\n            w = csv.DictWriter(f, fieldnames=fieldnames)\n            w.writeheader()\n            for r in test_rows:\n                rr = {c: r.get(c) for c in fieldnames}\n                for g in names:\n                    rr[g] = \"?\"\n                w.writerow(rr)\n        ours_idx = _choose(path, label, budget=B, goal=target)\n    scores[\"ours\"] = float(tnorm[ours_idx])\n\n    # Random search rival: best of B random rows by the target, averaged over draws.\n    rs = []\n    for t in range(_TRIALS):\n        rng = np.random.default_rng(t)\n        pick = rng.choice(n, size=B, replace=False)\n        rs.append(float(np.max(tnorm[pick])))\n    scores[\"random_search\"] = float(np.mean(rs))\n\n    # Baseline: mail the highest-income customer.\n    if \"INCOME\" in fieldnames:\n        inc = _to_float_column(test_rows, \"INCOME\")\n        key = np.where(np.isfinite(inc), inc, -np.inf)\n        scores[\"highest_income\"] = float(tnorm[int(np.argmax(key))])\n\n    return scores\n\n\ndef _guesser_scores(train_csv, test_rows, goals, target):\n    \"\"\"Response guesser keys: R^2 of predicted response on test rows.\"\"\"\n    out = {\"guess:ours\": 0.0, \"guess:random_forest\": 0.0}\n    if target is None or not test_rows:\n        return out\n\n    y_test = _to_float_column(test_rows, target)\n\n    pred = np.full(len(test_rows), np.nan)\n    for i, row in enumerate(test_rows):\n        est = _guess22(train_csv, row)\n        pred[i] = est[target][0]\n    out[\"guess:ours\"] = _r2(y_test, pred)\n\n    fieldnames, train_rows = _read(train_csv)\n    inputs, _ = _columns(fieldnames)\n    n_test = len(test_rows)\n    rf_pred = np.full(n_test, np.nan)\n    if train_rows:\n        if inputs:\n            X, encode_row = _encode_inputs(train_rows, inputs)\n            Xte = np.vstack([encode_row(r) for r in test_rows]).astype(float)\n        else:\n            X = np.zeros((len(train_rows), 1))\n            Xte = np.zeros((n_test, 1))\n        yt = _to_float_column(train_rows, target)\n        fin = np.isfinite(yt)\n        if fin.sum() >= 2:\n            model = RandomForestRegressor(n_estimators=200, random_state=0, n_jobs=1)\n            model.fit(X[fin], yt[fin])\n            rf_pred = model.predict(Xte)\n    out[\"guess:random_forest\"] = _r2(y_test, rf_pred)\n\n    return out\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race our targeting and response guesser against standard rivals on test_csv.\n\n    Targeting keys (score = normalised response, in [0, 1], of the single customer\n    each method picks with a budget of up to 30 labelled rows; the response goal is\n    the goal whose name starts with \"RESPONSE\"):\n      - \"ours\": step27.choose\n      - \"random_search\": best of 30 random customers, averaged over repeated draws\n      - \"highest_income\": mail the customer with the highest INCOME\n    Guesser keys (score = R^2 of predicted response on test_csv):\n      - \"guess:ours\": step22.guess\n      - \"guess:random_forest\": scikit-learn RandomForestRegressor\n    \"\"\"\n    fieldnames, test_rows = _read(test_csv)\n    inputs, goals = _columns(fieldnames)\n    names = [g for g, _ in goals]\n    target = _response_name(goals)\n\n    keys = [\n        \"ours\",\n        \"random_search\",\n        \"highest_income\",\n        \"guess:ours\",\n        \"guess:random_forest\",\n    ]\n    if not test_rows or not goals:\n        return {k: 0.0 for k in keys}\n\n    scores: dict[str, float] = {}\n    scores.update(_targeting_scores(test_csv, fieldnames, test_rows, names, target))\n    scores.update(_guesser_scores(train_csv, test_rows, goals, target))\n    return {k: float(scores.get(k, 0.0)) for k in keys}\n```",
+ "stop_reason": "end_turn",
+ "session_id": "611477d6-ebf7-417e-a7a4-4bc7ef3ffd16",
+ "total_cost_usd": 0.006981774999999999,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 33391,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 5615,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33391,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 5615,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33391,
+   "webSearchRequests": 0,
+   "costUSD": 0.006981774999999999,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "11edbd24-a719-46c3-a432-74c523ed0fb1"
+}
