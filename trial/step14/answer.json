@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 17101,
+ "duration_api_ms": 17083,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step14.py: streaming keep/drop for scouting reports, and drift warnings for new seasons.\n\nBoth client questions are answered by the streaming logic already in step4:\n- stream: keep each incoming build that no earlier build (training or incoming) beats on every goal.\n- drift: warn at the end of the first block of new rows whose goal values differ from the training goals.\n\nCaveat: drift runs a separate 5% permutation test for every goal in every block, with no\nmultiple-comparison correction, so over a long season a false alarm becomes more likely.\n\"\"\"\n\nfrom step4 import drift as _drift\nfrom step4 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each incoming row that is not dominated on the goals by any row seen so far.\n\n    Uses only train_csv and the rows that have already arrived.\n    \"\"\"\n    return _stream(train_csv, list(rows))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` of the first row at which new rows stop looking like train_csv.\n\n    The warning is issued at the last row of the first block that differs, which is the\n    earliest point at which that block can be judged. Returns None if no block differs.\n    \"\"\"\n    return _drift(train_csv, list(rows))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "6a754737-1e40-4356-9123-c18896f2d5a9",
+ "total_cost_usd": 0.00376315,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 17106,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 3249,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17106,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 3249,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17106,
+   "webSearchRequests": 0,
+   "costUSD": 0.00376315,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "f8bc018d-92fa-481e-ad4a-64de6fb9cfa5"
+}
