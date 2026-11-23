@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4770,
+ "duration_api_ms": 4757,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 21: client-facing customer segmentation and best-customer lookup.\n\nfamilies(train_csv): sorts customers into kinds of shopper with KMeans, one\nlabel per row.\nbest(train_csv): row indices of the unusually good customers, judged on all\ngoals together, at most 5% of rows.\n\nNote for the client: best() ranks customers on all goals together. The\nrequest for \"busy across channels, loyal, no complaints\" names a subset of\ngoals and a complaint condition, which this function does not select on. A\nsubset-of-goals version would need its own function with a goal list parameter.\n\"\"\"\n\nfrom step1 import best as _best\nfrom step1 import families as _families\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    return [int(x) for x in _families(train_csv)]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows.\"\"\"\n    return [int(i) for i in _best(train_csv)]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "451c1797-29c4-4adb-9155-20bcb703d89d",
+ "total_cost_usd": 0.00369215,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 27338,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 549,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27338,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 549,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27338,
+   "webSearchRequests": 0,
+   "costUSD": 0.00369215,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c1b8e241-0f69-499f-9c94-bf5ae597f2ed"
+}
