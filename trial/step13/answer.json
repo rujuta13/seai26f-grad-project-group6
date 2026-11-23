@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2900,
+ "duration_api_ms": 2888,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step13.py: certify whether two sets of numbers really differ.\n\nAnswers the client's questions by reusing the two-sided permutation test in step3.\n\"\"\"\n\nfrom step3 import same as _same\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise),\n    False if the difference is statistically real at the 5% level.\n\n    xs, ys: lists of numbers (e.g. run times). Non-finite values are ignored.\n    If either sample is empty, the result is True.\n    \"\"\"\n    return bool(_same(xs, ys))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5832a6d6-740e-4ea2-a989-22184feea427",
+ "total_cost_usd": 0.0023454,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16836,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 481,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16836,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 481,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16836,
+   "webSearchRequests": 0,
+   "costUSD": 0.0023454,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "4155d13f-b934-4f98-af92-4705658d4fcb"
+}
