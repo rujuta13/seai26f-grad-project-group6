@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 21470,
+ "duration_api_ms": 21433,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\n\nfrom step1 import _column_kind, _load, best\nfrom step4 import stream\nfrom step16 import (\n    _MIN_EFFECT,\n    _MIN_GROUP,\n    _categorical_contrast,\n    _direction,\n    _goals,\n    _label,\n    _missing,\n    _num,\n    _numeric_contrast,\n    _signed_matrix,\n)\n\n\n_TOP_GROUP = 5     # most group-level contrasts listed in explain()\n_TOP_CUSTOMER = 3  # most input differences listed in why()\n\n\ndef _share(values, key):\n    present = [str(v) for v in values if not _missing(v)]\n    if not present:\n        return 0.0\n    return sum(1 for v in present if v == key) / len(present)\n\n\ndef _customer_gaps(header, rows, good_rows, row):\n    \"\"\"Input values of `row` that differ most from the recommended builds.\"\"\"\n    gaps = []\n    for c in header:\n        if _column_kind(c) != \"input\":\n            continue\n        v = row.get(c)\n        if _missing(v):\n            continue\n        all_vals = [r.get(c) for r in rows]\n        good_vals = [r.get(c) for r in good_rows]\n        x = _num(v)\n        if x is not None:\n            a = [u for u in (_num(w) for w in all_vals) if u is not None]\n            g = [u for u in (_num(w) for w in good_vals) if u is not None]\n            if len(a) < 2 or len(g) < _MIN_GROUP:\n                continue\n            sd = float(np.std(a))\n            if sd == 0.0:\n                continue\n            mean_g = float(np.mean(g))\n            effect = (mean_g - x) / sd\n            if abs(effect) < _MIN_EFFECT:\n                continue\n            if effect > 0:\n                note = f\"is lower than the recommended average of {mean_g:.3g}\"\n            else:\n                note = f\"is higher than the recommended average of {mean_g:.3g}\"\n            gaps.append(\n                (abs(effect), f\"{c} is {x:.3g}, which {note}\")\n            )\n        else:\n            key = str(v)\n            share_g = _share(good_vals, key)\n            share_a = _share(all_vals, key)\n            n_good = sum(1 for w in good_vals if not _missing(w))\n            if n_good < _MIN_GROUP or share_a <= 0.0:\n                continue\n            diff = share_a - share_g\n            if diff < _MIN_EFFECT * 0.1:\n                continue\n            gaps.append(\n                (\n                    diff,\n                    f\"{c} is '{key}', a value found in {share_g:.0%} of \"\n                    f\"recommended builds against {share_a:.0%} of all builds\",\n                )\n            )\n    gaps.sort(key=lambda t: -t[0])\n    return [text for _, text in gaps[:_TOP_CUSTOMER]]\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Reasons, in plain words a skeptical expert can check, for what makes rows good.\"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        return \"No past customers were given, so there is nothing to explain.\"\n    goals = _goals(header)\n    if not goals:\n        return \"No goal columns (names ending in '+' or '-') were found, so customers cannot be judged.\"\n\n    good_idx = best(train_csv)\n    n = len(rows)\n    if not good_idx:\n        return \"No customer qualifies as recommended in this data, so no reasons can be given.\"\n\n    good_rows = [rows[i] for i in good_idx]\n    lines = [\n        f\"The recommended group is {len(good_idx)} of {n} past customers. A customer \"\n        \"is in the group if no other customer is at least as good on every goal and \"\n        \"strictly better on one; if that set is larger than 5% of customers, the \"\n        \"best-ranked 5% of it (summed rank over the goals) is kept.\"\n    ]\n\n    goal_parts = []\n    for g in goals:\n        g_vals = [v for v in (_num(r.get(g)) for r in good_rows) if v is not None]\n        a_vals = [v for v in (_num(r.get(g)) for r in rows) if v is not None]\n        if g_vals and a_vals:\n            goal_parts.append(\n                f\"{_label(g)} median {float(np.median(g_vals)):.3g} against \"\n                f\"{float(np.median(a_vals)):.3g} for all customers \"\n                f\"({_direction(g)})\"\n            )\n    if goal_parts:\n        lines.append(\"On the goals: \" + \"; \".join(goal_parts) + \".\")\n\n    contrasts = []\n    for c in (c for c in header if _column_kind(c) == \"input\"):\n        all_vals = [r.get(c) for r in rows]\n        good_vals = [r.get(c) for r in good_rows]\n        present = [v for v in all_vals if not _missing(v)]\n        numeric = bool(present) and all(_num(v) is not None for v in present)\n        found = (\n            _numeric_contrast(c, all_vals, good_vals)\n            if numeric\n            else _categorical_contrast(c, all_vals, good_vals)\n        )\n        if found is not None and found[0] >= _MIN_EFFECT:\n            contrasts.append(found)\n\n    contrasts.sort(key=lambda t: -t[0])\n    if contrasts:\n        lines.append(\n            \"Customer traits that stand out in the recommended group (at least half \"\n            \"a standard deviation, largest first):\"\n        )\n        for _, text in contrasts[:_TOP_GROUP]:\n            lines.append(f\"  - {text}.\")\n    else:\n        lines.append(\"No customer trait differs clearly between the recommended group and all customers.\")\n\n    lines.append(\n        f\"Caveat: these are patterns in {n} past customers. They show association, \"\n        \"not cause. Before committing the full campaign budget, test the group against \"\n        \"a held-out or randomly chosen comparison group.\"\n    )\n    return \"\\n\".join(lines)\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row, goals included, is good or bad.\"\"\"\n    header, rows = _load(train_csv)\n    goals = _goals(header)\n    if not rows or not goals:\n        return \"Cannot judge this customer: no past customers or goal columns were given.\"\n\n    values = []\n    for g in goals:\n        v = _num(row.get(g))\n        if v is None:\n            return (\n                f\"Cannot judge this customer: goal '{_label(g)}' is missing or not a \"\n                \"finite number.\"\n            )\n        values.append(v)\n\n    kept = bool(stream(train_csv, [row])[0])\n\n    G = _signed_matrix(goals, rows)\n    target = np.array(\n        [(-1.0 if _column_kind(g) == \"max\" else 1.0) * v for g, v in zip(goals, values)],\n        dtype=float,\n    )\n    le = (G <= target).all(axis=1)\n    lt = (G < target).any(axis=1)\n    dominators = int((le & lt).sum())\n\n    if kept:\n        first = (\n            \"Rated good: no past customer is at least as good on every goal and \"\n            \"strictly better on at least one.\"\n        )\n    else:\n        first = (\n            f\"Rated low value: {dominators} past customer(s) are at least as good on \"\n            \"every goal and strictly better on at least one.\"\n        )\n\n    beaten = [float((G[:, j] > target[j]).mean()) for j in range(len(goals))]\n    parts = [f\"{_label(g)} {v:g} beats {b:.0%} of past customers\"\n             for g, v, b in zip(goals, values, beaten)]\n    second = \"Share of past customers beaten, per goal: \" + \"; \".join(parts) + \".\"\n\n    actions = []\n    if not kept:\n        good_idx = best(train_csv)\n        if good_idx:\n            good_rows = [rows[i] for i in good_idx]\n            gaps = _customer_gaps(header, rows, good_rows, row)\n            if gaps:\n                actions = [\n                    \"Traits that differ from the recommended group, which may be \"\n                    \"worth checking: \" + \"; \".join(gaps) + \".\"\n                ]\n\n    return \" \".join([first, second] + actions)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1a22d002-c9e9-49db-800a-d429f522f868",
+ "total_cost_usd": 0.007274275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 38939,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4813,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 38939,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4813,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 38939,
+   "webSearchRequests": 0,
+   "costUSD": 0.007274275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "3e23158d-4b93-4547-a110-3e66ef5955d9"
+}
