@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 7083,
+ "duration_api_ms": 7070,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 18: client-facing fix for a single build.\n\nfix(train_csv, row, frozen=()): returns the inputs of a bad build with as few\nvalues changed as possible so that it is rated good. Columns named in `frozen`\nnever change.\n\nNote for the client: fix() rates builds on all goals together. The penalty-taker\nrequest concerns one goal (Penalties+), and this signature has no goal\nparameter, so it can only partly answer that question. A goal-subset version\nwould need its own function with a goal list parameter, as noted in step11.\n\"\"\"\n\nimport csv\n\nimport step8\n\n\ndef _input_columns(train_csv) -> list[str]:\n    with open(train_csv, newline=\"\") as f:\n        cols = list(csv.DictReader(f).fieldnames or [])\n    return [c for c in cols if not c.endswith((\"+\", \"-\", \"X\"))]\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the inputs of `row` with as few values changed as possible so that\n    the build is rated good. Columns named in `frozen` must not change.\n\n    `row` is a bad build with its goal columns removed. The result has one entry\n    per input column of train_csv.\n    \"\"\"\n    frozen = tuple(frozen)\n    inputs = _input_columns(train_csv)\n\n    proposed = step8.fix(train_csv, row, frozen=frozen)\n\n    out = {}\n    for c in inputs:\n        if c in frozen:\n            out[c] = row.get(c)\n        elif c in proposed:\n            out[c] = proposed[c]\n        else:\n            out[c] = row.get(c)\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "3a294f28-a3be-4309-9edf-6f941d0e890a",
+ "total_cost_usd": 0.003712025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23961,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1433,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23961,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1433,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23961,
+   "webSearchRequests": 0,
+   "costUSD": 0.003712025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e7c8c1fb-72f8-4c70-a19e-7397776b88ee"
+}
