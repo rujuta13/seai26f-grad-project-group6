@@ -1,0 +1,12 @@
+{
+ "domain": "players",
+ "step": 17,
+ "skill": "choose",
+ "ok": true,
+ "score": 0.29128517321443553,
+ "baseline": 0.23371240173362576,
+ "better": "lower",
+ "extra": {
+  "best_possible": 0.09223131928520187
+ }
+}
