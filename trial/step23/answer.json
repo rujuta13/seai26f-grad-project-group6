@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2452,
+ "duration_api_ms": 2430,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step23.py: certify whether two sets of customer measurements really differ.\n\nBoth client questions reduce to comparing two samples of numbers: purchases (or\nresponse) for customers who were and were not in the last campaign, and purchases\nfor families with and without teenagers. step3 already implements that check as a\ntwo-sided permutation test on the difference of means at the 5% level, so this\nmodule reuses it rather than rewriting it.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step3 import same as _permutation_same\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the two samples do NOT differ beyond noise, False if the gap is real.\n\n    xs, ys: lists of numbers (e.g. purchase counts of two groups of customers).\n    \"\"\"\n    return _permutation_same(xs, ys)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "f75f85fb-f4d7-498c-aa3a-dd80891d54f7",
+ "total_cost_usd": 0.004329400000000001,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 33104,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 382,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33104,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 382,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33104,
+   "webSearchRequests": 0,
+   "costUSD": 0.004329400000000001,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "281cfcf3-07ee-42c0-bde5-bb735c3e5438"
+}
