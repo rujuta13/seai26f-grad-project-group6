@@ -1,0 +1,14 @@
+{
+ "domain": "marketing",
+ "step": 26,
+ "skill": "justify",
+ "ok": true,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "columns_mentioned": 13,
+  "explain_words": 330,
+  "why_words": 69
+ }
+}
