@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 7146,
+ "duration_api_ms": 7117,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step28.py: smallest input nudge that brings a drifting customer back to good.\n\nBoth client questions are answered by the same search, so fix() delegates to\nstep18.fix, which in turn wraps step8.fix:\n\n* \"This customer is drifting away: what's the smallest nudge that brings them\n  back?\" Call fix() with the customer's current inputs as `row`. The result\n  changes as few input columns as possible; columns in `frozen` never change.\n* \"Which product offer would turn a deal-only shopper into a regular one?\" Call\n  fix() with the shopper's inputs and `frozen` set to every column that cannot\n  be changed by an offer. The changed columns are the candidate levers.\n\nObserved builds on the training Pareto front are preferred, and predicted\nbuilds (step2.guess via step8) are used only when they need strictly fewer\nchanges. Caveat: if no good configuration is found within the search budget,\nthe result is the lowest-scoring predicted configuration and is not guaranteed\nto be good.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step18 import fix as _fix\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Inputs of `row` with as few values changed as possible so the row becomes good.\n\n    train_csv: path to the MOOT training csv.\n    row: dict {input column name: value} for a bad row, with goal columns removed.\n    frozen: input column names that must not change. A single column name given\n        as a string is treated as one frozen column.\n    Returns a fresh {input column name: value} dict for every input column of the\n    training file. The caller's `row` is not modified.\n    \"\"\"\n    return _fix(train_csv, dict(row), frozen=frozen)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "8628fbdf-9674-42ba-afbc-0b9ad8bd5da3",
+ "total_cost_usd": 0.005596775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 38983,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1447,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 38983,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1447,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 38983,
+   "webSearchRequests": 0,
+   "costUSD": 0.005596775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ca73a0b1-df27-4682-85e6-d72bcd75977a"
+}

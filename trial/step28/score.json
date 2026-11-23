@@ -1,0 +1,13 @@
+{
+ "domain": "marketing",
+ "step": 28,
+ "skill": "fix",
+ "ok": false,
+ "score": null,
+ "baseline": null,
+ "better": null,
+ "extra": {
+  "error": "TypeError: list indices must be integers or slices, not str",
+  "trace": "Traceback (most recent call last):\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/harness/score.py\", line 52, in score\n    out = c.SCORE[skill](load(code_dir, n), env_for(domain, tmp))\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/harness/contracts.py\", line 309, in score_fix\n    new = m.fix(env[\"train_csv\"], without(r, gs), frozen)\n  File \"/Users/kunjpatel/Desktop/seai26f-grad-project-group6/.runs/t4-r3/trial/step28.py\", line 34, in fix\n    return _fix(train_csv, dict(row), frozen=frozen)\nTypeError: list indices must be integers or slices, not str\n"
+ }
+}
