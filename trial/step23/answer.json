@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5062,
+ "duration_api_ms": 5049,
+ "num_turns": 1,
+ "result": "```python\nimport math\n\nimport numpy as np\n\n\ndef _clean(values):\n    \"\"\"Convert to a 1-D float array, dropping missing and non-finite entries.\"\"\"\n    out = []\n    for v in values:\n        try:\n            f = float(v)\n        except (TypeError, ValueError):\n            continue\n        if math.isfinite(f):\n            out.append(f)\n    return np.asarray(out, dtype=float)\n\n\ndef _average_ranks(values):\n    \"\"\"Ranks 1..N with ties replaced by their average rank.\"\"\"\n    values = np.asarray(values, dtype=float)\n    uniq, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)\n    starts = np.cumsum(counts) - counts\n    avg = starts + (counts + 1) / 2.0\n    return avg[np.asarray(inverse).reshape(-1)]\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if xs and ys are NOT really different (the gap is noise), False otherwise.\n\n    Two-sided permutation test on the difference in mean rank (Mann-Whitney\n    style). No distributional assumption, so it is robust to skewed values and\n    outliers. Deterministic (fixed seed). Significance level 0.05.\n    Missing or non-finite entries are ignored.\n    \"\"\"\n    a = _clean(xs)\n    b = _clean(ys)\n    n, m = len(a), len(b)\n    if n == 0 or m == 0:\n        # No evidence of any difference.\n        return True\n\n    pooled = np.concatenate([a, b])\n    if np.all(pooled == pooled[0]):\n        # Identical values everywhere: no difference.\n        return True\n\n    ranks = _average_ranks(pooled)\n    N = n + m\n    observed = abs(ranks[:n].mean() - ranks[n:].mean())\n\n    rng = np.random.default_rng(0)\n    total = 10000\n    chunk = 1000\n    extreme = 0\n    done = 0\n    tol = 1e-12\n    while done < total:\n        size = min(chunk, total - done)\n        perm = np.argsort(rng.random((size, N)), axis=1)\n        R = ranks[perm]\n        diffs = np.abs(R[:, :n].mean(axis=1) - R[:, n:].mean(axis=1))\n        extreme += int(np.sum(diffs >= observed - tol))\n        done += size\n\n    p_value = (extreme + 1) / (total + 1)\n    return bool(p_value >= 0.05)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5109afe0-ce00-44f5-ad34-1ee618359370",
+ "total_cost_usd": 0.004170025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 28421,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1234,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28421,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1234,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28421,
+   "webSearchRequests": 0,
+   "costUSD": 0.004170025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "fa5fa375-a519-4600-bd6d-c90c7dca22d9"
+}
