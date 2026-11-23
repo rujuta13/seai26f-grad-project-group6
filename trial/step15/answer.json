@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 19723,
+ "duration_api_ms": 19711,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\n\nfrom step1 import _load\nfrom step2 import _columns\nfrom step4 import _goal_layout\n\n# Goals the client asked about: weakness from the spot, and physical strength.\n_FOCUS = (\"Penalties+\", \"Strength+\")\n# Columns that identify a record rather than describe it; never used as causes.\n_IDENTIFIERS = {\"num\", \"Rank\", \"Name\", \"url\"}\n\n\ndef _blame_for(X, badness):\n    \"\"\"Blame per input column for one badness vector (higher = worse).\n\n    Uses the same rule as step5.blame: an input is blamed only if its \"on\"\n    state (any value above the column minimum) goes with worse rows.\n    \"\"\"\n    m = X.shape[1]\n    out = np.zeros(m)\n    if m == 0 or np.all(badness == badness[0]):\n        return out\n\n    model = RandomForestRegressor(\n        n_estimators=300, min_samples_leaf=2, random_state=0, n_jobs=1\n    )\n    model.fit(X, badness)\n    imp = model.feature_importances_\n\n    for j in range(m):\n        col = X[:, j]\n        on = col != col.min()\n        off = ~on\n        if on.any() and off.any() and imp[j] > 0:\n            if badness[on].mean() > badness[off].mean():\n                out[j] = imp[j]\n    return out\n\n\ndef blame(train_csv) -> list[str]:\n    \"\"\"Input column names, most to blame for bad rows (bad on the goals) first.\n\n    Bad means weak on Penalties+ (weak from the spot) or weak on Strength+\n    (physically weak). Each focus goal gets its own blame ranking, and the two\n    rankings are averaged, so inputs that explain either weakness rise to the top.\n    Identifier columns are never blamed and sink to the end.\n    \"\"\"\n    inputs, _ = _columns(train_csv)\n    if not inputs:\n        return []\n\n    d = _load(train_csv)\n    X = d[\"X\"]\n    G = d[\"G\"]\n    n = len(X)\n    if n < 2 or G.shape[1] == 0:\n        return list(inputs)\n\n    maxg, ming = _goal_layout(train_csv)\n    names = maxg + ming  # same column order as step1._load's G\n\n    # Standardize goals so higher is better on every column.\n    mu = G.mean(axis=0)\n    sd = G.std(axis=0)\n    sd[sd == 0] = 1.0\n    Z = (G - mu) / sd\n\n    focus = [names.index(g) for g in _FOCUS if g in names]\n    if not focus:\n        # None of the focus goals exist: fall back to all goals together.\n        focus = list(range(G.shape[1]))\n        badness_list = [-Z.mean(axis=1)]\n    else:\n        badness_list = [-Z[:, g] for g in focus]\n\n    feat = [j for j, c in enumerate(inputs) if c not in _IDENTIFIERS]\n    if not feat:\n        feat = list(range(len(inputs)))\n    Xf = X[:, feat]\n\n    total = np.zeros(len(inputs))\n    for badness in badness_list:\n        b = _blame_for(Xf, badness)\n        total[feat] += b / len(badness_list)\n\n    order = sorted(range(len(inputs)), key=lambda j: (-total[j], j))\n    return [inputs[j] for j in order]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "5fd7d0eb-eac2-4b1b-9d16-ca9a7e18e11b",
+ "total_cost_usd": 0.0042719,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16596,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 4394,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16596,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 4394,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16596,
+   "webSearchRequests": 0,
+   "costUSD": 0.0042719,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "be63c636-c072-4cd0-96e7-f4a259956ac9"
+}
