@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 23652,
+ "duration_api_ms": 23623,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 20: race the shortlist and the penalty guesser against standard rivals.\"\"\"\n\nimport numpy as np\nfrom sklearn.ensemble import RandomForestRegressor\nfrom sklearn.metrics import r2_score\n\nfrom step1 import _read, _columns, _to_float_column, best\nfrom step2 import _encode_inputs, guess\n\n_TRIALS = 20\n\n\ndef _oriented(rows, goals):\n    \"\"\"Oriented goal matrix (larger is better), NaN where a value is unusable.\"\"\"\n    if not goals or not rows:\n        return np.zeros((len(rows), 0))\n    return np.column_stack(\n        [sign * _to_float_column(rows, name) for name, sign in goals]\n    )\n\n\ndef _quality(S):\n    \"\"\"Mean min-max normalised goal value per row; unusable cells count as 0.\"\"\"\n    G = S.shape[1]\n    if G == 0:\n        return np.zeros(S.shape[0])\n    lo = np.zeros(G)\n    hi = np.ones(G)\n    for g in range(G):\n        col = S[:, g]\n        fin = col[np.isfinite(col)]\n        if fin.size:\n            lo[g] = float(fin.min())\n            hi[g] = float(fin.max())\n    span = np.where(hi - lo > 0, hi - lo, 1.0)\n    Z = (S - lo) / span\n    Z = np.where(np.isfinite(Z), Z, 0.0)\n    return Z.mean(axis=1)\n\n\ndef _penalty_index(goals):\n    \"\"\"Index of the penalties goal if present, else the first goal.\"\"\"\n    for j, (name, _sign) in enumerate(goals):\n        if name.lower().startswith(\"penalt\"):\n            return j\n    return 0 if goals else None\n\n\ndef _r2(y, p):\n    \"\"\"R^2 over rows where both values are finite; 0.0 if undefined.\"\"\"\n    y = np.asarray(y, dtype=float)\n    p = np.asarray(p, dtype=float)\n    mask = np.isfinite(y) & np.isfinite(p)\n    if mask.sum() >= 2 and np.var(y[mask]) > 0:\n        return float(r2_score(y[mask], p[mask]))\n    return 0.0\n\n\ndef race(train_csv, test_csv) -> dict[str, float]:\n    \"\"\"Race our methods against standard rivals on test_csv. Higher is better.\n\n    Shortlist keys (score = mean min-max normalised goal value of the chosen\n    rows, in [0, 1]; the shortlist size k is the size of step1.best on test_csv):\n      - \"ours\": step1.best applied to test_csv (Pareto shortlist, goal-based)\n      - \"top_overall\": the k rows with the highest OVR rating\n      - \"random_subset\": mean over repeated random draws of k rows\n\n    Penalty guesser keys (score = R^2 of predicted penalty values on test_csv,\n    where the penalty goal is the goal whose name starts with \"Penalt\"):\n      - \"guess:ours\": step2.guess median estimate\n      - \"guess:random_forest\": scikit-learn RandomForestRegressor\n\n    Note: the shortlist is selected from test rows using their goal values,\n    so it is a descriptive comparison of selections, not a prediction from\n    training data.\n    \"\"\"\n    fieldnames, test_rows = _read(test_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(test_rows)\n    keys = [\n        \"ours\",\n        \"top_overall\",\n        \"random_subset\",\n        \"guess:ours\",\n        \"guess:random_forest\",\n    ]\n    if n == 0 or not goals:\n        return {k: 0.0 for k in keys}\n\n    scores: dict[str, float] = {}\n\n    # Shortlist versus simple \"top overall rating\" list.\n    S = _oriented(test_rows, goals)\n    qual = _quality(S)\n    front = list(best(test_csv))\n    k = len(front)\n\n    if k == 0:\n        scores[\"ours\"] = 0.0\n        scores[\"top_overall\"] = 0.0\n        scores[\"random_subset\"] = 0.0\n    else:\n        scores[\"ours\"] = float(qual[np.asarray(front, dtype=int)].mean())\n\n        if \"OVR\" in fieldnames:\n            ovr = _to_float_column(test_rows, \"OVR\")\n            key = np.where(np.isfinite(ovr), ovr, -np.inf)\n            order = np.argsort(-key, kind=\"stable\")[:k]\n            scores[\"top_overall\"] = float(qual[order].mean())\n        else:\n            scores[\"top_overall\"] = 0.0\n\n        rs = []\n        for t in range(_TRIALS):\n            rng = np.random.default_rng(t)\n            pick = rng.choice(n, size=k, replace=False)\n            rs.append(float(qual[pick].mean()))\n        scores[\"random_subset\"] = float(np.mean(rs))\n\n    # Penalty guesser versus off-the-shelf model.\n    pj = _penalty_index(goals)\n    pname = goals[pj][0]\n    y_test = _to_float_column(test_rows, pname)\n\n    guess_pred = np.full(n, np.nan)\n    for i, row in enumerate(test_rows):\n        est = guess(train_csv, row)\n        guess_pred[i] = est[pname][0]\n    scores[\"guess:ours\"] = _r2(y_test, guess_pred)\n\n    train_fieldnames, train_rows = _read(train_csv)\n    train_inputs, _train_goals = _columns(train_fieldnames)\n    rf_pred = np.full(n, np.nan)\n    if train_rows:\n        if train_inputs:\n            X, encode_row = _encode_inputs(train_rows, train_inputs)\n            Xte = np.vstack([encode_row(r) for r in test_rows]).astype(float)\n        else:\n            X = np.zeros((len(train_rows), 1))\n            Xte = np.zeros((n, 1))\n        yt = _to_float_column(train_rows, pname)\n        fin = np.isfinite(yt)\n        if fin.sum() >= 2:\n            model = RandomForestRegressor(n_estimators=200, random_state=0, n_jobs=1)\n            model.fit(X[fin], yt[fin])\n            rf_pred = model.predict(Xte)\n    scores[\"guess:random_forest\"] = _r2(y_test, rf_pred)\n\n    return {k: float(v) for k, v in scores.items()}\n```",
+ "stop_reason": "end_turn",
+ "session_id": "0926aa2c-1fb0-48f2-91a5-70cbb996b873",
+ "total_cost_usd": 0.00599265,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23826,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 6028,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23826,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 6028,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23826,
+   "webSearchRequests": 0,
+   "costUSD": 0.00599265,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "9a93a82b-f65e-4e68-b7a7-9988a9994b00"
+}
