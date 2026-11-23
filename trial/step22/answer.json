@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 6565,
+ "duration_api_ms": 6541,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 22: client-facing guess for a single customer.\n\nguess(train_csv, row): estimates every goal for a customer whose goal columns\nare removed, returning (estimate, low, high) per goal.\n\nFor the client's two questions, read these goals from the result:\n  * NUMWEBPURCHASES+ and NUMSTOREPURCHASES+: expected online vs in-store purchases.\n  * RESPONSE+: whether the customer answers the next campaign (0 or 1). Its\n    estimate and interval are clipped to [0, 1].\n\nThe result covers every goal in train_csv, as step12 provides. Wide intervals\nmean low confidence.\n\"\"\"\n\nimport csv\nimport math\n\nimport step12\n\n\ndef _goal_columns(train_csv) -> list[str]:\n    with open(train_csv, newline=\"\") as f:\n        cols = list(csv.DictReader(f).fieldnames or [])\n    return [c for c in cols if c.endswith((\"+\", \"-\"))]\n\n\ndef _finite_or(value, fallback):\n    try:\n        f = float(value)\n    except (TypeError, ValueError):\n        return float(fallback)\n    return f if math.isfinite(f) else float(fallback)\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a customer `row` (goal columns removed).\n\n    Returns {goal: (estimate, low, high)} where low..high is the range the true\n    value should fall in with fairly high confidence.\n    \"\"\"\n    goals = _goal_columns(train_csv)\n    raw = step12.guess(train_csv, row)\n\n    out: dict[str, tuple[float, float, float]] = {}\n    for g in goals:\n        est, low, high = raw.get(g, (0.0, -math.inf, math.inf))\n        est = _finite_or(est, 0.0)\n        low = _finite_or(low, est)\n        high = _finite_or(high, est)\n\n        if g == \"RESPONSE+\":\n            est = min(max(est, 0.0), 1.0)\n            low = min(max(low, 0.0), 1.0)\n            high = min(max(high, 0.0), 1.0)\n\n        low = min(low, est)\n        high = max(high, est)\n        out[g] = (est, low, high)\n\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "c75b6190-2bc7-40a5-8b19-9a6a030732da",
+ "total_cost_usd": 0.00427315,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 27682,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1625,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 27682,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1625,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 27682,
+   "webSearchRequests": 0,
+   "costUSD": 0.00427315,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e5b03475-dfb2-4338-857f-7d5c3debb972"
+}
