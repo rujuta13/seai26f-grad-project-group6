@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2152,
+ "duration_api_ms": 2143,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step26.py: justify the campaign group and single-customer ratings in plain words.\n\nBoth client questions are answered by the explanations already in step16 (and step6 underneath):\n- explain: reasons that make rows good, checkable by a skeptic.\n- why: one or two sentences on why a given row is rated good or bad.\n\"\"\"\n\nfrom step16 import explain as _explain\nfrom step16 import why as _why\n\n\ndef explain(train_csv) -> str:\n    \"\"\"Plain-words reasons for what makes rows good, checkable by a skeptic.\"\"\"\n    return str(_explain(train_csv))\n\n\ndef why(train_csv, row) -> str:\n    \"\"\"One or two sentences on why this row (goals included) is good or bad.\"\"\"\n    return str(_why(train_csv, row))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "afd19766-3111-419b-aa62-59219210db6c",
+ "total_cost_usd": 0.003035525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22697,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 396,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22697,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 396,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22697,
+   "webSearchRequests": 0,
+   "costUSD": 0.003035525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ad3c122c-7616-4331-83f6-b0a92e136572"
+}
