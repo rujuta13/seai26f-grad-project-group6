@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5835,
+ "duration_api_ms": 5810,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step24.py: flow tools for customer sign-ups arriving one at a time.\n\nstream() keeps a new customer when no earlier customer (training or already streamed)\nis at least as good on every goal and strictly better on one. The customer goals are\nthe purchase channels, web visits, complaints, campaign response and tenure, so a kept\ncustomer is one worth a welcome offer.\n\ndrift() warns when the last _WINDOW new customers sit significantly further from the\ntraining customers than training customers sit from each other.\n\nBoth are reused from step14, which wraps step4 for flow data. The customer file has no\nidentifier columns (num, Name, url), so step14's identifier filter removes nothing and\nthe behaviour matches step4 on every trait column.\n\"\"\"\nfrom __future__ import annotations\n\nfrom step14 import drift as _drift\nfrom step14 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or discard (False) each new customer, in arrival order.\n\n    A customer is kept if no training customer and no earlier streamed customer is at\n    least as good on every goal and strictly better on at least one.\n    \"\"\"\n    return _stream(train_csv, rows)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the first new customer at which the sign-ups stop resembling train_csv.\n\n    Returns None if no warning is raised.\n    \"\"\"\n    return _drift(train_csv, rows)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "463135ee-dff1-4581-9da2-0f9b9acece30",
+ "total_cost_usd": 0.0047819,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 33456,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1199,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 33456,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1199,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 33456,
+   "webSearchRequests": 0,
+   "costUSD": 0.0047819,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c858423a-9b17-4ee9-bb5f-f7cb8a98f8a2"
+}
