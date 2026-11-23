@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 10011,
+ "duration_api_ms": 9990,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\nfrom sklearn.neighbors import NearestNeighbors\n\nfrom step1 import _read, _columns\nfrom step2 import _encode_inputs\n\n_K = 25\n_MIN_LOCAL = 3\n\n\ndef _goal_values(rows, name):\n    \"\"\"Finite float values of a goal column, NaN where unusable.\"\"\"\n    out = np.full(len(rows), np.nan)\n    for i, r in enumerate(rows):\n        try:\n            v = float(r.get(name))\n        except (TypeError, ValueError, AttributeError):\n            continue\n        if np.isfinite(v):\n            out[i] = v\n    return out\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate each goal for `row` from similar training builds.\n\n    `row` has no goal columns; any goal keys present are ignored. Neighbours are\n    the training rows closest in standardised input space. For each goal the\n    estimate is the median of the neighbours' finite goal values, and low..high\n    is their 10th to 90th percentile range. If too few neighbours have a finite\n    value for a goal, the whole training column is used instead.\n    \"\"\"\n    fieldnames, rows = _read(train_csv)\n    inputs, goals = _columns(fieldnames)\n    n = len(rows)\n\n    if n == 0 or not goals:\n        return {name: (float(\"nan\"), float(\"-inf\"), float(\"inf\"))\n                for name, _ in goals}\n\n    # Input features only; goal columns of `row` are never read.\n    if inputs:\n        X, encode_row = _encode_inputs(rows, inputs)\n        mu = X.mean(axis=0)\n        sd = X.std(axis=0)\n        sd = np.where(sd > 0, sd, 1.0)\n        Z = (X - mu) / sd\n        z = (encode_row(row) - mu) / sd\n    else:\n        Z = np.zeros((n, 1))\n        z = np.zeros(1)\n\n    k = min(_K, n)\n    nn = NearestNeighbors(n_neighbors=k).fit(Z)\n    _, idx = nn.kneighbors(z.reshape(1, -1))\n    idx = idx[0]\n\n    result: dict[str, tuple[float, float, float]] = {}\n    for name, _sign in goals:\n        Y = _goal_values(rows, name)\n        local = Y[idx]\n        local = local[np.isfinite(local)]\n        if local.size < _MIN_LOCAL:\n            local = Y[np.isfinite(Y)]\n        if local.size == 0:\n            result[name] = (float(\"nan\"), float(\"-inf\"), float(\"inf\"))\n            continue\n        estimate = float(np.median(local))\n        low = float(np.percentile(local, 10))\n        high = float(np.percentile(local, 90))\n        result[name] = (estimate, low, high)\n\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "ffae6e10-df6e-4b2b-9c16-54701d8f7c0f",
+ "total_cost_usd": 0.003264775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16971,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2286,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16971,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2286,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16971,
+   "webSearchRequests": 0,
+   "costUSD": 0.003264775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "89f5eb2c-e725-4441-bcbb-2acc15fa383c"
+}
