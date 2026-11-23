@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 8419,
+ "duration_api_ms": 8408,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\n\n_ALPHA = 0.05\n_N_PERM = 10000\n_SEED = 0\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"Return True if the two samples do not differ significantly (the gap is noise).\n\n    xs, ys: lists of numbers (e.g. run times). Returns False if the difference\n    in means is real, True if it is not.\n\n    Uses a two-sided permutation test on the difference in means, so it makes\n    no distributional assumptions (run times are often skewed). Non-finite\n    values are dropped. With fewer than two usable values in either sample,\n    no real difference can be established, so True is returned.\n    \"\"\"\n    x = np.asarray(list(xs), dtype=float)\n    y = np.asarray(list(ys), dtype=float)\n    x = x[np.isfinite(x)]\n    y = y[np.isfinite(y)]\n    if x.size < 2 or y.size < 2:\n        return True\n\n    observed = abs(float(x.mean()) - float(y.mean()))\n    if observed == 0.0:\n        return True\n\n    pooled = np.concatenate([x, y])\n    n_x = x.size\n    n_y = y.size\n    total = pooled.sum()\n    rng = np.random.default_rng(_SEED)\n\n    count = 0\n    for _ in range(_N_PERM):\n        idx = rng.permutation(pooled.size)[:n_x]\n        sx = pooled[idx].sum()\n        mean_x = sx / n_x\n        mean_y = (total - sx) / n_y\n        if abs(mean_x - mean_y) >= observed - 1e-12:\n            count += 1\n\n    p_value = (count + 1) / (_N_PERM + 1)\n    return bool(p_value >= _ALPHA)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "9ba76371-adab-4787-9505-9a6c7a0938fd",
+ "total_cost_usd": 0.00345365,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 21522,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1526,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21522,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1526,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21522,
+   "webSearchRequests": 0,
+   "costUSD": 0.00345365,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "e783e814-8831-45fb-9494-a56a6d73c8a9"
+}
