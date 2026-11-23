@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 11477,
+ "duration_api_ms": 11447,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step14.py: flow tools for scouting reports arriving one at a time.\n\nstream() keeps a player when no earlier player (training or already streamed) is at\nleast as good on every goal and strictly better on one. That is step4.stream, reused\nunchanged.\n\ndrift() warns when the last _WINDOW new players sit significantly further from the\ntraining players than training players sit from each other. It is step4.drift with\nthe identifier columns (num, Name, url) removed from the inputs, as step11 and step12\ndo, because a new season's players have new names and would look novel for that\nreason alone. The distance and significance test are the same as step4's.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _load\nfrom step3 import same\nfrom step4 import _encode_row, _encode_train, _loo_nearest\nfrom step4 import stream as _stream\nfrom step11 import _trait_inputs\n\n_WINDOW = 30   # number of recent new players tested together for drift\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) or discard (False) each row, in arrival order.\n\n    A row is kept if no training row and no earlier streamed row is at least as\n    good on every goal and strictly better on at least one.\n    \"\"\"\n    return _stream(train_csv, rows)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index of the first new row at which the new players stop resembling train_csv.\n\n    Identifier columns are ignored when measuring resemblance. Returns None if no\n    warning is raised.\n    \"\"\"\n    header, train_rows = _load(train_csv)\n    _, _, inputs = _classify(header)\n    inputs = _trait_inputs(header, inputs)\n    n = len(train_rows)\n    if n < 2 or not rows or not inputs:\n        return None\n\n    X, specs = _encode_train(train_rows, inputs)\n    scaler = StandardScaler().fit(X)\n    Z = scaler.transform(X)\n    ref = _loo_nearest(Z)\n\n    new_dist: list[float] = []\n    for i, row in enumerate(rows):\n        q = _encode_row(row, header, inputs, specs)\n        zq = scaler.transform(q.reshape(1, -1))[0]\n        d = float(np.sqrt(((Z - zq) ** 2).sum(axis=1)).min())\n        new_dist.append(d)\n        if len(new_dist) >= _WINDOW and not same(ref, new_dist[-_WINDOW:]):\n            return i\n    return None\n```",
+ "stop_reason": "end_turn",
+ "session_id": "d0e2e95c-1c46-48c2-9d5a-e02475b317ae",
+ "total_cost_usd": 0.004132025,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22357,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2674,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22357,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2674,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22357,
+   "webSearchRequests": 0,
+   "costUSD": 0.004132025,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "ee695af4-521d-47f2-8a11-0e813a8e7849"
+}
