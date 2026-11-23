@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 2776,
+ "duration_api_ms": 2755,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step29.py: flag customer records that look wrong (impossible ages, odd incomes, typos),\nand customers who behave unlike anyone else.\n\nThe work is done by step19.odd, which wraps step9.odd. Each row gets a suspicion score\ncombining goal-side and input-side isolation, and rows with missing or non-numeric goals\nscore infinity. Fraud is not decided here: a high score means \"check this record\", not\n\"this customer is fraudulent\".\n\"\"\"\n\nfrom step19 import odd as _odd\n\n\ndef odd(train_csv, rows) -> list[float]:\n    \"\"\"One suspicion score per row in `rows` (goals included): higher means more likely\n    a glitch, a typo, or unlike anything in train_csv.\n    \"\"\"\n    return [float(s) for s in _odd(train_csv, rows)]\n```",
+ "stop_reason": "end_turn",
+ "session_id": "b567b59d-6741-4e18-ad8f-6649ffe96dcf",
+ "total_cost_usd": 0.003185775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 23615,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 467,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 23615,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 467,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 23615,
+   "webSearchRequests": 0,
+   "costUSD": 0.003185775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "62016d17-b160-48fc-902f-837b8bab7d51"
+}
