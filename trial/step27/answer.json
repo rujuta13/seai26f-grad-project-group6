@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4370,
+ "duration_api_ms": 4359,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step27.py: choose the best customers to target while test-mailing a limited number.\n\nThin wrapper around step17.choose, which checks the arguments and counts calls to\n`label` so that a call beyond `budget` raises an error. The search itself is\nstep7.choose.\n\nThe client's two questions map onto this function through its arguments:\n- Best customers with 50 test mailings: budget=50 and no goal, so all goals count.\n- Store visits instead of web orders: goal=\"NUMSTOREPURCHASES+\" (the store-visit goal).\n\"\"\"\n\nfrom step17 import choose as _choose\n\n\ndef choose(blind_csv, label, budget=30, goal=None) -> int:\n    \"\"\"Index of the best row found, calling label(i) at most `budget` times.\n\n    blind_csv has every goal cell set to '?'. label(i) returns the goals of\n    row i as a dict. If `goal` names one goal, only that goal is optimised.\n    Raises RuntimeError if the search would call label more than `budget` times.\n    \"\"\"\n    return int(_choose(blind_csv, label, budget=budget, goal=goal))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "24aa160c-257d-419f-8009-b8abea924109",
+ "total_cost_usd": 0.00327515,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22982,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 804,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22982,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 804,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22982,
+   "webSearchRequests": 0,
+   "costUSD": 0.00327515,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "46de3e90-395a-48f7-bfe2-a4c32deaa9cd"
+}
