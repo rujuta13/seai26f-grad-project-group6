@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 6167,
+ "duration_api_ms": 6147,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step12.py: scout-facing guesses of each goal for an unseen player, with confidence ranges.\n\nThe model and the range come from step2.guess. This wrapper keeps the output\nin the form the client asked for: plain floats, with low <= estimate <= high.\n\"\"\"\n\nimport math\n\nfrom step2 import guess as _guess_base\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Return {goal: (estimate, low, high)} for every goal of train_csv.\n\n    `row` has its goal columns removed. low..high is the range the true value\n    is expected to fall in (5th to 95th percentile of out-of-bag errors, added\n    around the estimate).\n    \"\"\"\n    raw = _guess_base(train_csv, row)\n    out: dict[str, tuple[float, float, float]] = {}\n    for name, (est, lo, hi) in raw.items():\n        est = float(est)\n        lo = float(lo)\n        hi = float(hi)\n        if math.isnan(est) or math.isnan(lo) or math.isnan(hi):\n            out[name] = (est, lo, hi)\n            continue\n        lo, hi = min(lo, est), max(hi, est)\n        out[name] = (est, lo, hi)\n    return out\n```",
+ "stop_reason": "end_turn",
+ "session_id": "94cc3557-6acb-4ce2-b944-30867559ae1c",
+ "total_cost_usd": 0.002637775,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 16431,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1167,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 16431,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1167,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 16431,
+   "webSearchRequests": 0,
+   "costUSD": 0.002637775,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "71295fed-e8bd-4f3c-bfe0-b8d52a255a76"
+}
