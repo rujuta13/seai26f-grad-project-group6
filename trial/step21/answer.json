@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5008,
+ "duration_api_ms": 4996,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step21.py: customer families and the best customers, at about 2,200 rows.\n\nBoth client questions use the same definitions as step1 and step11. step11 is\nused because it stays workable at this scale: the silhouette score is estimated\non a fixed sample above 2,000 rows, and the Pareto front is computed in blocks.\n\"\"\"\n\nfrom step11 import best as _best_full\nfrom step11 import families as _families_full\n\n\ndef families(train_csv) -> list[int]:\n    \"\"\"One family (cluster) label per data row of train_csv, in file order.\"\"\"\n    return [int(x) for x in _families_full(train_csv)]\n\n\ndef best(train_csv) -> list[int]:\n    \"\"\"Row indices of the unusually good rows (best on all goals together),\n    at most 5% of rows. Uses the Pareto front over all goals, ranked when the\n    front is larger than the cap.\"\"\"\n    return sorted(int(i) for i in _best_full(train_csv))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "35aa3424-e157-4fee-935b-4f4b0eefcf93",
+ "total_cost_usd": 0.003107525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 21001,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 964,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21001,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 964,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21001,
+   "webSearchRequests": 0,
+   "costUSD": 0.003107525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "7a8814b4-6a37-4d36-ab92-a6c6b3d95e61"
+}
