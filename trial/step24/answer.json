@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 3169,
+ "duration_api_ms": 3146,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 24: client-facing flow for new customer sign-ups.\n\nstream(train_csv, rows): one keep/skip decision per incoming sign-up, using\nonly train_csv and the sign-ups that came before it. A sign-up is kept when no\nearlier reference row beats it on every goal.\n\ndrift(train_csv, rows): index of the first incoming sign-up at which the recent\nsign-ups look unlike train_csv (unusual inputs or goal values, tested over a\nsliding window), or None if they never do.\n\"\"\"\n\nfrom step4 import drift as _drift\nfrom step4 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep (True) each incoming row that is on the running Pareto front of\n    train_csv plus the rows before it; skip (False) the rest.\"\"\"\n    rows = list(rows)\n    return [bool(keep) for keep in _stream(train_csv, rows)]\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` of the first row at which new rows have stopped\n    looking like train_csv, or None if they never do.\"\"\"\n    rows = list(rows)\n    idx = _drift(train_csv, rows)\n    return None if idx is None else int(idx)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "9d40d15a-75d1-40ed-970f-b53e7f67e2ea",
+ "total_cost_usd": 0.00396365,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 29334,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 593,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 29334,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 593,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 29334,
+   "webSearchRequests": 0,
+   "costUSD": 0.00396365,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "6abae979-dfd6-46dd-aca6-3fa9e9b3e2a5"
+}
