@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 7396,
+ "duration_api_ms": 7370,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 24: welcome-offer stream for new sign-ups and a drift warning for each month's batch.\"\"\"\n\nfrom step4 import stream as _stream\nfrom step14 import drift as _drift\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Keep a new sign-up iff no training customer and no earlier kept sign-up\n    is at least as good on every goal and strictly better on one.\n\n    Each decision uses only train_csv and the rows before it, so a welcome offer\n    can be made as each sign-up arrives.\n    \"\"\"\n    rows = list(rows)\n    return _stream(train_csv, rows)\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Index into `rows` of the first row at which this month's sign-ups stop\n    looking like train_csv, or None if they never do.\n\n    Compares running windows of goal values and input features against the\n    training data at geometrically growing checkpoints (16, 32, 64, ...), with\n    the false-alarm budget split across checkpoints and features.\n    \"\"\"\n    rows = list(rows)\n    return _drift(train_csv, rows)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "87605ae6-0c76-4605-96b9-d72c2cd8cb22",
+ "total_cost_usd": 0.004324275,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 28375,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1554,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 28375,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1554,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 28375,
+   "webSearchRequests": 0,
+   "costUSD": 0.004324275,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "b347ba23-f2bf-468d-83be-74712897cac0"
+}
