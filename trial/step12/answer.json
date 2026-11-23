@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5686,
+ "duration_api_ms": 5671,
+ "num_turns": 1,
+ "result": "```python\nfrom step2 import guess as _guess_base\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal for a player whose goal columns are unknown.\n\n    Returns {goal: (estimate, low, high)}. The estimate comes from a random\n    forest fitted on the training rows, and low..high is the 10th to 90th\n    percentile range of that model's held-out errors, shifted onto the\n    estimate. Goal cells in `row` are ignored, since only the input columns\n    are used.\n    \"\"\"\n    est = _guess_base(train_csv, row)\n    return {g: (float(mid), float(lo), float(hi))\n            for g, (mid, lo, hi) in est.items()}\n```",
+ "stop_reason": "end_turn",
+ "session_id": "b9b44880-8019-444a-a056-76e6c013cc55",
+ "total_cost_usd": 0.002581525,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 15953,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1174,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 15953,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1174,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 15953,
+   "webSearchRequests": 0,
+   "costUSD": 0.002581525,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "06bb9b32-69a7-4be8-be4b-ebf37e7f0f84"
+}
