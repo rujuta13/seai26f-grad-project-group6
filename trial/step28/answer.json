@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5699,
+ "duration_api_ms": 5688,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"Step 28: client-facing fix for one customer.\n\nfix(train_csv, row, frozen=()): returns the inputs of a customer who is\ndrifting away, with as few values changed as possible so that the customer is\nrated good. Columns named in `frozen` never change.\n\nNote for the client: fix() rates customers on all goals together. The two\nrequests, a nudge back for a drifting customer and an offer that turns a\ndeal-only shopper into a regular one, each concern particular goals (for\nexample NUMDEALSPURCHASES+ and the purchase channel counts). This signature has\nno goal parameter, so it cannot target those goals directly. Freezing the\ncolumns you do not want changed (for example, via `frozen`) is the way to\nlimit the suggested changes to the offer or nudge you have in mind. A\ngoal-subset version would need its own function with a goal list parameter,\nas noted in step11.\n\"\"\"\n\nimport step18\n\n\ndef fix(train_csv, row, frozen=()) -> dict:\n    \"\"\"Return the inputs of `row` with as few values changed as possible so that\n    the customer is rated good. Columns named in `frozen` must not change.\n\n    `row` is a bad customer with its goal columns removed. The result has one\n    entry per input column of train_csv.\n    \"\"\"\n    return dict(step18.fix(train_csv, row, frozen=tuple(frozen)))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "064f63e7-ee70-4186-a6a0-adff982379b9",
+ "total_cost_usd": 0.00451065,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 32394,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 922,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 32394,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 922,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 32394,
+   "webSearchRequests": 0,
+   "costUSD": 0.00451065,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "456d8aac-2f68-4840-aca2-559da143deb4"
+}
