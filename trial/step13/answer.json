@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 5502,
+ "duration_api_ms": 5481,
+ "num_turns": 1,
+ "result": "```python\nimport numpy as np\n\n_ALPHA = 0.05\n_N_PERM = 10000\n_SEED = 0\n_CHUNK = 500\n\n\ndef same(xs, ys) -> bool:\n    \"\"\"True if the gap between xs and ys is consistent with noise (not really different).\n\n    Uses a two-sided permutation test on the difference in means. Non-finite\n    values are dropped. With an empty sample or an observed difference of\n    exactly zero, the samples are treated as not really different.\n    \"\"\"\n    x = np.asarray([float(v) for v in xs], dtype=float)\n    y = np.asarray([float(v) for v in ys], dtype=float)\n    x = x[np.isfinite(x)]\n    y = y[np.isfinite(y)]\n\n    n, m = len(x), len(y)\n    if n == 0 or m == 0:\n        return True\n\n    observed = abs(float(x.mean()) - float(y.mean()))\n    if observed == 0.0:\n        return True\n\n    pooled = np.concatenate([x, y])\n    total = n + m\n    rng = np.random.default_rng(_SEED)\n\n    threshold = observed * (1.0 - 1e-12)\n    count = 0\n    done = 0\n    while done < _N_PERM:\n        b = min(_CHUNK, _N_PERM - done)\n        perm = rng.random((b, total)).argsort(axis=1)\n        vals = pooled[perm]\n        diff = np.abs(vals[:, :n].mean(axis=1) - vals[:, n:].mean(axis=1))\n        count += int(np.count_nonzero(diff >= threshold))\n        done += b\n\n    p_value = (count + 1) / (_N_PERM + 1)\n    return bool(p_value > _ALPHA)\n```",
+ "stop_reason": "end_turn",
+ "session_id": "1a989b88-38d5-4e2f-aa51-e030b208ee7e",
+ "total_cost_usd": 0.0029894,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 17908,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 1501,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 17908,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 1501,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 17908,
+   "webSearchRequests": 0,
+   "costUSD": 0.0029894,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "14ed08c0-dda4-435c-ac28-c65166144804"
+}
