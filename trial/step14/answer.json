@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 4035,
+ "duration_api_ms": 4023,
+ "num_turns": 1,
+ "result": "```python\nfrom step4 import drift as _drift\nfrom step4 import stream as _stream\n\n\ndef stream(train_csv, rows) -> list[bool]:\n    \"\"\"Decide, one row at a time, whether each arriving build is worth following up.\n\n    A row is kept (True) iff no earlier reference build, either from train_csv or\n    from the rows already streamed, Pareto-dominates it on the goal columns.\n    Each decision uses only train_csv and the rows before it.\n    \"\"\"\n    return _stream(train_csv, list(rows))\n\n\ndef drift(train_csv, rows) -> int | None:\n    \"\"\"Return the index into `rows` where new builds stop resembling train_csv.\n\n    Warns at the first row index at which the most recent window of rows is, as\n    a group, far from the training inputs (nearest-neighbour distance above the\n    training baseline more often than chance allows). Returns None if no such\n    warning is raised.\n    \"\"\"\n    return _drift(train_csv, list(rows))\n```",
+ "stop_reason": "end_turn",
+ "session_id": "87122a0c-0afa-4f6a-9f6f-5829ecc975a2",
+ "total_cost_usd": 0.0031384,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 22184,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 730,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 22184,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 730,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 22184,
+   "webSearchRequests": 0,
+   "costUSD": 0.0031384,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "cafaee4f-b7fe-4dcf-964d-fd4bc134fd4c"
+}
