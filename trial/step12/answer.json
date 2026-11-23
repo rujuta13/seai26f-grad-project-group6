@@ -1,0 +1,46 @@
+{
+ "type": "result",
+ "subtype": "success",
+ "is_error": false,
+ "duration_ms": 10441,
+ "duration_api_ms": 10428,
+ "num_turns": 1,
+ "result": "```python\n\"\"\"step12.py: guess a player's goals from his other numbers, with a range.\n\nReuses step2's neighbour settings and step4's encoding helpers. The one new\nchoice is that identifier columns (num, Name, url) are left out of the\nneighbour search, as step11 does for clustering. Their values are row labels,\nso they would otherwise pull the neighbours toward players who happen to be\nlisted near each other.\n\nThe range low..high is the 10th to 90th percentile of the goal values among\nthe nearest training players. A wide range means the nearest players disagree,\nso the guess is less certain.\n\"\"\"\nfrom __future__ import annotations\n\nimport numpy as np\nfrom sklearn.preprocessing import StandardScaler\n\nfrom step1 import _classify, _load\nfrom step2 import _HIGH_Q, _K, _LOW_Q\nfrom step4 import _encode_row, _encode_train\nfrom step11 import _trait_inputs\n\n\ndef guess(train_csv, row) -> dict[str, tuple[float, float, float]]:\n    \"\"\"Estimate every goal of `row` as (estimate, low, high).\n\n    `row` is a dict {input column name: value} with the goal columns removed.\n    Returns {goal column name: (estimate, low, high)} for every goal in the\n    training file, in header order. The range low..high is the span the true\n    value is expected to fall in, taken from the nearest training players.\n    \"\"\"\n    header, rows = _load(train_csv)\n    if not rows:\n        raise ValueError(\"train_csv contains no data rows\")\n\n    _, _, inputs = _classify(header)\n    inputs = _trait_inputs(header, inputs)\n    goal_cols = [i for i, name in enumerate(header) if name.endswith((\"+\", \"-\"))]\n    n = len(rows)\n\n    if inputs:\n        X, specs = _encode_train(rows, inputs)\n        scaler = StandardScaler().fit(X)\n        Z = scaler.transform(X)\n        q = _encode_row(row, header, inputs, specs)\n        zq = scaler.transform(q.reshape(1, -1))[0]\n        dist = np.sqrt(((Z - zq) ** 2).sum(axis=1))\n    else:\n        dist = np.zeros(n, dtype=float)\n\n    k = min(_K, n)\n    idx = np.argsort(dist, kind=\"stable\")[:k]\n\n    result: dict[str, tuple[float, float, float]] = {}\n    for col in goal_cols:\n        y = np.array([float(r[col]) for r in rows], dtype=float)\n        neigh = y[idx]\n        estimate = float(np.median(neigh))\n        low = float(np.quantile(neigh, _LOW_Q))\n        high = float(np.quantile(neigh, _HIGH_Q))\n        result[header[col]] = (estimate, low, high)\n    return result\n```",
+ "stop_reason": "end_turn",
+ "session_id": "3c13519a-f549-403e-9b8c-c94f6dcdbd05",
+ "total_cost_usd": 0.0039362749999999995,
+ "usage": {
+  "input_tokens": 4,
+  "cache_creation_input_tokens": 21095,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 2598,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 21095,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard"
+ },
+ "modelUsage": {
+  "claude-haiku-5-5": {
+   "inputTokens": 4,
+   "outputTokens": 2598,
+   "cacheReadInputTokens": 0,
+   "cacheCreationInputTokens": 21095,
+   "webSearchRequests": 0,
+   "costUSD": 0.0039362749999999995,
+   "contextWindow": 200000,
+   "maxOutputTokens": 32000
+  }
+ },
+ "permission_denials": [],
+ "terminal_reason": "completed",
+ "fast_mode_state": "off",
+ "uuid": "c42b7b33-110b-4568-8517-f34caf22d23f"
+}
